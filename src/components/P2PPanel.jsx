@@ -892,7 +892,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const parsedOnrampAmtRaw = parseFloat(onrampAmount) || 0;
     const parsedOnrampAmt = onrampInputMode === 'crypto' ? parsedOnrampAmtRaw * onrampNgnRate : parsedOnrampAmtRaw;
     
-    if (mode === 'buy' && parsedOnrampAmt > 0 && selectedToken && selectedToken.symbol !== 'USDC' && selectedToken.symbol !== 'USDT') {
+    if (mode === 'buy' && parsedOnrampAmt > 0 && selectedToken && selectedToken.symbol !== 'USDC') {
       const fetchJupiterQuote = async () => {
         try {
           const usdcAmount = onrampInputMode === 'fiat' ? Math.max(0, parsedOnrampAmt / onrampNgnRate) : parsedOnrampAmtRaw;
@@ -1940,7 +1940,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   const displayOnrampAmount = useMemo(() => {
     if (parsedOnrampAmt <= 0) return 0;
-    if (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') {
+    if (liveSelectedToken.symbol === 'USDC') {
       return estOnrampCrypto; // full quote amount — fee is on the naira side, not deducted from USDC received
     }
     if (jupiterQuote && jupiterQuote.outAmount) {
@@ -1950,7 +1950,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   }, [parsedOnrampAmt, liveSelectedToken, estOnrampCrypto, jupiterQuote]);
 
   const displayOnrampRate = useMemo(() => {
-    if (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') {
+    if (liveSelectedToken.symbol === 'USDC') {
       return onrampNgnRate;
     }
     if (displayOnrampAmount > 0) {
@@ -2065,10 +2065,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         }
       }
 
-      // If user is buying a custom token, we must onramp USDC via PajCash, then swap it to the target token.
-      const onrampMint = (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT')
-        ? liveSelectedToken.mint
-        : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Default to USDC mint
+      // PajCash ONLY handles USDC. Always send USDC mint regardless of what token
+      // the user selected. The app will autoswap USDC → target token after PajCash confirms.
+      const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      const onrampMint = USDC_MINT;
 
       // Do NOT pass `fee` to PajCash — their API adds it to the fiat payment slip,
       // making the user pay more than they typed. Without `fee`, the slip matches
@@ -2360,8 +2360,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
-      // If the user is buying a custom token, trigger the auto-swap
-      if (liveSelectedToken.symbol !== 'USDC' && liveSelectedToken.symbol !== 'USDT') {
+      // If the user is buying a custom token (any token other than USDC), trigger the auto-swap
+      if (liveSelectedToken.symbol !== 'USDC') {
         step = 'swapping';
         setOnrampStatus('swapping');
         await triggerJupiterSwap();
