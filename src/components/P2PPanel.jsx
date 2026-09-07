@@ -1920,10 +1920,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   // ── Validation: Onramp minimum $1.00 USD / maximum $2,000.00 USD worth of crypto ─
   const ONRAMP_MIN_USD = 1.00;
   const ONRAMP_MAX_USD = 2000.00;
-  // estOnrampCrypto is defined later; we use grossOnrampCrypto here for early check
-  const onrampGrossValueUsd = (onrampInputMode === 'fiat'
+  // When user enters Naira (fiat mode): USD value = NGN amount ÷ NGN/USD rate
+  // When user enters crypto amount directly: USD value = crypto amount × token price
+  const onrampGrossValueUsd = onrampInputMode === 'fiat'
     ? (onrampNgnRate > 0 ? (parseFloat(onrampAmount) || 0) / onrampNgnRate : 0)
-    : (parseFloat(onrampAmount) || 0)) * tokenPriceUsd;
+    : (parseFloat(onrampAmount) || 0) * tokenPriceUsd;
   const onrampBelowMinimum = (parseFloat(onrampAmount) || 0) > 0 && onrampGrossValueUsd < ONRAMP_MIN_USD;
   const onrampExceedsMaximum = (parseFloat(onrampAmount) || 0) > 0 && onrampGrossValueUsd > ONRAMP_MAX_USD;
 
