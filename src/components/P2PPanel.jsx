@@ -1732,7 +1732,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   useEffect(() => {
     if (mode === 'sell') {
       const available = selectableTokens.some(t => t.symbol === selectedToken.symbol || t.mint === selectedToken.mint);
-      const isLiveToken = selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT';
+      const isLiveToken = selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT' || selectedToken.symbol === 'SOL';
       if ((!available || !isLiveToken) && selectableTokens.length > 0) {
         const usdc = selectableTokens.find(t => t.symbol === 'USDC') || selectableTokens[0];
         setSelectedToken(usdc);
@@ -4165,8 +4165,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
                     {tokenOpen && (
                       <div className="drop-menu" style={{ right: 0, minWidth: '220px', zIndex: 100 }}>
-                        {selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT').map(t => {
-                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT';
+                        {selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL').map(t => {
+                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL';
                           return (
                             <div
                               key={t.mint || t.symbol}
@@ -4526,8 +4526,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                           ))
                         )
                       ) : (
-                        selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT').map(t => {
-                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT';
+                        selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL').map(t => {
+                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL';
                           return (
                             <div
                               key={t.mint || t.symbol}
