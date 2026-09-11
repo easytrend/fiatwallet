@@ -8,11 +8,12 @@
   "background_color": "#0b121e",
   "theme_color": "#0b121e",
   "orientation": "any",
+  "categories": ["finance", "utilities"],
   "icons": [
     {
-      "src": "/logo.jpg",
-      "sizes": "192x192 512x512",
-      "type": "image/jpeg",
+      "src": "/icon512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
