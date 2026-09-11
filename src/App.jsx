@@ -316,6 +316,46 @@ export default function App() {
   const [swipeDir, setSwipeDir] = useState(null); // 'left' | 'right' | null
   const swipeTouchRef = useRef({ startX: 0, startY: 0, active: false });
   const [showModal, setShowModal] = useState(false);
+
+  // ── PWA / APK Install Banner State ──
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(() => {
+    const isStandalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
+    return !isStandalone && !sessionStorage.getItem('fiat_apk_banner_dismissed');
+  });
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleDownloadApk = async () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+      if (choice?.outcome === 'accepted') {
+        setDeferredInstallPrompt(null);
+        setShowInstallBanner(false);
+        return;
+      }
+    }
+    const a = document.createElement('a');
+    a.href = '/fiatwallet.apk';
+    a.download = 'fiatwallet.apk';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleDismissInstallBanner = () => {
+    sessionStorage.setItem('fiat_apk_banner_dismissed', 'true');
+    setShowInstallBanner(false);
+  };
+
   // walletPubkey string state removed — use `publicKey` from useWallet() directly to
   // avoid exposing a redundant plaintext string that malicious extensions can enumerate via React fiber.
   const [walletDomain, setWalletDomain] = useState(null);
@@ -1113,6 +1153,62 @@ export default function App() {
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* ── Install PWA / Download APK Prompt Banner ── */}
+      {showInstallBanner && (
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.95)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          color: '#e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 16px',
+          fontSize: '12px',
+          fontWeight: '500',
+          backdropFilter: 'blur(8px)',
+          position: 'relative',
+          zIndex: 998,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>📱</span>
+            <span>Get the native Android app for the best P2P experience.</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleDownloadApk}
+              style={{
+                background: 'linear-gradient(135deg, #84cc16, #65a30d)',
+                color: '#090d16',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '5px 12px',
+                fontWeight: '700',
+                fontSize: '11px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(132, 204, 22, 0.3)',
+              }}
+            >
+              {deferredInstallPrompt ? 'Install App' : 'Download APK'}
+            </button>
+            <button
+              onClick={handleDismissInstallBanner}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255,255,255,0.5)',
+                cursor: 'pointer',
+                fontSize: '16px',
+                lineHeight: 1,
+                padding: '2px 4px',
+              }}
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
