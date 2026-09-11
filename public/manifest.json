@@ -1,0 +1,19 @@
+{
+  "id": "fiatwallet-app",
+  "name": "FiatWallet — Buy & Sell Stablecoins",
+  "short_name": "FiatWallet",
+  "description": "FiatWallet is an onchain P2P platform that lets anyone buy and sell stablecoins — no KYC needed, powered by Solana.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b121e",
+  "theme_color": "#0b121e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192 512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
