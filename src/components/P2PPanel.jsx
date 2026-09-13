@@ -2186,8 +2186,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // relayerPayer: when set, Jupiter builds the tx with the relayer as fee payer (index 0).
       // Both the user AND the relayer must sign before the tx can be broadcast.
       // The user signs here; relay_swap.js adds the relayer signature and broadcasts.
-      const relayerPayer = import.meta.env.VITE_RELAYER_PUBLIC_KEY || undefined;
-
+      const relayerPayer = undefined;
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
         throw new Error("Failed to construct swap transaction.");
@@ -2285,7 +2284,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         throw new Error("Failed to retrieve quote from Jupiter.");
       }
 
-      const relayerPayer = import.meta.env.VITE_RELAYER_PUBLIC_KEY || undefined;
+      const relayerPayer = undefined;
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
         throw new Error("Failed to construct swap transaction.");
@@ -2693,24 +2692,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
 
-      // 2. Check if server-side relayer is configured
-      const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
-      let relayerPublicKey = null;
-      let usingRelayer = false;
-      if (relayerPubkeyStr) {
-        try {
-          relayerPublicKey = new PublicKey(relayerPubkeyStr);
-          usingRelayer = true;
-        } catch {
-          relayerPublicKey = null;
-          usingRelayer = false;
-        }
-      }
+      // 2. Transaction is signed directly by connected wallet (gas fee is ~$0.0007 SOL)
+      const relayerPublicKey = null;
+      const usingRelayer = false;
 
       // 3. Build on-chain Solana transaction
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
       const transaction = new Transaction();
-      transaction.feePayer = usingRelayer ? relayerPublicKey : publicKey;
+      transaction.feePayer = publicKey;
       transaction.recentBlockhash = blockhash;
 
       const depositPubkey = new PublicKey(order.address);
