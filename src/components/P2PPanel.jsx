@@ -21,7 +21,7 @@ import {
 import { getQuote, buildSwapTransaction } from '../services/swapService';
 import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction, TransactionMessage } from '@solana/web3.js';
 import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -2706,25 +2706,20 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         }
       }
 
-      // 3. Build on-chain Solana transaction
+      // 3. Build on-chain Solana instructions
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
-      const transaction = new Transaction();
-      transaction.feePayer = usingRelayer ? relayerPublicKey : publicKey;
-      transaction.recentBlockhash = blockhash;
-
       const depositPubkey = new PublicKey(order.address);
+      const instructions = [];
 
       if (liveSelectedToken.symbol === 'SOL') {
         const lamports = Math.round((order.amount || estCryptoAmount) * 1e9);
-        transaction.add(
+        instructions.push(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: depositPubkey, lamports })
         );
       } else {
         const mintPubkey = new PublicKey(liveSelectedToken.mint);
 
         // Determine the correct SPL token program.
-        // USDG uses Token-2022; we honour the override flag first so we
-        // never send the wrong program even if the RPC call fails.
         let tokenProgram = TOKEN_PROGRAM_ID;
         if (liveSelectedToken.tokenProgramOverride === 'token2022') {
           tokenProgram = TOKEN_2022_PROGRAM_ID;
@@ -2758,12 +2753,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         const sendAmount = order.amount || estCryptoAmount;
         const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
 
-        transaction.add(
+        instructions.push(
           createAssociatedTokenAccountIdempotentInstruction(
             usingRelayer ? relayerPublicKey : publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
           )
         );
-        transaction.add(
+        instructions.push(
           createTransferCheckedInstruction(
             senderATA, mintPubkey, receiverATA, publicKey, units, decimals, [], tokenProgram
           )
@@ -2771,7 +2766,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       }
 
       // 4. Attach on-chain memo with order ID
-      transaction.add(
+      instructions.push(
         new TransactionInstruction({
           keys: [],
           programId: MEMO_PROGRAM_ID,
@@ -2779,33 +2774,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         })
       );
 
-      verifyOfframpTransaction(transaction, order.address, liveSelectedToken, publicKey,
-        usingRelayer ? relayerPublicKey : null);
+      // Build V0 VersionedTransaction (standard for multi-party gasless signing on all mobile & desktop wallets)
+      const messageV0 = new TransactionMessage({
+        payerKey: usingRelayer ? relayerPublicKey : publicKey,
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToV0Message();
 
-      // 5. Pre-flight simulation (only when user is sole fee payer; relayer tx is simulated and broadcast on backend)
-      if (!usingRelayer) {
-        try {
-          const sim = await connection.simulateTransaction(transaction);
-          if (sim.value.err) throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`);
-        } catch (simErr) {
-          if (!simErr.message?.includes('Signature verification failed')) {
-            throw simErr;
-          }
-        }
-      }
+      const transaction = new VersionedTransaction(messageV0);
 
-      // 6. Sign & send (with automatic fallback to user fee-payer if relayer is unfunded/0 SOL)
+      // 5. Sign & send
       let sig;
       if (usingRelayer && signTransaction) {
         try {
-          // User signs the transaction — since feePayer = relayerPublicKey (not user),
-          // the wallet shows ZERO fees to the user.
+          // User signs their instruction (shows $0 gas fee in wallet)
           const signedTx = await signTransaction(transaction);
 
-          // Serialize the user-signed tx and POST it to the secure server-side relay endpoint.
-          const serialized = Buffer.from(
-            signedTx.serialize({ requireAllSignatures: false })
-          ).toString('base64');
+          // Serialize and POST to relayer which signs as feePayer and broadcasts
+          const serialized = Buffer.from(signedTx.serialize()).toString('base64');
 
           const relayRes = await fetch('/api/relay', {
             method: 'POST',
