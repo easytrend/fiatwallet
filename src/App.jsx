@@ -1014,15 +1014,7 @@ export default function App() {
       }];
       verifyTransactionIntegrity(transaction, expectedTransfers, publicKey);
 
-      // Pre-flight simulation immediately before sendTransaction
-      const simResult = await connection.simulateTransaction(transaction);
-      if (simResult.value.err) {
-        const simErr = JSON.stringify(simResult.value.err);
-        const logs = simResult.value.logs?.slice(0, 3).join(' | ') || '';
-        throw new Error(`Transaction simulation failed: ${simErr}${logs ? ' — ' + logs : ''}`);
-      }
-
-      // All checks passed — submit to wallet for signing and broadcast.
+      // All checks passed — submit to wallet for signing and broadcast (sendTransaction handles simulation post-signing)
       const signature = await sendTransaction(transaction, connection);
       
 

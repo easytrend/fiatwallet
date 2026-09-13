@@ -501,16 +501,6 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
       setSendingState('signing');
 
       if (transactions.length > 1 && signAllTransactions) {
-        // Pre-flight simulation immediately before signAllTransactions
-        for (let i = 0; i < transactions.length; i++) {
-          const simResult = await connection.simulateTransaction(transactions[i]);
-          if (simResult.value.err) {
-            const simErr = JSON.stringify(simResult.value.err);
-            const logs = simResult.value.logs?.slice(0, 3).join(' | ') || '';
-            throw new Error(`Batch ${i + 1} simulation failed: ${simErr}${logs ? ' — ' + logs : ''}`);
-          }
-        }
-
         const signedTxs = await signAllTransactions(transactions);
         setSendingState('sending');
 
@@ -525,14 +515,6 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
       } else {
         setSendingState('sending');
         for (let i = 0; i < transactions.length; i++) {
-          // Pre-flight simulation immediately before sendTransaction
-          const simResult = await connection.simulateTransaction(transactions[i]);
-          if (simResult.value.err) {
-            const simErr = JSON.stringify(simResult.value.err);
-            const logs = simResult.value.logs?.slice(0, 3).join(' | ') || '';
-            throw new Error(`Batch ${i + 1} simulation failed: ${simErr}${logs ? ' — ' + logs : ''}`);
-          }
-
           const sig = await sendTransaction(transactions[i], connection);
           signatures.push(sig);
           const confirmed = await pollConfirmation(connection, sig);
