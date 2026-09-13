@@ -5,7 +5,24 @@ import React, { useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl } from '@solana/web3.js';
+import { clusterApiUrl, Transaction } from '@solana/web3.js';
+
+// Polyfill/Fix for @solana-mobile/wallet-adapter-mobile:
+// Solana Mobile Wallet Adapter calls transaction.serialize() with no arguments
+// before sending an unsigned legacy Transaction to the mobile wallet (Phantom, Solflare, Seed Vault)
+// to be signed. @solana/web3.js defaults verifySignatures: true and requireAllSignatures: true,
+// which causes "Signature verification failed. Missing signature for public key [...]"
+// on every unsigned transaction on Android/Seeker.
+const origSerialize = Transaction.prototype.serialize;
+Transaction.prototype.serialize = function (config) {
+  const requireAllSignatures = config && 'requireAllSignatures' in config ? config.requireAllSignatures : false;
+  const verifySignatures = config && 'verifySignatures' in config ? config.verifySignatures : false;
+  return origSerialize.call(this, {
+    requireAllSignatures,
+    verifySignatures,
+    ...config,
+  });
+};
 import {
   createDefaultAddressSelector,
   createDefaultAuthorizationResultCache,

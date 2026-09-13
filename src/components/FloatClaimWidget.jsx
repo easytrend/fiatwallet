@@ -398,15 +398,29 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess }) {
       // Sign + send all transactions
       let signatures = [];
       if (signAllTransactions && transactions.length > 1) {
+        // Simulate every batch transaction before sending.
+        for (const tx of transactions) {
+          const sim = await connection.simulateTransaction(tx);
+          if (sim.value.err) {
+            throw new Error(`Rent claim simulation failed on a batch: ${JSON.stringify(sim.value.err)}`);
+          }
+        }
         const signed = await signAllTransactions(transactions);
         signatures = await Promise.all(
           signed.map(s =>
             connection.sendRawTransaction(s.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed' })
           )
         );
+        
       } else {
+        // Simulate single transaction before sending.
+        const sim = await connection.simulateTransaction(transactions[0]);
+        if (sim.value.err) {
+          throw new Error(`Rent claim simulation failed: ${JSON.stringify(sim.value.err)}`);
+        }
         const sig = await sendTransaction(transactions[0], connection);
         signatures = [sig];
+        
       }
 
       // Wait for confirmations
@@ -618,6 +632,12 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess }) {
           // we cannot run instruction-level validation — refuse to sign rather than fall through.
           throw new Error('[SECURITY] Cannot verify external cashback transaction integrity. Refusing to sign.');
         }
+      }
+
+      // Pre-flight simulation immediately before sendTransaction
+      const sim = await connection.simulateTransaction(deserializedTx);
+      if (sim.value.err) {
+        throw new Error(`Cashback claim simulation failed: ${JSON.stringify(sim.value.err)}`);
       }
 
       signature = await sendTransaction(deserializedTx, connection);

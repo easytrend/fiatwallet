@@ -21,7 +21,7 @@ import {
 import { getQuote, buildSwapTransaction } from '../services/swapService';
 import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction, TransactionMessage } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction } from '@solana/web3.js';
 import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -2186,7 +2186,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // relayerPayer: when set, Jupiter builds the tx with the relayer as fee payer (index 0).
       // Both the user AND the relayer must sign before the tx can be broadcast.
       // The user signs here; relay_swap.js adds the relayer signature and broadcasts.
-      const relayerPayer = undefined;
+      const relayerPayer = import.meta.env.VITE_RELAYER_PUBLIC_KEY || undefined;
+
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
         throw new Error("Failed to construct swap transaction.");
@@ -2284,7 +2285,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         throw new Error("Failed to retrieve quote from Jupiter.");
       }
 
-      const relayerPayer = undefined;
+      const relayerPayer = import.meta.env.VITE_RELAYER_PUBLIC_KEY || undefined;
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
         throw new Error("Failed to construct swap transaction.");
@@ -2692,7 +2693,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
 
-      // 2. Check if server-side gasless relayer is configured
+      // 2. Check if server-side relayer is configured
       const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
       let relayerPublicKey = null;
       let usingRelayer = false;
@@ -2706,20 +2707,25 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         }
       }
 
-      // 3. Build on-chain Solana instructions
+      // 3. Build on-chain Solana transaction
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      const transaction = new Transaction();
+      transaction.feePayer = usingRelayer ? relayerPublicKey : publicKey;
+      transaction.recentBlockhash = blockhash;
+
       const depositPubkey = new PublicKey(order.address);
-      const instructions = [];
 
       if (liveSelectedToken.symbol === 'SOL') {
         const lamports = Math.round((order.amount || estCryptoAmount) * 1e9);
-        instructions.push(
+        transaction.add(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: depositPubkey, lamports })
         );
       } else {
         const mintPubkey = new PublicKey(liveSelectedToken.mint);
 
         // Determine the correct SPL token program.
+        // USDG uses Token-2022; we honour the override flag first so we
+        // never send the wrong program even if the RPC call fails.
         let tokenProgram = TOKEN_PROGRAM_ID;
         if (liveSelectedToken.tokenProgramOverride === 'token2022') {
           tokenProgram = TOKEN_2022_PROGRAM_ID;
@@ -2753,12 +2759,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         const sendAmount = order.amount || estCryptoAmount;
         const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
 
-        instructions.push(
+        transaction.add(
           createAssociatedTokenAccountIdempotentInstruction(
             usingRelayer ? relayerPublicKey : publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
           )
         );
-        instructions.push(
+        transaction.add(
           createTransferCheckedInstruction(
             senderATA, mintPubkey, receiverATA, publicKey, units, decimals, [], tokenProgram
           )
@@ -2766,7 +2772,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       }
 
       // 4. Attach on-chain memo with order ID
-      instructions.push(
+      transaction.add(
         new TransactionInstruction({
           keys: [],
           programId: MEMO_PROGRAM_ID,
@@ -2774,24 +2780,27 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         })
       );
 
-      // Build V0 VersionedTransaction (standard for multi-party gasless signing on all mobile & desktop wallets)
-      const messageV0 = new TransactionMessage({
-        payerKey: usingRelayer ? relayerPublicKey : publicKey,
-        recentBlockhash: blockhash,
-        instructions,
-      }).compileToV0Message();
+      verifyOfframpTransaction(transaction, order.address, liveSelectedToken, publicKey,
+        usingRelayer ? relayerPublicKey : null);
 
-      const transaction = new VersionedTransaction(messageV0);
+      // 5. Pre-flight simulation (only if user is feePayer; relayer server simulates after adding relayer signature)
+      if (!usingRelayer) {
+        const sim = await connection.simulateTransaction(transaction);
+        if (sim.value.err) throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`);
+      }
 
-      // 5. Sign & send
+      // 6. Sign & send (with automatic fallback to user fee-payer if relayer is unfunded/0 SOL)
       let sig;
       if (usingRelayer && signTransaction) {
         try {
-          // User signs their instruction (shows $0 gas fee in wallet)
+          // User signs the transaction — since feePayer = relayerPublicKey (not user),
+          // the wallet shows ZERO fees to the user.
           const signedTx = await signTransaction(transaction);
 
-          // Serialize and POST to relayer which signs as feePayer and broadcasts
-          const serialized = Buffer.from(signedTx.serialize()).toString('base64');
+          // Serialize the user-signed tx and POST it to the secure server-side relay endpoint.
+          const serialized = Buffer.from(
+            signedTx.serialize({ requireAllSignatures: false })
+          ).toString('base64');
 
           const relayRes = await fetch('/api/relay', {
             method: 'POST',
@@ -2860,8 +2869,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setRelayerActive(false);
         }
       } else {
-        // Direct wallet send — ensure feePayer is set to user's publicKey
-        transaction.feePayer = publicKey;
+        // No relayer — user pays gas normally
         sig = await sendTransaction(transaction, connection);
         setRelayerActive(false);
       }

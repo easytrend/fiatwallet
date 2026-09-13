@@ -12,7 +12,6 @@
 import {
   Connection,
   Transaction,
-  VersionedTransaction,
   Keypair,
 } from '@solana/web3.js';
 
@@ -177,36 +176,48 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid serializedTransaction parameter' });
     }
 
-    // ── Deserialize transaction (supports both V0 VersionedTransaction and Legacy) ──
-    let isV0 = false;
+    // ── Deserialize transaction ───────────────────────────────────────────────
     let transaction;
-    const txBuffer = Buffer.from(serializedTransaction, 'base64');
     try {
-      transaction = VersionedTransaction.deserialize(txBuffer);
-      isV0 = true;
-    } catch {
-      try {
-        transaction = Transaction.from(txBuffer);
-        isV0 = false;
-      } catch (e) {
-        return res.status(400).json({ error: 'Could not deserialize transaction: ' + e.message });
-      }
+      const txBuffer = Buffer.from(serializedTransaction, 'base64');
+      transaction = Transaction.from(txBuffer);
+    } catch (e) {
+      return res.status(400).json({ error: 'Could not deserialize transaction: ' + e.message });
     }
 
     // ── Security validation ───────────────────────────────────────────────────
-    if (isV0) {
-      const feePayer = transaction.message.staticAccountKeys[0];
-      if (!feePayer || !feePayer.equals(relayerKp.publicKey)) {
-        return res.status(400).json({ error: 'Transaction feePayer does not match relayer public key' });
+    // Instead of whitelisting specific programs (which breaks when wallets inject
+    // utility programs like ComputeBudget, Lighthouse, etc.), we directly verify
+    // that the relayer's funds cannot be drained. This is both more secure and
+    // compatible with all wallets.
+
+    // 1. feePayer must be the relayer
+    if (!transaction.feePayer || !transaction.feePayer.equals(relayerKp.publicKey)) {
+      return res.status(400).json({ error: 'Transaction feePayer does not match the relayer\'s public key' });
+    }
+
+    // 2. Ensure no instruction can drain the relayer's SOL or tokens
+    const drainCheck = validateRelayerNotDrained(transaction, relayerKp.publicKey);
+    if (drainCheck) {
+      return res.status(400).json({ error: drainCheck });
+    }
+
+    // 3. Must have our memo to confirm it's a genuine offramp tx
+    const decoder = new TextDecoder();
+    const hasMemo = transaction.instructions.some(ix => {
+      const progId = ix.programId.toBase58();
+      const isMemo =
+        progId === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' ||
+        progId === 'Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo';
+      if (!isMemo) return false;
+      try {
+        return decoder.decode(ix.data).startsWith(MEMO_PREFIX);
+      } catch {
+        return false;
       }
-    } else {
-      if (!transaction.feePayer || !transaction.feePayer.equals(relayerKp.publicKey)) {
-        return res.status(400).json({ error: 'Transaction feePayer does not match the relayer\'s public key' });
-      }
-      const drainCheck = validateRelayerNotDrained(transaction, relayerKp.publicKey);
-      if (drainCheck) {
-        return res.status(400).json({ error: drainCheck });
-      }
+    });
+    if (!hasMemo) {
+      return res.status(400).json({ error: 'Transaction is missing required offramp memo' });
     }
 
     // ── Connect and check relayer SOL balance ─────────────────────────────────
@@ -226,11 +237,7 @@ export default async function handler(req, res) {
 
     // ── Sign as feePayer and broadcast ───────────────────────────────────────
     try {
-      if (isV0) {
-        transaction.sign([relayerKp]);
-      } else {
-        transaction.partialSign(relayerKp);
-      }
+      transaction.partialSign(relayerKp);
 
       const sig = await connection.sendRawTransaction(transaction.serialize(), {
         skipPreflight: false,
