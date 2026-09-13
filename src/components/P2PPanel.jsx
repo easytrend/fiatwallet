@@ -2783,9 +2783,17 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       verifyOfframpTransaction(transaction, order.address, liveSelectedToken, publicKey,
         usingRelayer ? relayerPublicKey : null);
 
-      // 5. Pre-flight simulation
-      const sim = await connection.simulateTransaction(transaction);
-      if (sim.value.err) throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`);
+      // 5. Pre-flight simulation (only when user is sole fee payer; relayer tx is simulated and broadcast on backend)
+      if (!usingRelayer) {
+        try {
+          const sim = await connection.simulateTransaction(transaction);
+          if (sim.value.err) throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`);
+        } catch (simErr) {
+          if (!simErr.message?.includes('Signature verification failed')) {
+            throw simErr;
+          }
+        }
+      }
 
       // 6. Sign & send (with automatic fallback to user fee-payer if relayer is unfunded/0 SOL)
       let sig;
