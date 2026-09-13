@@ -7,6 +7,12 @@ import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
 import {
+  createDefaultAddressSelector,
+  createDefaultAuthorizationResultCache,
+  createDefaultWalletNotFoundHandler,
+  SolanaMobileWalletAdapter,
+} from '@solana-mobile/wallet-adapter-mobile';
+import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
   CoinbaseWalletAdapter,
@@ -26,6 +32,17 @@ function Root() {
   // Fallback to the placeholder if the env variable isn't set yet.
   const endpoint = useMemo(() => import.meta.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com', []);
   const wallets = useMemo(() => [
+    new SolanaMobileWalletAdapter({
+      addressSelector: createDefaultAddressSelector(),
+      appIdentity: {
+        name: 'FiatWallet',
+        uri: 'https://fiatwallet.app',
+        icon: '/icon512.png',
+      },
+      authorizationResultCache: createDefaultAuthorizationResultCache(),
+      cluster: 'mainnet-beta',
+      onWalletNotFound: createDefaultWalletNotFoundHandler(),
+    }),
     new PhantomWalletAdapter(),
     new SolflareWalletAdapter(),
     new CoinbaseWalletAdapter(),
