@@ -2692,14 +2692,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
 
-      // 2. Transaction is signed directly by connected wallet (gas fee is ~$0.0007 SOL)
-      const relayerPublicKey = null;
-      const usingRelayer = false;
+      // 2. Check if server-side gasless relayer is configured
+      const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
+      let relayerPublicKey = null;
+      let usingRelayer = false;
+      if (relayerPubkeyStr) {
+        try {
+          relayerPublicKey = new PublicKey(relayerPubkeyStr);
+          usingRelayer = true;
+        } catch {
+          relayerPublicKey = null;
+          usingRelayer = false;
+        }
+      }
 
       // 3. Build on-chain Solana transaction
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
       const transaction = new Transaction();
-      transaction.feePayer = publicKey;
+      transaction.feePayer = usingRelayer ? relayerPublicKey : publicKey;
       transaction.recentBlockhash = blockhash;
 
       const depositPubkey = new PublicKey(order.address);
@@ -2864,7 +2874,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setRelayerActive(false);
         }
       } else {
-        // No relayer — user pays gas normally
+        // Direct wallet send — ensure feePayer is set to user's publicKey
+        transaction.feePayer = publicKey;
         sig = await sendTransaction(transaction, connection);
         setRelayerActive(false);
       }
