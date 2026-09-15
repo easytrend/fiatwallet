@@ -1,155 +1,272 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Privacy Policy — FiatWallet</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0F0F1A; color: #D1D5DB; font-family: 'Space Grotesk', sans-serif; font-size: 16px; line-height: 1.75; padding: 0 16px 80px; }
-    .container { max-width: 720px; margin: 0 auto; }
-    header { padding: 48px 0 40px; border-bottom: 1px solid #1E1E30; margin-bottom: 40px; }
-    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; text-decoration: none; }
-    .logo-icon { width: 36px; height: 36px; background: #7C3AED; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; }
-    .logo-name { font-size: 18px; font-weight: 600; color: #fff; }
-    h1 { font-size: 32px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    :root {
+      --bg: #16171d; --card: #1c1d26; --border: #2e303a;
+      --text: #9ca3af; --text2: #c4c8d4; --text-h: #f3f4f6;
+      --accent: #c084fc; --accent-bg: rgba(192,132,252,0.12);
+      --accent-border: rgba(192,132,252,0.35); --purple: #7C3AED;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      font-size: 16px; line-height: 1.75; min-height: 100vh;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(124,58,237,0.18) 0%, transparent 70%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='104' viewBox='0 0 60 104'%3E%3Cpath d='M30 2 L58 17 L58 47 L30 62 L2 47 L2 17 Z' fill='none' stroke='rgba(192,132,252,0.06)' stroke-width='1'/%3E%3Cpath d='M30 54 L58 69 L58 99 L30 114 L2 99 L2 69 Z' fill='none' stroke='rgba(192,132,252,0.06)' stroke-width='1'/%3E%3C/svg%3E");
+    }
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(22,23,29,0.85);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 800px; margin: 0 auto; padding: 14px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo img { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; }
+    .logo-name { font-size: 17px; font-weight: 700; color: var(--text-h); letter-spacing: -0.3px; }
+    .open-app-btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 18px;
+      background: linear-gradient(135deg, #7C3AED, #c084fc);
+      color: #fff; font-family: inherit; font-size: 13px; font-weight: 600;
+      text-decoration: none; border-radius: 99px; border: none; cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+      box-shadow: 0 0 20px rgba(192,132,252,0.25);
+    }
+    .open-app-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .page {
+      position: relative; z-index: 1;
+      max-width: 800px; margin: 0 auto; padding: 56px 20px 80px;
+    }
+    .page-header { margin-bottom: 48px; padding-bottom: 40px; border-bottom: 1px solid var(--border); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; background: var(--accent-bg);
+      border: 1px solid var(--accent-border); border-radius: 99px;
+      font-size: 12px; font-weight: 600; color: var(--accent);
+      margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    h1 {
+      font-size: clamp(28px, 5vw, 40px); font-weight: 700;
+      color: var(--text-h); line-height: 1.2; margin-bottom: 10px; letter-spacing: -0.5px;
+    }
     .meta { font-size: 13px; color: #6B7280; }
-    h2 { font-size: 18px; font-weight: 600; color: #fff; margin: 36px 0 12px; }
-    p { margin-bottom: 14px; color: #9CA3AF; }
-    ul { padding-left: 20px; margin-bottom: 14px; color: #9CA3AF; }
-    ul li { margin-bottom: 6px; }
-    a { color: #A78BFA; text-decoration: none; }
+    .callout {
+      background: rgba(124,58,237,0.08); border: 1px solid var(--accent-border);
+      border-radius: 12px; padding: 16px 20px; margin: 32px 0;
+      color: #C4B5FD; font-size: 14px; line-height: 1.65;
+    }
+    h2 {
+      font-size: 17px; font-weight: 700; color: var(--text-h);
+      margin: 40px 0 12px; display: flex; align-items: center; gap: 10px;
+    }
+    h2::before {
+      content: ''; display: inline-block; width: 4px; height: 18px;
+      background: linear-gradient(180deg, #7C3AED, #c084fc);
+      border-radius: 4px; flex-shrink: 0;
+    }
+    p { margin-bottom: 14px; color: var(--text); }
+    ul { padding-left: 20px; margin-bottom: 14px; color: var(--text); }
+    ul li { margin-bottom: 8px; }
+    ul li::marker { color: var(--accent); }
+    strong { color: var(--text2); font-weight: 600; }
+    a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .highlight { background: #1A1A35; border-left: 3px solid #7C3AED; border-radius: 0 10px 10px 0; padding: 14px 18px; margin: 20px 0; color: #C4B5FD; font-size: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
-    th { background: #161628; color: #fff; text-align: left; padding: 10px 14px; border: 1px solid #2D2D50; }
-    td { padding: 10px 14px; border: 1px solid #1E1E30; color: #9CA3AF; vertical-align: top; }
-    tr:nth-child(even) td { background: #111122; }
+    /* Table */
+    .table-wrap { overflow-x: auto; margin-bottom: 20px; border-radius: 12px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      background: rgba(124,58,237,0.1); color: var(--text-h); text-align: left;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+    }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+    footer {
+      position: relative; z-index: 1;
+      border-top: 1px solid var(--border); padding: 32px 20px;
+    }
+    .footer-inner {
+      max-width: 800px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .footer-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; }
+    .footer-logo img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+    .footer-logo span { font-size: 14px; font-weight: 600; color: var(--text2); }
+    .footer-links { display: flex; align-items: center; gap: 20px; font-size: 13px; flex-wrap: wrap; }
+    .footer-links a { color: var(--text); }
+    .footer-links a:hover { color: var(--accent); text-decoration: none; }
+    .footer-copy { font-size: 12px; color: #4B5563; width: 100%; margin-top: 8px; }
   </style>
 </head>
 <body>
-<div class="container">
-  <header>
-    <a class="logo" href="https://fiatwallet.app">
-      <div class="logo-icon">F</div>
-      <span class="logo-name">FiatWallet</span>
-    </a>
-    <h1>Privacy Policy</h1>
-    <p class="meta">Last updated: September 9, 2026</p>
-  </header>
 
-  <div class="highlight">
-    Your privacy matters to us. FiatWallet is built with a privacy-first approach — we collect only what is necessary to operate the platform and never sell your data to third parties.
+  <nav>
+    <div class="nav-inner">
+      <a class="logo" href="https://fiatwallet.app">
+        <img src="/logo.jpg" alt="FiatWallet Logo" />
+        <span class="logo-name">FiatWallet</span>
+      </a>
+      <a class="open-app-btn" href="https://fiatwallet.app">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Open App
+      </a>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="page-header">
+      <div class="badge">&#128274; Privacy</div>
+      <h1>Privacy Policy</h1>
+      <p class="meta">Last updated: September 9, 2026</p>
+    </div>
+
+    <div class="callout">
+      Your privacy matters to us. FiatWallet is built with a privacy-first approach &mdash; we collect only what is necessary to operate the platform and never sell your data to third parties.
+    </div>
+
+    <h2>1. Who We Are</h2>
+    <p>FiatWallet is an onchain P2P stablecoin platform built on Solana, operated by Augustine Onimisi (easytrend), based in Nigeria. You can reach us at <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a>.</p>
+
+    <h2>2. What Data We Collect</h2>
+    <p>We collect the minimum data needed to operate the platform:</p>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Data</th>
+          <th>Why we collect it</th>
+          <th>Where it's stored</th>
+        </tr>
+        <tr>
+          <td>Wallet address</td>
+          <td>To identify your account and process transactions</td>
+          <td>Supabase (encrypted)</td>
+        </tr>
+        <tr>
+          <td>Fiat Tag ($handle)</td>
+          <td>To link your payment handle to your bank account</td>
+          <td>Supabase (fiat_tags table)</td>
+        </tr>
+        <tr>
+          <td>Bank account details</td>
+          <td>Required for P2P offramp via PajCash</td>
+          <td>Supabase (encrypted, never exposed to senders)</td>
+        </tr>
+        <tr>
+          <td>Transaction history</td>
+          <td>To display your send/receive history in-app</td>
+          <td>Solana blockchain (public) + Supabase</td>
+        </tr>
+        <tr>
+          <td>Device &amp; browser info</td>
+          <td>For PWA functionality and performance monitoring</td>
+          <td>Not stored permanently</td>
+        </tr>
+      </table>
+    </div>
+
+    <h2>3. What We Do NOT Collect</h2>
+    <ul>
+      <li>We do not collect your full name, national ID, or government documents (no KYC)</li>
+      <li>We do not collect your email address unless you contact us directly</li>
+      <li>We do not track your activity across other websites</li>
+      <li>We do not sell, rent, or share your data with advertisers</li>
+      <li>We do not store your private keys or seed phrases &mdash; ever</li>
+    </ul>
+
+    <h2>4. Fiat Tag &amp; Bank Details</h2>
+    <p>When you create a Fiat Tag, your bank account details are stored privately in our database. Only your $tag handle is visible to other users. Senders see your tag (e.g. $alex) but never your bank account number, bank name, or account holder name. These details are only used by PajCash to process offramp payments on your behalf.</p>
+
+    <h2>5. Guest Offramp</h2>
+    <p>When you use the Guest Offramp feature, you provide a wallet address and bank details to process a one-time cash-out. This data is passed to PajCash to execute the transaction and is not permanently stored in FiatWallet's database beyond what is needed for transaction confirmation.</p>
+
+    <h2>6. Third-Party Services</h2>
+    <p>FiatWallet uses the following third-party services that may process your data:</p>
+    <ul>
+      <li><strong>PajCash</strong> &mdash; processes P2P onramp and offramp payments. Their privacy policy applies to payment data they handle.</li>
+      <li><strong>PayPal</strong> &mdash; used for PayPal-linked payment flows. PayPal's privacy policy governs their data handling.</li>
+      <li><strong>Helius RPC</strong> &mdash; provides Solana blockchain access. Transaction data is broadcast to the public Solana network.</li>
+      <li><strong>Supabase</strong> &mdash; our backend database provider. Data is stored in secured Supabase infrastructure.</li>
+      <li><strong>Vercel</strong> &mdash; hosts the FiatWallet web app. Standard server logs may be generated.</li>
+    </ul>
+
+    <h2>7. Blockchain Data</h2>
+    <p>All transactions you submit through FiatWallet are recorded on the Solana blockchain, which is a public ledger. Wallet addresses and transaction amounts are publicly visible on-chain. FiatWallet does not control what is visible on the blockchain.</p>
+
+    <h2>8. Data Security</h2>
+    <p>We take reasonable steps to protect your data, including:</p>
+    <ul>
+      <li>Encrypting sensitive fields (bank account details) in our Supabase database</li>
+      <li>Using HTTPS for all data in transit</li>
+      <li>Never logging or storing private keys or seed phrases</li>
+      <li>Restricting database access to authorised backend services only</li>
+    </ul>
+    <p>However, no system is completely secure. You use FiatWallet at your own risk and are responsible for the security of your own wallet.</p>
+
+    <h2>9. Data Retention</h2>
+    <p>We retain your data for as long as your Fiat Tag or account is active. If you wish to delete your data, contact us at <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a> and we will remove your records from our database within 14 days. Note that on-chain transaction history cannot be deleted as it is permanently recorded on the Solana blockchain.</p>
+
+    <h2>10. Your Rights</h2>
+    <p>You have the right to:</p>
+    <ul>
+      <li>Request a copy of the data we hold about you</li>
+      <li>Request correction of inaccurate data</li>
+      <li>Request deletion of your data (subject to blockchain limitations)</li>
+      <li>Withdraw consent for data processing at any time by discontinuing use of the platform</li>
+    </ul>
+    <p>To exercise any of these rights, contact us at <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a>.</p>
+
+    <h2>11. Children's Privacy</h2>
+    <p>FiatWallet is not intended for users under the age of 18. We do not knowingly collect data from minors. If you believe a minor has used our platform, please contact us immediately.</p>
+
+    <h2>12. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy as the platform evolves. When we do, we will update the "Last updated" date at the top of this page. Continued use of FiatWallet after updates are posted means you accept the revised policy.</p>
+
+    <h2>13. Contact</h2>
+    <p>If you have any questions or concerns about this Privacy Policy, please contact us:</p>
+    <ul>
+      <li>Email: <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a></li>
+      <li>Website: <a href="https://fiatwallet.app">fiatwallet.app</a></li>
+      <li>Builder: Augustine Onimisi (easytrend) &mdash; Nigeria</li>
+    </ul>
   </div>
 
-  <h2>1. Who We Are</h2>
-  <p>FiatWallet is an onchain P2P stablecoin platform built on Solana, operated by Augustine Onimisi (easytrend), based in Nigeria. You can reach us at <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a>.</p>
+  <footer>
+    <div class="footer-inner">
+      <a class="footer-logo" href="https://fiatwallet.app">
+        <img src="/logo.jpg" alt="FiatWallet" />
+        <span>FiatWallet</span>
+      </a>
+      <div class="footer-links">
+        <a href="/terms-of-use">Terms of Use</a>
+        <a href="/privacy-policy">Privacy Policy</a>
+        <a href="mailto:support@fiatwallet.app">Contact</a>
+      </div>
+      <p class="footer-copy">&copy; 2026 FiatWallet. Built on Solana. All rights reserved.</p>
+    </div>
+  </footer>
 
-  <h2>2. What Data We Collect</h2>
-  <p>We collect the minimum data needed to operate the platform:</p>
-  <table>
-    <tr>
-      <th>Data</th>
-      <th>Why we collect it</th>
-      <th>Where it's stored</th>
-    </tr>
-    <tr>
-      <td>Wallet address</td>
-      <td>To identify your account and process transactions</td>
-      <td>Supabase (encrypted)</td>
-    </tr>
-    <tr>
-      <td>Fiat Tag ($handle)</td>
-      <td>To link your payment handle to your bank account</td>
-      <td>Supabase (fiat_tags table)</td>
-    </tr>
-    <tr>
-      <td>Bank account details</td>
-      <td>Required for P2P offramp via PajCash</td>
-      <td>Supabase (encrypted, never exposed to senders)</td>
-    </tr>
-    <tr>
-      <td>Transaction history</td>
-      <td>To display your send/receive history in-app</td>
-      <td>Solana blockchain (public) + Supabase</td>
-    </tr>
-    <tr>
-      <td>Device & browser info</td>
-      <td>For PWA functionality and performance monitoring</td>
-      <td>Not stored permanently</td>
-    </tr>
-  </table>
-
-  <h2>3. What We Do NOT Collect</h2>
-  <ul>
-    <li>We do not collect your full name, national ID, or government documents (no KYC)</li>
-    <li>We do not collect your email address unless you contact us directly</li>
-    <li>We do not track your activity across other websites</li>
-    <li>We do not sell, rent, or share your data with advertisers</li>
-    <li>We do not store your private keys or seed phrases — ever</li>
-  </ul>
-
-  <h2>4. Fiat Tag & Bank Details</h2>
-  <p>When you create a Fiat Tag, your bank account details are stored privately in our database. Only your $tag handle is visible to other users. Senders see your tag (e.g. $alex) but never your bank account number, bank name, or account holder name. These details are only used by PajCash to process offramp payments on your behalf.</p>
-
-  <h2>5. Guest Offramp</h2>
-  <p>When you use the Guest Offramp feature, you provide a wallet address and bank details to process a one-time cash-out. This data is passed to PajCash to execute the transaction and is not permanently stored in FiatWallet's database beyond what is needed for transaction confirmation.</p>
-
-  <h2>6. Third-Party Services</h2>
-  <p>FiatWallet uses the following third-party services that may process your data:</p>
-  <ul>
-    <li><strong>PajCash</strong> — processes P2P onramp and offramp payments. Their privacy policy applies to payment data they handle.</li>
-    <li><strong>PayPal</strong> — used for PayPal-linked payment flows. PayPal's privacy policy governs their data handling.</li>
-    <li><strong>Helius RPC</strong> — provides Solana blockchain access. Transaction data is broadcast to the public Solana network.</li>
-    <li><strong>Supabase</strong> — our backend database provider. Data is stored in secured Supabase infrastructure.</li>
-    <li><strong>Vercel</strong> — hosts the FiatWallet web app. Standard server logs may be generated.</li>
-  </ul>
-
-  <h2>7. Blockchain Data</h2>
-  <p>All transactions you submit through FiatWallet are recorded on the Solana blockchain, which is a public ledger. Wallet addresses and transaction amounts are publicly visible on-chain. FiatWallet does not control what is visible on the blockchain.</p>
-
-  <h2>8. Data Security</h2>
-  <p>We take reasonable steps to protect your data, including:</p>
-  <ul>
-    <li>Encrypting sensitive fields (bank account details) in our Supabase database</li>
-    <li>Using HTTPS for all data in transit</li>
-    <li>Never logging or storing private keys or seed phrases</li>
-    <li>Restricting database access to authorised backend services only</li>
-  </ul>
-  <p>However, no system is completely secure. You use FiatWallet at your own risk and are responsible for the security of your own wallet.</p>
-
-  <h2>9. Data Retention</h2>
-  <p>We retain your data for as long as your Fiat Tag or account is active. If you wish to delete your data, contact us at <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a> and we will remove your records from our database within 14 days. Note that on-chain transaction history cannot be deleted as it is permanently recorded on the Solana blockchain.</p>
-
-  <h2>10. Your Rights</h2>
-  <p>You have the right to:</p>
-  <ul>
-    <li>Request a copy of the data we hold about you</li>
-    <li>Request correction of inaccurate data</li>
-    <li>Request deletion of your data (subject to blockchain limitations)</li>
-    <li>Withdraw consent for data processing at any time by discontinuing use of the platform</li>
-  </ul>
-  <p>To exercise any of these rights, contact us at <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a>.</p>
-
-  <h2>11. Children's Privacy</h2>
-  <p>FiatWallet is not intended for users under the age of 18. We do not knowingly collect data from minors. If you believe a minor has used our platform, please contact us immediately.</p>
-
-  <h2>12. Changes to This Policy</h2>
-  <p>We may update this Privacy Policy as the platform evolves. When we do, we will update the "Last updated" date at the top of this page. Continued use of FiatWallet after updates are posted means you accept the revised policy.</p>
-
-  <h2>13. Contact</h2>
-  <p>If you have any questions or concerns about this Privacy Policy, please contact us:</p>
-  <ul>
-    <li>Email: <a href="mailto:support@fiatwallet.app">support@fiatwallet.app</a></li>
-    <li>Website: <a href="https://fiatwallet.app">fiatwallet.app</a></li>
-    <li>Builder: Augustine Onimisi (easytrend) — Nigeria</li>
-  </ul>
-
-  <div style="margin-top:48px;padding-top:24px;border-top:1px solid #1E1E30;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
-    <a href="/terms" style="font-size:13px;color:#6B7280">Terms of Use</a>
-    <a href="https://fiatwallet.app" style="font-size:13px;color:#6B7280">← Back to FiatWallet</a>
-  </div>
-</div>
 </body>
 </html>
