@@ -434,6 +434,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
   const [isManualOfframp, setIsManualOfframp] = useState(false);
+  const [showGuestNote, setShowGuestNote] = useState(false);
   const [guestMode, setGuestMode] = useState('sell'); // 'sell' | 'buy'
   const [manualWalletAddress, setManualWalletAddress] = useState(() => {
     try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
@@ -3088,35 +3089,175 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', margin: '4px 0' }}>
         {/* Top button for Guest Offramp without connecting wallet */}
-        <button
-          type="button"
-          onClick={() => {
-            setIsManualOfframp(true);
-            setOfframpSubMode('tag');
-            setMode('sell');
-            setGuestMode('sell');
-          }}
-          style={{
-            width: '100%',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02))',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            color: 'rgba(255, 255, 255, 0.85)',
-            fontSize: '13px',
-            fontWeight: '800',
-            padding: '13px 18px',
-            borderRadius: '16px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            transition: 'all 0.2s ease',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.35)'
-          }}
-        >
-          <span>Guest Mode (Offramp & Onramp)</span>
-          <span style={{ fontSize: '14px', marginLeft: '4px' }}>→</span>
-        </button>
+        {/* Guest Welcome Note Modal */}
+        {showGuestNote && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.72)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '24px',
+              animation: 'fadeIn 0.2s ease',
+            }}
+            onClick={() => setShowGuestNote(false)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(160deg, rgba(22,22,22,0.98) 0%, rgba(12,12,12,0.99) 100%)',
+                border: '1px solid rgba(163,230,53,0.25)',
+                borderRadius: '20px',
+                padding: '28px 24px',
+                maxWidth: '360px',
+                width: '100%',
+                boxShadow: '0 0 40px rgba(163,230,53,0.12), 0 20px 60px rgba(0,0,0,0.6)',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div style={{
+                  width: '38px', height: '38px', borderRadius: '50%',
+                  background: 'rgba(163,230,53,0.12)',
+                  border: '1px solid rgba(163,230,53,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '18px', flexShrink: 0,
+                }}>👋</div>
+                <div>
+                  <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>Welcome to Guest Room</div>
+                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '1px' }}>No wallet needed to get started</div>
+                </div>
+              </div>
+
+              {/* Free features */}
+              <div style={{
+                background: 'rgba(163,230,53,0.05)',
+                border: '1px solid rgba(163,230,53,0.15)',
+                borderRadius: '12px', padding: '14px', marginBottom: '14px',
+              }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' }}>
+                  ✅ Available without wallet
+                </div>
+                {[
+                  ['💸', 'Offramp', 'Convert crypto to cash — no wallet connect needed'],
+                  ['📥', 'Onramp', 'Receive crypto straight to any Solana address'],
+                ].map(([icon, title, desc]) => (
+                  <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '14px', flexShrink: 0, marginTop: '1px' }}>{icon}</span>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: '700', fontSize: '12px' }}>{title}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Wallet-required features */}
+              <div style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '12px', padding: '14px', marginBottom: '20px',
+              }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' }}>
+                  🔐 Requires wallet connection
+                </div>
+                {[
+                  ['♻️', 'Recovered SOL', 'Reclaim dust & rent-exempt SOL'],
+                  ['🎁', 'Claim CashBack', 'Earn rewards on every transaction'],
+                  ['🔄', 'Swap', 'Instant token swaps on-chain'],
+                  ['📤', 'Bulk / Single Send', 'Send tokens to multiple wallets'],
+                  ['🔮', 'Future Integrations', 'More DeFi tools coming soon'],
+                ].map(([icon, title, desc]) => (
+                  <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '13px', flexShrink: 0, marginTop: '1px' }}>{icon}</span>
+                    <div>
+                      <div style={{ color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: '12px' }}>{title}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={() => {
+                  setShowGuestNote(false);
+                  setIsManualOfframp(true);
+                  setOfframpSubMode('tag');
+                  setMode('sell');
+                  setGuestMode('sell');
+                }}
+                style={{
+                  width: '100%', background: '#a3e635',
+                  border: 'none', borderRadius: '12px',
+                  color: '#000', fontWeight: '800', fontSize: '13px',
+                  padding: '12px', cursor: 'pointer',
+                  transition: 'opacity 0.2s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                Enter Guest Room →
+              </button>
+              <button
+                onClick={() => setShowGuestNote(false)}
+                style={{
+                  width: '100%', background: 'transparent', border: 'none',
+                  color: 'rgba(255,255,255,0.35)', fontSize: '11px',
+                  padding: '10px', cursor: 'pointer', marginTop: '6px',
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Guest Mode Button — glowing lime */}
+        <div style={{ position: 'relative', width: '100%' }}>
+          {/* Glow pulse rings */}
+          <div style={{
+            position: 'absolute', inset: '-4px', borderRadius: '20px',
+            background: 'transparent',
+            boxShadow: '0 0 0 0 rgba(163,230,53,0.55)',
+            animation: 'guestGlow 2.2s ease-out infinite',
+            pointerEvents: 'none',
+          }} />
+          <button
+            type="button"
+            onClick={() => setShowGuestNote(true)}
+            style={{
+              position: 'relative', zIndex: 1,
+              width: '100%',
+              background: 'linear-gradient(135deg, rgba(163,230,53,0.12), rgba(163,230,53,0.04))',
+              border: '1px solid rgba(163,230,53,0.4)',
+              color: '#a3e635',
+              fontSize: '13px',
+              fontWeight: '800',
+              padding: '13px 18px',
+              borderRadius: '16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 4px 24px rgba(163,230,53,0.15), 0 0 0 1px rgba(163,230,53,0.1)',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(163,230,53,0.2), rgba(163,230,53,0.08))';
+              e.currentTarget.style.boxShadow = '0 4px 28px rgba(163,230,53,0.3), 0 0 0 1px rgba(163,230,53,0.2)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(163,230,53,0.12), rgba(163,230,53,0.04))';
+              e.currentTarget.style.boxShadow = '0 4px 24px rgba(163,230,53,0.15), 0 0 0 1px rgba(163,230,53,0.1)';
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>👤</span>
+            <span>Guest Mode (Offramp & Onramp)</span>
+            <span style={{ marginLeft: '4px', opacity: 0.7 }}>→</span>
+          </button>
+        </div>
+
 
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -3426,7 +3567,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           {showHistoryView
             ? 'Transaction History'
             : isManualOfframp
-              ? (mode === 'buy' ? 'Guest Buy (Onramp)' : 'Guest Sell (Offramp)')
+              ? (mode === 'buy' ? 'Onramp' : 'Offramp')
               : (offrampSubMode === 'tag' ? 'Fiat Tag' : (mode === 'buy' ? 'Buy Crypto' : 'P2P Trade'))}
         </h2>
 
@@ -3466,9 +3607,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       </div>
       {!showHistoryView && (
         <p className="card-sub" style={{ marginBottom: '1.25rem' }}>
-          {offrampSubMode === 'tag'
-            ? 'Send money directly to any Fiat Tag.'
-            : (mode === 'sell' ? 'Send money to any Bank account.' : 'Receive money from any Bank account.')
+          {isManualOfframp
+            ? (mode === 'buy' ? 'Receive crypto directly to your wallet.' : 'Send money to any Bank account.')
+            : offrampSubMode === 'tag'
+              ? 'Send money directly to any Fiat Tag.'
+              : (mode === 'sell' ? 'Send money to any Bank account.' : 'Receive money from any Bank account.')
           }
         </p>
       )}
