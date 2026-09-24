@@ -557,10 +557,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampError(null);
     setOnrampOrder(null);
     setOnrampStatus(null);
-    if (nextMode === 'sell') {
+    // Only reset to 'tag' submode when in guest mode.
+    // Connected users should return to standard offramp (not Fiat Tag)
+    // when toggling back from Onramp → Sell.
+    if (nextMode === 'sell' && isManualOfframp) {
       setOfframpSubMode('tag');
     }
-  }, []);
+  }, [isManualOfframp]);
 
   // ── Computed ─────────────────────────────────────────────────────────────
   const isLiveRoute = LIVE_CURRENCIES.has(selectedCountry.currency) && mode === 'sell';
@@ -3580,7 +3583,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             ? 'Transaction History'
             : isManualOfframp
               ? (mode === 'buy' ? 'Onramp' : 'Offramp')
-              : (offrampSubMode === 'tag' ? 'Fiat Tag' : 'P2P Trade')}
+              : (offrampSubMode === 'tag' ? 'Fiat Tag' : (mode === 'buy' ? 'Buy Crypto' : 'P2P Trade'))}
         </h2>
 
         {isManualOfframp ? (
