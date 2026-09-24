@@ -538,6 +538,21 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
+  // ── Mode Switch & Field Reset Helper ─────────────────────────────────────
+  const handleModeSwitch = useCallback((nextMode) => {
+    setMode(nextMode);
+    setGuestMode(nextMode);
+    setAmount('');
+    setOnrampAmount('');
+    setP2pError(null);
+    setOnrampError(null);
+    setOnrampOrder(null);
+    setOnrampStatus(null);
+    if (nextMode === 'sell') {
+      setOfframpSubMode('tag');
+    }
+  }, []);
+
   // ── Computed ─────────────────────────────────────────────────────────────
   const isLiveRoute = LIVE_CURRENCIES.has(selectedCountry.currency) && mode === 'sell';
   const canTransact = !!sessionToken && isLiveRoute && !apiError;
@@ -545,9 +560,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   // Show all transactions from the API (already scoped to authenticated user).
   // Supplement with localStorage-only entries that haven't appeared in the API yet.
   const displayLogs = useMemo(() => {
-    if (!publicKey) return [];
-    const walletKey = publicKey.toBase58();
+    const walletKey = (publicKey ? publicKey.toBase58() : (manualWalletAddress || guestOnrampWallet)) || localStorage.getItem('paj_manual_wallet') || '';
+    if (!walletKey && payoutLogs.length === 0) return [];
     const localOrders = (() => {
+      if (!walletKey) return [];
       try { return JSON.parse(localStorage.getItem(`paj_user_orders_${walletKey}`) || '[]'); }
       catch { return []; }
     })();
@@ -665,7 +681,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         sig: entry.sig,
         mint: null,
       }));
-  }, [payoutLogs, publicKey]);
+  }, [payoutLogs, publicKey, manualWalletAddress, guestOnrampWallet]);
 
   const itemsPerPage = 5;
   const totalPages = Math.ceil(displayLogs.length / itemsPerPage);
@@ -996,7 +1012,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Load payout history (Permanent Supabase History + PajCash Live Sync) ──
   const loadPayoutLogs = async () => {
-    const walletKey = (publicKey ? publicKey.toBase58() : manualWalletAddress) || localStorage.getItem('paj_manual_wallet');
+    const walletKey = (publicKey ? publicKey.toBase58() : (manualWalletAddress || guestOnrampWallet)) || localStorage.getItem('paj_manual_wallet');
     if (!walletKey && !sessionToken) return;
     setLoadingLogs(true);
     setLogError(null);
@@ -2581,6 +2597,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setManualOrderStatus('WAITING');
       setManualTimeLeft(1800); // 30 mins
 
+      // Clear input fields so UI is fresh for subsequent interactions
+      setAmount('');
+      setRecipientTagInput('');
+      setResolvedTagData(null);
+
       // Clean up previous socket if open
       if (manualSocketRef.current) {
         try { manualSocketRef.current.disconnect(); } catch {}
@@ -3006,6 +3027,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setAccountNumber('');
       setAccountName('');
       setSelectedBank('Choose Bank');
+      setRecipientTagInput('');
+      setResolvedTagData(null);
 
       // Start WebSocket observer — updates the modal status live when PajCash confirms
       if (offrampSocketRef.current) {
@@ -3264,8 +3287,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 onClick={() => {
                   setIsManualOfframp(false);
                   setOfframpSubMode('standard');
-                  setMode('sell');
-                  setGuestMode('sell');
+                  handleModeSwitch('sell');
                 }}
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)',
@@ -3295,11 +3317,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode('sell');
-                    setGuestMode('sell');
-                    setOfframpSubMode('tag');
-                  }}
+                  onClick={() => handleModeSwitch('sell')}
                   style={{
                     background: mode === 'sell' ? 'var(--lime)' : 'transparent',
                     color: mode === 'sell' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
@@ -3317,10 +3335,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode('buy');
-                    setGuestMode('buy');
-                  }}
+                  onClick={() => handleModeSwitch('buy')}
                   style={{
                     background: mode === 'buy' ? 'var(--lime)' : 'transparent',
                     color: mode === 'buy' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
@@ -3405,40 +3420,49 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         ) : null
       )}
 
-      {/* Title Row with History Icon (or Country selector on TAG page) */}
+      {/* Title Row with History Button & Country selector */}
       <div className="title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', position: 'relative', zIndex: 10 }}>
         <h2 className="card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
-          {showHistoryView ? 'Transaction History' : offrampSubMode === 'tag' ? 'Fiat Tag' : 'P2P Trade'}
+          {showHistoryView
+            ? 'Transaction History'
+            : isManualOfframp
+              ? (mode === 'buy' ? 'Guest Buy (Onramp)' : 'Guest Sell (Offramp)')
+              : (offrampSubMode === 'tag' ? 'Fiat Tag' : (mode === 'buy' ? 'Buy Crypto' : 'P2P Trade'))}
         </h2>
-        {offrampSubMode === 'tag' ? (
-          renderCountrySelector()
-        ) : (
-          canTransact && publicKey && !showHistoryView && (
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {!showHistoryView && (
             <button 
-              onClick={() => setShowHistoryView(true)}
+              onClick={() => {
+                setShowHistoryView(true);
+                loadPayoutLogs();
+              }}
               style={{ 
-                background: 'none', 
-                border: 'none', 
-                color: 'rgba(255,255,255,0.6)', 
+                background: 'rgba(255,255,255,0.06)', 
+                border: '1px solid rgba(255,255,255,0.12)', 
+                color: 'rgba(255,255,255,0.85)', 
                 cursor: 'pointer', 
-                padding: '4px 6px',
-                borderRadius: '8px',
+                padding: '5px 10px',
+                borderRadius: '10px',
                 transition: 'all 0.2s',
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '2px'
+                gap: '5px',
+                fontSize: '11px',
+                fontWeight: '600'
               }}
               title="Transaction History"
             >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <polyline points="12 6 12 12 16 14"></polyline>
               </svg>
-              <span style={{ fontSize: '9px', fontWeight: '600', letterSpacing: '0.04em', lineHeight: 1 }}>History</span>
+              <span>History</span>
             </button>
-          )
-        )}
+          )}
+
+          {renderCountrySelector()}
+        </div>
       </div>
       {!showHistoryView && (
         <p className="card-sub" style={{ marginBottom: '1.25rem' }}>
@@ -3664,12 +3688,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       ) : (
         <>
       {/* Mode switch + Country selector (only shown in standard Offramp / Onramp mode) */}
-      {offrampSubMode !== 'tag' && (
+      {!isManualOfframp && offrampSubMode !== 'tag' && (
         <div className="p2p-header-row" style={{ marginBottom: '1.25rem' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div
               className="bulk-pill"
-              onClick={() => setMode(mode === 'sell' ? 'buy' : 'sell')}
+              onClick={() => handleModeSwitch(mode === 'sell' ? 'buy' : 'sell')}
               style={{ padding: '6px 12px', cursor: 'pointer' }}
             >
               <span className="pill-txt" style={{ fontSize: '11px', fontWeight: 700, color: 'white' }}>
