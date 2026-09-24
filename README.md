@@ -1,4 +1,4 @@
-# PajCash P2P Gateway
+# Fiatwallet P2P Gateway
 
 A seamless Fiat-to-Crypto and Crypto-to-Fiat bridge built on Solana, featuring both connected wallet capabilities and a frictionless Guest Mode.
 
