@@ -69,6 +69,14 @@ const DEFAULT_TOKENS = [
     decimals: 6,
     balance: 0,
   },
+  {
+    symbol: 'SOL',
+    name: 'Solana',
+    mint: 'So11111111111111111111111111111111111111112',
+    logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+    decimals: 9,
+    balance: 0,
+  },
 ];
 
 const ALLOWED_PROGRAM_IDS = new Set([
@@ -1744,13 +1752,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   useEffect(() => {
     if (mode === 'sell') {
       const available = selectableTokens.some(t => t.symbol === selectedToken.symbol || t.mint === selectedToken.mint);
-      const isLiveToken = selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT';
+      const isLiveToken = isManualOfframp
+        ? (selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT')
+        : (selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT' || selectedToken.symbol === 'SOL');
       if ((!available || !isLiveToken) && selectableTokens.length > 0) {
         const usdc = selectableTokens.find(t => t.symbol === 'USDC') || selectableTokens[0];
         setSelectedToken(usdc);
       }
     }
-  }, [connected, walletTokenList, pajTokens, mode, selectedToken]);
+  }, [connected, walletTokenList, pajTokens, mode, selectedToken, isManualOfframp]);
 
   // ── Camera Scanner (QR + OCR for 10-digit account numbers) ────────────────
   const [ocrStatus, setOcrStatus] = useState('');
@@ -3563,50 +3573,80 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         ) : null
       )}
 
-      {/* Title Row with History Button & Country selector */}
+      {/* Title Row with History Icon (or Country selector on TAG page) */}
       <div className="title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', position: 'relative', zIndex: 10 }}>
         <h2 className="card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
           {showHistoryView
             ? 'Transaction History'
             : isManualOfframp
               ? (mode === 'buy' ? 'Onramp' : 'Offramp')
-              : (offrampSubMode === 'tag' ? 'Fiat Tag' : (mode === 'buy' ? 'Buy Crypto' : 'P2P Trade'))}
+              : (offrampSubMode === 'tag' ? 'Fiat Tag' : 'P2P Trade')}
         </h2>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {!showHistoryView && (
+        {isManualOfframp ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {!showHistoryView && (
+              <button 
+                onClick={() => {
+                  setShowHistoryView(true);
+                  loadPayoutLogs();
+                }}
+                style={{ 
+                  background: 'rgba(255,255,255,0.06)', 
+                  border: '1px solid rgba(255,255,255,0.12)', 
+                  color: 'rgba(255,255,255,0.85)', 
+                  cursor: 'pointer', 
+                  padding: '5px 10px',
+                  borderRadius: '10px',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '11px',
+                  fontWeight: '600'
+                }}
+                title="Transaction History"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>History</span>
+              </button>
+            )}
+            {renderCountrySelector()}
+          </div>
+        ) : offrampSubMode === 'tag' ? (
+          renderCountrySelector()
+        ) : (
+          canTransact && publicKey && !showHistoryView && (
             <button 
-              onClick={() => {
-                setShowHistoryView(true);
-                loadPayoutLogs();
-              }}
+              onClick={() => setShowHistoryView(true)}
               style={{ 
-                background: 'rgba(255,255,255,0.06)', 
-                border: '1px solid rgba(255,255,255,0.12)', 
-                color: 'rgba(255,255,255,0.85)', 
+                background: 'none', 
+                border: 'none', 
+                color: 'rgba(255,255,255,0.6)', 
                 cursor: 'pointer', 
-                padding: '5px 10px',
-                borderRadius: '10px',
+                padding: '4px 6px',
+                borderRadius: '8px',
                 transition: 'all 0.2s',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '5px',
-                fontSize: '11px',
-                fontWeight: '600'
+                gap: '2px'
               }}
               title="Transaction History"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <polyline points="12 6 12 12 16 14"></polyline>
               </svg>
-              <span>History</span>
+              <span style={{ fontSize: '9px', fontWeight: '600', letterSpacing: '0.04em', lineHeight: 1 }}>History</span>
             </button>
-          )}
-
-          {renderCountrySelector()}
-        </div>
+          )
+        )}
       </div>
+
       {!showHistoryView && (
         <p className="card-sub" style={{ marginBottom: '1.25rem' }}>
           {isManualOfframp
@@ -3855,18 +3895,19 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         </div>
       )}
 
-      {/* ── AUTHENTICATION & P2P ROUTE ── */}
-      {authStep === 'checking' ? (
-        // Fetching session from Supabase — brief spinner
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', padding: '40px 24px', gap: '14px',
-          background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-          borderRadius: '16px', marginBottom: '1.25rem',
-        }}>
-          <span className="p2p-mini-spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }} />
-          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>Restoring session...</span>
-        </div>
+      {/* ── LIVE OFFRAMP ROUTE ── */}
+      {isLiveRoute ? (
+        authStep === 'checking' ? (
+          // Fetching session from Supabase — brief spinner
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', padding: '40px 24px', gap: '14px',
+            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+            borderRadius: '16px', marginBottom: '1.25rem',
+          }}>
+            <span className="p2p-mini-spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }} />
+            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>Restoring session...</span>
+          </div>
         ) : authStep !== 'logged_in' ? (
           <div className="p2p-auth-container" style={{
             background: 'rgba(255, 255, 255, 0.02)',
@@ -3957,7 +3998,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               </div>
             )}
           </div>
-        ) : isLiveRoute ? (
+        ) : (
           <>
             {offrampSubMode === 'tag' ? (
               /* ── Fiat Tag Input Field (Bank & Account details resolved in background) ── */
@@ -4397,8 +4438,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
                     {tokenOpen && (
                       <div className="drop-menu" style={{ right: 0, minWidth: '220px', zIndex: 100 }}>
-                        {selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT').map(t => {
-                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT';
+                        {selectableTokens.filter(t => isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL')).map(t => {
+                          const isLiveToken = isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL');
                           return (
                             <div
                               key={t.mint || t.symbol}
@@ -4618,7 +4659,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 )}
             </button>
         </>
-      ) : (
+      ) ) : (
         /* ── Buy (Onramp) Mode — Nigeria only ── */
         selectedCountry.code === 'NGA' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -4758,8 +4799,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                           ))
                         )
                       ) : (
-                        selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT').map(t => {
-                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT';
+                        selectableTokens.filter(t => isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL')).map(t => {
+                          const isLiveToken = isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL');
                           return (
                             <div
                               key={t.mint || t.symbol}
