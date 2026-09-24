@@ -547,8 +547,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
-  // ── Mode Switch & Field Reset Helper ─────────────────────────────────────
-  const handleModeSwitch = useCallback((nextMode) => {
+  // ── Mode Switch & Field Reset Helper (Guest Mode only) ───────────────────
+  const handleGuestModeSwitch = useCallback((nextMode) => {
     setMode(nextMode);
     setGuestMode(nextMode);
     setAmount('');
@@ -557,13 +557,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampError(null);
     setOnrampOrder(null);
     setOnrampStatus(null);
-    // Only reset to 'tag' submode when in guest mode.
-    // Connected users should return to standard offramp (not Fiat Tag)
-    // when toggling back from Onramp → Sell.
-    if (nextMode === 'sell' && isManualOfframp) {
+    if (nextMode === 'sell') {
       setOfframpSubMode('tag');
     }
-  }, [isManualOfframp]);
+  }, []);
 
   // ── Computed ─────────────────────────────────────────────────────────────
   const isLiveRoute = LIVE_CURRENCIES.has(selectedCountry.currency) && mode === 'sell';
@@ -2118,8 +2115,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         } catch {}
       }
 
-      // PajCash onramp mint
-      const onrampMint = liveSelectedToken.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      // PajCash ONLY handles USDC. Always send USDC mint regardless of what token
+      // the user selected. The app will autoswap USDC → target token after PajCash confirms.
+      const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      const onrampMint = USDC_MINT;
 
       // Do NOT pass `fee` to PajCash — their API adds it to the fiat payment slip,
       // making the user pay more than they typed. Without `fee`, the slip matches
@@ -3443,7 +3442,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 onClick={() => {
                   setIsManualOfframp(false);
                   setOfframpSubMode('standard');
-                  handleModeSwitch('sell');
+                  setMode('sell');
+                  setGuestMode('sell');
+                  setAmount('');
+                  setOnrampAmount('');
                 }}
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)',
@@ -3473,7 +3475,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               }}>
                 <button
                   type="button"
-                  onClick={() => handleModeSwitch('sell')}
+                  onClick={() => handleGuestModeSwitch('sell')}
                   style={{
                     background: mode === 'sell' ? 'var(--lime)' : 'transparent',
                     color: mode === 'sell' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
@@ -3491,7 +3493,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleModeSwitch('buy')}
+                  onClick={() => handleGuestModeSwitch('buy')}
                   style={{
                     background: mode === 'buy' ? 'var(--lime)' : 'transparent',
                     color: mode === 'buy' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
@@ -3881,7 +3883,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div
               className="bulk-pill"
-              onClick={() => handleModeSwitch(mode === 'sell' ? 'buy' : 'sell')}
+              onClick={() => setMode(mode === 'sell' ? 'buy' : 'sell')}
               style={{ padding: '6px 12px', cursor: 'pointer' }}
             >
               <span className="pill-txt" style={{ fontSize: '11px', fontWeight: 700, color: 'white' }}>
