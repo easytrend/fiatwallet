@@ -3120,8 +3120,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   background: 'rgba(163,230,53,0.12)',
                   border: '1px solid rgba(163,230,53,0.3)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '18px', flexShrink: 0,
-                }}>👋</div>
+                  color: '#a3e635', fontSize: '24px', fontWeight: '900', lineHeight: 1, flexShrink: 0,
+                }}>•</div>
                 <div>
                   <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>Welcome to Guest Room</div>
                   <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '1px' }}>No wallet needed to get started</div>
@@ -3134,15 +3134,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 border: '1px solid rgba(163,230,53,0.15)',
                 borderRadius: '12px', padding: '14px', marginBottom: '14px',
               }}>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' }}>
-                  ✅ Available without wallet
+                <div style={{ color: '#a3e635', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
+                  <span>Available without wallet</span>
                 </div>
                 {[
-                  ['💸', 'Offramp', 'Convert crypto to cash — no wallet connect needed'],
-                  ['📥', 'Onramp', 'Receive crypto straight to any Solana address'],
-                ].map(([icon, title, desc]) => (
+                  ['Offramp', 'Convert crypto to cash — no wallet connect needed'],
+                  ['Onramp', 'Receive crypto straight to any Solana address'],
+                ].map(([title, desc]) => (
                   <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '14px', flexShrink: 0, marginTop: '1px' }}>{icon}</span>
+                    <span style={{ color: '#a3e635', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
                     <div>
                       <div style={{ color: 'white', fontWeight: '700', fontSize: '12px' }}>{title}</div>
                       <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
@@ -3157,18 +3158,19 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: '12px', padding: '14px', marginBottom: '20px',
               }}>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' }}>
-                  🔐 Requires wallet connection
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
+                  <span>Requires wallet connection</span>
                 </div>
                 {[
-                  ['♻️', 'Recovered SOL', 'Reclaim dust & rent-exempt SOL'],
-                  ['🎁', 'Claim CashBack', 'Earn rewards on every transaction'],
-                  ['🔄', 'Swap', 'Instant token swaps on-chain'],
-                  ['📤', 'Bulk / Single Send', 'Send tokens to multiple wallets'],
-                  ['🔮', 'Future Integrations', 'More DeFi tools coming soon'],
-                ].map(([icon, title, desc]) => (
+                  ['Recovered SOL', 'Reclaim dust & rent-exempt SOL'],
+                  ['Claim CashBack', 'Claim cashback earn from pumpfun'],
+                  ['Swap', 'Instant token swaps on-chain'],
+                  ['Bulk / Single Send', 'Send tokens to multiple wallets'],
+                  ['Future Integrations', 'More DeFi tools coming soon'],
+                ].map(([title, desc]) => (
                   <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '13px', flexShrink: 0, marginTop: '1px' }}>{icon}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
                     <div>
                       <div style={{ color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: '12px' }}>{title}</div>
                       <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
@@ -3252,7 +3254,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               e.currentTarget.style.boxShadow = '0 4px 24px rgba(163,230,53,0.15), 0 0 0 1px rgba(163,230,53,0.1)';
             }}
           >
-            <span style={{ fontSize: '14px' }}>👤</span>
+            <span style={{ fontSize: '16px', fontWeight: '900', lineHeight: 1, color: '#a3e635' }}>•</span>
             <span>Guest Mode (Offramp & Onramp)</span>
             <span style={{ marginLeft: '4px', opacity: 0.7 }}>→</span>
           </button>
