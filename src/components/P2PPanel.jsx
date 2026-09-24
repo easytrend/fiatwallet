@@ -2096,9 +2096,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     setOnrampLoading(true);
     try {
-      // Check if relayer is configured (only if wallet connected)
+      // End-user wallet that should receive onramp crypto (never the relayer).
+      const userWalletAddress = publicKey
+        ? publicKey.toBase58()
+        : recipientAddress;
+
+      // Optional relayer intermediary: PajCash → relayer → forward to user (see relay_onramp_fee).
+      // Only when explicitly enabled; otherwise funds must land directly on the user's wallet.
       const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
-      if (publicKey && relayerPubkeyStr) {
+      const useOnrampRelayer = import.meta.env.VITE_ONRAMP_USE_RELAYER === 'true';
+      if (useOnrampRelayer && relayerPubkeyStr) {
         try {
           new PublicKey(relayerPubkeyStr);
           recipientAddress = relayerPubkeyStr;
@@ -2141,7 +2148,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // Log Onramp order in Supabase
       const usdVal = parsedOnrampAmt / (onrampNgnRate || 1);
       logP2PTransaction({
-        userAddress: recipientAddress,
+        userAddress: userWalletAddress,
         orderId: order.id,
         tokenSymbol: liveSelectedToken.symbol,
         cryptoAmount: displayOnrampAmount > 0 ? displayOnrampAmount : estOnrampCrypto,
@@ -2387,8 +2394,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     swapTriggeredRef.current = true;
 
     // Check if we are using the relayer intermediary for onramp fee deduction
-    const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
-    const isRelayerActive = false; // Disabled protocol fee intermediary forwarding
+    const isRelayerActive = import.meta.env.VITE_ONRAMP_USE_RELAYER === 'true'
+      && !!import.meta.env.VITE_RELAYER_PUBLIC_KEY;
     let step = 'init';
 
     try {
