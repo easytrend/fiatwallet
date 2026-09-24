@@ -69,26 +69,6 @@ const DEFAULT_TOKENS = [
     decimals: 6,
     balance: 0,
   },
-  // NOTE: USDG (Token-2022) is temporarily disabled on offramp.
-  // PajCash backend is not completing fiat payouts for USDG deposits.
-  // Re-enable once PajCash confirms USDG support is working on their side.
-  // {
-  //   symbol: 'USDG',
-  //   name: 'Global Dollar',
-  //   mint: '2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH',
-  //   logoURI: '...',
-  //   decimals: 6,
-  //   balance: 0,
-  //   tokenProgramOverride: 'token2022',
-  // },
-  {
-    symbol: 'SOL',
-    name: 'Solana',
-    mint: 'So11111111111111111111111111111111111111112',
-    logoURI: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
-    decimals: 9,
-    balance: 0,
-  },
 ];
 
 const ALLOWED_PROGRAM_IDS = new Set([
@@ -454,7 +434,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
   const [isManualOfframp, setIsManualOfframp] = useState(false);
+  const [guestMode, setGuestMode] = useState('sell'); // 'sell' | 'buy'
   const [manualWalletAddress, setManualWalletAddress] = useState(() => {
+    try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
+  });
+  const [guestOnrampWallet, setGuestOnrampWallet] = useState(() => {
     try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
   });
   const [manualTagModalWallet, setManualTagModalWallet] = useState('');
@@ -822,9 +806,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const storedWallet = localStorage.getItem('paj_manual_wallet');
     if (storedWallet) {
       setManualWalletAddress(storedWallet);
+      setGuestOnrampWallet(prev => prev || storedWallet);
       setManualTagModalWallet(storedWallet);
       getFiatTagByWallet(storedWallet).then(tag => {
-        if (tag) setUserTagData(tag);
+        if (tag) {
+          setUserTagData(tag);
+          if (tag.wallet_address) {
+            setGuestOnrampWallet(prev => prev || tag.wallet_address);
+          }
+        }
       }).catch(() => {});
     }
   }, [isManualOfframp, publicKey]);
@@ -1552,6 +1542,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       if (!publicKey) {
         localStorage.setItem('paj_manual_wallet', effectiveWallet);
         setManualWalletAddress(effectiveWallet);
+        setGuestOnrampWallet(prev => prev || effectiveWallet);
         // Save session to paj_sessions table now that we have the wallet address
         if (sessionToken) {
           const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
@@ -1642,10 +1633,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
           const storedWallet = localStorage.getItem('paj_manual_wallet');
           if (storedWallet) {
+            setGuestOnrampWallet(prev => prev || storedWallet);
             saveSession(storedWallet, emailInput.trim(), res.token, expiryMs);
             getFiatTagByWallet(storedWallet).then(tag => {
               if (tag) {
                 setUserTagData(tag);
+                if (tag.wallet_address) {
+                  setGuestOnrampWallet(prev => prev || tag.wallet_address);
+                }
               } else {
                 setShowTagModal(true);
               }
@@ -1732,7 +1727,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   useEffect(() => {
     if (mode === 'sell') {
       const available = selectableTokens.some(t => t.symbol === selectedToken.symbol || t.mint === selectedToken.mint);
-      const isLiveToken = selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT' || selectedToken.symbol === 'SOL';
+      const isLiveToken = selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT';
       if ((!available || !isLiveToken) && selectableTokens.length > 0) {
         const usdc = selectableTokens.find(t => t.symbol === 'USDC') || selectableTokens[0];
         setSelectedToken(usdc);
@@ -2047,16 +2042,36 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampStatus(null);
     swapTriggeredRef.current = false; // reset swap guard for new order
     if (!sessionToken) { setOnrampError('Please verify your email OTP session first.'); return; }
-    if (!publicKey) { setOnrampError('Please connect your Solana wallet.'); return; }
+    // Check recipient wallet address
+    let recipientAddress = null;
+    if (publicKey) {
+      recipientAddress = publicKey.toBase58();
+    } else if (isManualOfframp || !publicKey) {
+      const cleanAddr = (guestOnrampWallet || '').trim();
+      if (!cleanAddr) {
+        setOnrampError('Please enter a recipient Solana wallet address.');
+        return;
+      }
+      try {
+        new PublicKey(cleanAddr);
+        recipientAddress = cleanAddr;
+      } catch (e) {
+        setOnrampError('Invalid Solana wallet address. Please check and try again.');
+        return;
+      }
+    } else {
+      setOnrampError('Please connect your Solana wallet.');
+      return;
+    }
+
     if (!parsedOnrampAmt || parsedOnrampAmt <= 0) { setOnrampError('Please enter a valid NGN amount.'); return; }
     if (!PAJCASH_API_KEY) { setOnrampError('PajCash API Key is not configured.'); return; }
 
     setOnrampLoading(true);
     try {
-      // Check if relayer is configured
+      // Check if relayer is configured (only if wallet connected)
       const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
-      let recipientAddress = publicKey.toBase58();
-      if (relayerPubkeyStr) {
+      if (publicKey && relayerPubkeyStr) {
         try {
           new PublicKey(relayerPubkeyStr);
           recipientAddress = relayerPubkeyStr;
@@ -2065,10 +2080,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         }
       }
 
-      // PajCash ONLY handles USDC. Always send USDC mint regardless of what token
-      // the user selected. The app will autoswap USDC → target token after PajCash confirms.
-      const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-      const onrampMint = USDC_MINT;
+      // Save recipient address for future guest visits
+      if ((isManualOfframp || !publicKey) && recipientAddress) {
+        try {
+          localStorage.setItem('paj_manual_wallet', recipientAddress);
+          setManualWalletAddress(recipientAddress);
+        } catch {}
+      }
+
+      // PajCash onramp mint
+      const onrampMint = liveSelectedToken.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
       // Do NOT pass `fee` to PajCash — their API adds it to the fiat payment slip,
       // making the user pay more than they typed. Without `fee`, the slip matches
@@ -2077,7 +2098,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         {
           currency: 'NGN',
           fiatAmount: parsedOnrampAmt, // Exactly what the user typed
-          recipient: publicKey.toBase58(),
+          recipient: recipientAddress,
           chain: 'SOLANA',
           mint: onrampMint,
         },
@@ -2091,7 +2112,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // Log Onramp order in Supabase
       const usdVal = parsedOnrampAmt / (onrampNgnRate || 1);
       logP2PTransaction({
-        userAddress: publicKey.toBase58(),
+        userAddress: recipientAddress,
         orderId: order.id,
         tokenSymbol: liveSelectedToken.symbol,
         cryptoAmount: displayOnrampAmount > 0 ? displayOnrampAmount : estOnrampCrypto,
@@ -2360,8 +2381,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
-      // If the user is buying a custom token (any token other than USDC), trigger the auto-swap
-      if (liveSelectedToken.symbol !== 'USDC') {
+      // If the user is buying a custom token (any token other than USDC), trigger the auto-swap if wallet connected
+      if (liveSelectedToken.symbol !== 'USDC' && publicKey && !isManualOfframp) {
         step = 'swapping';
         setOnrampStatus('swapping');
         await triggerJupiterSwap();
@@ -2370,7 +2391,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           symbol: liveSelectedToken.symbol,
           logoURI: liveSelectedToken.logoURI || '',
           nairaAmount: parsedOnrampAmt,
-          cryptoAmount: displayOnrampAmount,
+          cryptoAmount: displayOnrampAmount > 0 ? displayOnrampAmount : estOnrampCrypto,
         });
         setShowOnrampSuccess(true);
         setOnrampStatus('completed');
@@ -3050,12 +3071,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             setIsManualOfframp(true);
             setOfframpSubMode('tag');
             setMode('sell');
+            setGuestMode('sell');
           }}
           style={{
             width: '100%',
             background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02))',
             border: '1px solid rgba(255, 255, 255, 0.2)',
-            color: 'rgba(255, 255, 255, 0.65)',
+            color: 'rgba(255, 255, 255, 0.85)',
             fontSize: '13px',
             fontWeight: '800',
             padding: '13px 18px',
@@ -3069,7 +3091,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             boxShadow: '0 4px 20px rgba(0,0,0,0.35)'
           }}
         >
-          <span>Guest Offramp</span>
+          <span>Guest Mode (Offramp & Onramp)</span>
           <span style={{ fontSize: '14px', marginLeft: '4px' }}>→</span>
         </button>
 
@@ -3236,12 +3258,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           </div>
         ) : !publicKey ? (
           isManualOfframp ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={() => {
                   setIsManualOfframp(false);
                   setOfframpSubMode('standard');
+                  setMode('sell');
+                  setGuestMode('sell');
                 }}
                 style={{
                   background: 'rgba(255, 255, 255, 0.06)',
@@ -3249,7 +3273,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   color: 'rgba(255, 255, 255, 0.8)',
                   fontSize: '11px',
                   fontWeight: '600',
-                  padding: '4px 12px',
+                  padding: '5px 12px',
                   borderRadius: '14px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -3258,54 +3282,92 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 }}
               >
                 <span>←</span>
-                <span>Exit Guest Mode</span>
+                <span>Exit Guest</span>
               </button>
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{
-                  background: 'var(--lime)',
-                  color: '#0d1f14',
-                  fontSize: '11px',
-                  fontWeight: '800',
-                  letterSpacing: '0.06em',
-                  padding: '4px 12px',
-                  borderRadius: '20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <span>TAG</span>
-                  {userTagData && <span style={{ fontSize: '9.5px' }}>({userTagData.tag_name})</span>}
-                </div>
-
-                {sessionToken && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (userTagData) {
-                        setTagModalInput(userTagData.tag_name || '');
-                        setTagModalBank(userTagData.bank_name || 'Choose Bank');
-                        setTagModalAcctNumber(userTagData.account_number || '');
-                        setTagModalAcctName(userTagData.account_name || '');
-                        setManualTagModalWallet(userTagData.wallet_address || manualWalletAddress || '');
-                      }
-                      setShowTagModal(true);
-                    }}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      color: 'white',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      padding: '4px 12px',
-                      borderRadius: '14px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    My Tag
-                  </button>
-                )}
+              {/* Guest Mode Toggle: Sell (Offramp) ↔ Buy (Onramp) */}
+              <div style={{
+                display: 'inline-flex',
+                background: 'rgba(255, 255, 255, 0.05)',
+                padding: '3px',
+                borderRadius: '24px',
+                border: '1px solid rgba(255, 255, 255, 0.12)'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('sell');
+                    setGuestMode('sell');
+                    setOfframpSubMode('tag');
+                  }}
+                  style={{
+                    background: mode === 'sell' ? 'var(--lime)' : 'transparent',
+                    color: mode === 'sell' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '5px 14px',
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: mode === 'sell' ? '0 2px 8px rgba(163, 230, 53, 0.3)' : 'none',
+                  }}
+                >
+                  Sell (Offramp)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('buy');
+                    setGuestMode('buy');
+                  }}
+                  style={{
+                    background: mode === 'buy' ? 'var(--lime)' : 'transparent',
+                    color: mode === 'buy' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '5px 14px',
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: mode === 'buy' ? '0 2px 8px rgba(163, 230, 53, 0.3)' : 'none',
+                  }}
+                >
+                  Buy (Onramp)
+                </button>
               </div>
+
+              {/* Right Side: My Tag button if session is active */}
+              {sessionToken && mode === 'sell' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (userTagData) {
+                      setTagModalInput(userTagData.tag_name || '');
+                      setTagModalBank(userTagData.bank_name || 'Choose Bank');
+                      setTagModalAcctNumber(userTagData.account_number || '');
+                      setTagModalAcctName(userTagData.account_name || '');
+                      setManualTagModalWallet(userTagData.wallet_address || manualWalletAddress || '');
+                    }
+                    setShowTagModal(true);
+                  }}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: 'white',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    padding: '5px 12px',
+                    borderRadius: '14px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  My Tag
+                </button>
+              ) : (
+                <div style={{ width: '48px' }} />
+              )}
             </div>
           ) : (
             <div style={{ marginBottom: '14px' }}>
@@ -3624,19 +3686,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         </div>
       )}
 
-      {/* ── LIVE OFFRAMP ROUTE ── */}
-      {isLiveRoute ? (
-        authStep === 'checking' ? (
-          // Fetching session from Supabase — brief spinner
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', padding: '40px 24px', gap: '14px',
-            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-            borderRadius: '16px', marginBottom: '1.25rem',
-          }}>
-            <span className="p2p-mini-spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }} />
-            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>Restoring session...</span>
-          </div>
+      {/* ── AUTHENTICATION & P2P ROUTE ── */}
+      {authStep === 'checking' ? (
+        // Fetching session from Supabase — brief spinner
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', padding: '40px 24px', gap: '14px',
+          background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+          borderRadius: '16px', marginBottom: '1.25rem',
+        }}>
+          <span className="p2p-mini-spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }} />
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>Restoring session...</span>
+        </div>
         ) : authStep !== 'logged_in' ? (
           <div className="p2p-auth-container" style={{
             background: 'rgba(255, 255, 255, 0.02)',
@@ -3727,7 +3788,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               </div>
             )}
           </div>
-        ) : (
+        ) : isLiveRoute ? (
           <>
             {offrampSubMode === 'tag' ? (
               /* ── Fiat Tag Input Field (Bank & Account details resolved in background) ── */
@@ -4167,8 +4228,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
                     {tokenOpen && (
                       <div className="drop-menu" style={{ right: 0, minWidth: '220px', zIndex: 100 }}>
-                        {selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL').map(t => {
-                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL';
+                        {selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT').map(t => {
+                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT';
                           return (
                             <div
                               key={t.mint || t.symbol}
@@ -4388,7 +4449,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 )}
             </button>
         </>
-      ) ) : (
+      ) : (
         /* ── Buy (Onramp) Mode — Nigeria only ── */
         selectedCountry.code === 'NGA' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -4528,8 +4589,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                           ))
                         )
                       ) : (
-                        selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL').map(t => {
-                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL';
+                        selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT').map(t => {
+                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT';
                           return (
                             <div
                               key={t.mint || t.symbol}
@@ -4621,6 +4682,50 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               </div>
             )}
           </div>
+
+          {/* Receiving Solana Wallet Address (when wallet not connected / guest mode) */}
+          {(!publicKey || isManualOfframp) && (
+            <div className="field" style={{ marginTop: '0', marginBottom: '0.95rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <div className="field-label" style={{ marginBottom: 0, textTransform: 'none', fontSize: '13px', fontWeight: '500', color: 'rgba(255,255,255,0.6)', letterSpacing: 'normal' }}>
+                  Receiving Solana Wallet Address
+                </div>
+                <button
+                  type="button"
+                  className="p2p-btn-badge"
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text) setGuestOnrampWallet(text.trim());
+                    } catch (e) {
+                      console.warn('Clipboard read failed:', e);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  Paste
+                </button>
+              </div>
+
+              <div className="input-wrap" style={{ display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={guestOnrampWallet}
+                  onChange={e => setGuestOnrampWallet(e.target.value.trim())}
+                  placeholder="Paste Solana address to receive crypto..."
+                  style={{ fontSize: '12.5px', fontFamily: 'var(--mono)', color: 'white', width: '100%' }}
+                />
+              </div>
+
+              <div style={{ marginTop: '5px', fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: '1.4' }}>
+                {manualWalletAddress && guestOnrampWallet === manualWalletAddress ? (
+                  <span style={{ color: 'var(--lime)' }}>✓ Auto-filled from your linked account. Edit anytime to send to another wallet.</span>
+                ) : (
+                  'Your crypto will be sent directly to this Solana address after payment is confirmed.'
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Session notice if not yet logged in */}
           {authStep !== 'logged_in' && (
@@ -4818,8 +4923,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <button
               className="send-btn"
               onClick={handleOnrampSubmit}
-              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum}
-              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
+              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
+              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
               {onrampLoading ? (
                 <>
