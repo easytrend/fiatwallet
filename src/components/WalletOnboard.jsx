@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
+import buffer from 'buffer';
+const Buffer = buffer.Buffer || buffer;
 import * as bip39 from 'bip39';
 import bs58 from 'bs58';
 import { createNewWallet, importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { encryptVault, saveVaultToStorage, saveWalletMeta } from '../services/walletVault';
 import logoImg from '../assets/logo.png';
 
-export default function WalletOnboard({ onWalletReady, onConnectExternal, onContinueGuest }) {
-  const [screen, setScreen] = useState('onboard');
+export default function WalletOnboard({ onWalletReady, onConnectExternal, onContinueGuest, initialScreen = 'onboard', onClose }) {
+  const [screen, setScreen] = useState(initialScreen);
 
   // Create flow
   const [generatedMnemonic, setGeneratedMnemonic] = useState('');
@@ -196,6 +198,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
 
   // Theme Styles matching Fiatwallet
   const cardStyle = {
+    position: 'relative',
     background: 'var(--card, #111e38)',
     border: '1px solid var(--border, rgba(255,255,255,0.09))',
     borderRadius: '24px',

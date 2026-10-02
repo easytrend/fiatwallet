@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import buffer from 'buffer';
+const Buffer = buffer.Buffer || buffer;
 import { importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { decryptVault, loadVaultFromStorage, clearVaultFromStorage } from '../services/walletVault';
 import logoImg from '../assets/logo.png';

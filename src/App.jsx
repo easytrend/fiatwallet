@@ -283,10 +283,23 @@ export default function App() {
 
   // Allow browsing in guest mode if user explicitly chooses
   const [guestBypass, setGuestBypass] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [showOnboardModal, setShowOnboardModal] = useState(null); // null | 'create' | 'import' | 'choose'
 
   // Unified wallet connection state
   const effectiveConnected = connected || internalWallet.isActive;
-  const effectivePublicKey = publicKey || (internalWallet.publicKey ? new PublicKey(internalWallet.publicKey) : null);
+  const effectivePublicKey = useMemo(() => {
+    if (publicKey) return publicKey;
+    if (internalWallet.publicKey) {
+      try {
+        return new PublicKey(internalWallet.publicKey);
+      } catch (e) {
+        console.warn('Invalid internal wallet public key:', e);
+        return null;
+      }
+    }
+    return null;
+  }, [publicKey, internalWallet.publicKey]);
   const effectiveSignTransaction = internalWallet.isActive ? internalWallet.signTransaction : signTransaction;
   const effectiveSendTransaction = internalWallet.isActive ? async (tx) => {
     const signed = await internalWallet.signTransaction(tx);
@@ -294,8 +307,8 @@ export default function App() {
   } : sendTransaction;
 
   // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
-  const needsUnlock  = !effectiveConnected && !guestBypass && internalWallet.hasVault;
-  const needsOnboard = !effectiveConnected && !guestBypass && !internalWallet.hasVault;
+  // Only show full-screen unlock if the user already has a saved encrypted vault on this device and hasn't bypassed.
+  const needsUnlock = !effectiveConnected && !guestBypass && internalWallet.hasVault;
 
 
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
@@ -793,20 +806,28 @@ export default function App() {
 
   function handleDisconnect() {
     if (connected) {
-      disconnect();
+      try {
+        disconnect();
+      } catch (e) {
+        console.warn('Disconnect error:', e);
+      }
     }
     if (internalWallet.isActive) {
       internalWallet.lock();
     }
-    setGuestBypass(false);
+    setGuestBypass(true);
   }
 
   function handleLogoutReset() {
     if (connected) {
-      disconnect();
+      try {
+        disconnect();
+      } catch (e) {
+        console.warn('Disconnect error:', e);
+      }
     }
     internalWallet.reset();
-    setGuestBypass(false);
+    setGuestBypass(true);
   }
 
   async function handleSend() {
@@ -1157,7 +1178,7 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // ── Render gate for onboard/unlock (evaluated safely AFTER all hooks) ─────────
+  // ── Render gate for unlock (only for returning users who have an encrypted vault on this device) ─────────
   if (needsUnlock) {
     return (
       <div className="page">
@@ -1169,23 +1190,10 @@ export default function App() {
             setGuestBypass(false);
           }}
           onReset={internalWallet.reset}
-          onConnectExternal={() => setVisible(true)}
-          onContinueGuest={() => setGuestBypass(true)}
-        />
-      </div>
-    );
-  }
-
-  if (needsOnboard) {
-    return (
-      <div className="page">
-        <div className="hex-bg" />
-        <WalletOnboard
-          onWalletReady={(walletData) => {
-            internalWallet.activate(walletData);
-            setGuestBypass(false);
+          onConnectExternal={() => {
+            setGuestBypass(true);
+            setVisible(true);
           }}
-          onConnectExternal={() => setVisible(true)}
           onContinueGuest={() => setGuestBypass(true)}
         />
       </div>
@@ -1335,7 +1343,7 @@ export default function App() {
               )}
             </div>
           ) : (
-            <button className="btn-connect" onClick={() => { setGuestBypass(false); setVisible(true); }}>
+            <button className="btn-connect" onClick={() => setShowConnectModal(true)}>
               Connect Wallet
             </button>
           )}
@@ -1669,6 +1677,175 @@ export default function App() {
           />
         ))}
       </div>
+
+      {/* ── Connect Wallet Options Modal ── */}
+      {showConnectModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1045,
+            background: 'rgba(5, 11, 20, 0.78)', backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+          }}
+          onClick={() => setShowConnectModal(false)}
+        >
+          <div
+            style={{
+              position: 'relative',
+              background: 'var(--card, #111e38)',
+              border: '1px solid var(--border2, rgba(255,255,255,0.16))',
+              borderRadius: '24px',
+              padding: '32px 24px',
+              maxWidth: '400px',
+              width: '100%',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(34, 211, 238, 0.08)',
+              fontFamily: 'var(--ff, sans-serif)',
+              textAlign: 'center',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowConnectModal(false)}
+              style={{
+                position: 'absolute', top: '18px', right: '18px',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
+                borderRadius: '50%', width: '32px', height: '32px',
+                color: 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '14px', lineHeight: 1
+              }}
+              title="Close"
+            >
+              ✕
+            </button>
+
+            <img src={logoImg} alt="Fiatwallet" style={{ width: '48px', height: '48px', objectFit: 'contain', marginBottom: '12px' }} />
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: 'white', marginBottom: '6px' }}>
+              Connect Wallet
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.4' }}>
+              Select how you want to connect to Fiatwallet
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Option 1: Browser / Mobile Wallet */}
+              <button
+                onClick={() => {
+                  setShowConnectModal(false);
+                  setVisible(true);
+                }}
+                style={{
+                  width: '100%', padding: '14px 16px',
+                  background: 'rgba(10, 22, 40, 0.7)',
+                  border: '1px solid var(--border2)',
+                  borderRadius: '14px',
+                  color: 'var(--text)',
+                  fontSize: '14px', fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'all 0.2s',
+                  fontFamily: 'var(--ff)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '18px', color: 'var(--cyan)' }}>•</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div>Solana Wallet</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: '400' }}>Phantom, Solflare, Mobile</div>
+                  </div>
+                </div>
+                <span style={{ color: 'var(--text3)' }}>→</span>
+              </button>
+
+              {/* Option 2: Create Self-Custodial Wallet */}
+              <button
+                onClick={() => {
+                  setShowConnectModal(false);
+                  setShowOnboardModal('create');
+                }}
+                style={{
+                  width: '100%', padding: '14px 16px',
+                  background: 'linear-gradient(135deg, rgba(163,230,53,0.15), rgba(163,230,53,0.05))',
+                  border: '1px solid rgba(163,230,53,0.35)',
+                  borderRadius: '14px',
+                  color: 'var(--lime)',
+                  fontSize: '14px', fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'all 0.2s',
+                  fontFamily: 'var(--ff)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '18px', color: 'var(--lime)', fontWeight: '900' }}>+</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div>Create Local Wallet</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(163,230,53,0.7)', fontWeight: '400' }}>12 words · PIN encrypted · Client-side</div>
+                  </div>
+                </div>
+                <span style={{ color: 'var(--lime)' }}>→</span>
+              </button>
+
+              {/* Option 3: Import Local Wallet */}
+              <button
+                onClick={() => {
+                  setShowConnectModal(false);
+                  setShowOnboardModal('import');
+                }}
+                style={{
+                  width: '100%', padding: '14px 16px',
+                  background: 'rgba(10, 22, 40, 0.7)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '14px',
+                  color: 'var(--text)',
+                  fontSize: '14px', fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'all 0.2s',
+                  fontFamily: 'var(--ff)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '18px', color: 'var(--text2)' }}>↓</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div>Import Local Wallet</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: '400' }}>Seed phrase or private key</div>
+                  </div>
+                </div>
+                <span style={{ color: 'var(--text3)' }}>→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Onboard Modal Overlay ── */}
+      {showOnboardModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1046,
+            background: 'rgba(5, 11, 20, 0.85)', backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+            overflowY: 'auto'
+          }}
+          onClick={() => setShowOnboardModal(null)}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', margin: 'auto' }}>
+            <WalletOnboard
+              initialScreen={showOnboardModal === 'import' ? 'import-choose' : (showOnboardModal === 'create' ? 'create-edu' : 'onboard')}
+              onClose={() => setShowOnboardModal(null)}
+              onWalletReady={(walletData) => {
+                internalWallet.activate(walletData);
+                setShowOnboardModal(null);
+                setGuestBypass(false);
+              }}
+              onConnectExternal={() => {
+                setShowOnboardModal(null);
+                setVisible(true);
+              }}
+              onContinueGuest={() => setShowOnboardModal(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Floating Support Chat */}
       <SupportChat />

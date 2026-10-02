@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import buffer from 'buffer';
+const Buffer = buffer.Buffer || buffer;
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, Transaction, SystemProgram, SystemInstruction, Connection, VersionedTransaction, TransactionMessage, TransactionInstruction } from '@solana/web3.js';
@@ -100,7 +102,7 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
       }
     }
     return null;
-  }, [adapterPublicKey]);
+  }, [propPublicKey, adapterPublicKey]);
 
   // Reclaimer States
   const [emptyAccounts, setEmptyAccounts] = useState([]);
@@ -136,8 +138,8 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
           connection.getParsedTokenAccountsByOwner(effectivePublicKey, { programId: token2022ProgramId }).catch(() => ({ value: [] })),
         ]);
         results = [
-          ...resp1.value.map(a => ({ ...a, programId: tokenProgramId })),
-          ...resp2.value.map(a => ({ ...a, programId: token2022ProgramId }))
+          ...((resp1 && resp1.value) || []).map(a => ({ ...a, programId: tokenProgramId })),
+          ...((resp2 && resp2.value) || []).map(a => ({ ...a, programId: token2022ProgramId }))
         ];
         success = true;
         
@@ -660,10 +662,10 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
 
       setCashbackClaimed(true);
 
-      if (signature) {
+      if (signature && effectivePublicKey) {
         logTransaction({
           signature,
-          userAddress: publicKey.toBase58(),
+          userAddress: effectivePublicKey.toBase58(),
           type: 'cashback_claim',
           symbol: 'SOL',
           tokenAmount: netCashbackAmount,

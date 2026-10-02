@@ -7,6 +7,8 @@
 // ============================================================
 
 import { Keypair } from '@solana/web3.js';
+import buffer from 'buffer';
+const Buffer = buffer.Buffer || buffer;
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
 import bs58 from 'bs58';
@@ -24,7 +26,8 @@ export function getSolanaDerivationPath(accountIndex = 0) {
  */
 export function deriveKeypairFromSeed(seed, accountIndex = 0) {
   const path = getSolanaDerivationPath(accountIndex);
-  const { key } = derivePath(path, seed.toString('hex'));
+  const hex = Buffer.from(seed).toString('hex');
+  const { key } = derivePath(path, hex);
   return Keypair.fromSeed(key);
 }
 
