@@ -275,7 +275,7 @@ function verifyTransactionIntegrity(transaction, expectedTransfers, expectedSign
 
 export default function App() {
   const { connection } = useConnection();
-  const { publicKey, connected, disconnect, sendTransaction, signAllTransactions } = useWallet();
+  const { publicKey, connected, disconnect, sendTransaction, signTransaction, signAllTransactions } = useWallet();
   const { setVisible } = useWalletModal();
 
   // ── Internal (self-custodial) wallet ─────────────────────────────────────────
@@ -301,6 +301,7 @@ export default function App() {
     return null;
   }, [publicKey, internalWallet.publicKey]);
   const effectiveSignTransaction = internalWallet.isActive ? internalWallet.signTransaction : signTransaction;
+  const effectiveSignAllTransactions = internalWallet.isActive ? internalWallet.signAllTransactions : signAllTransactions;
   const effectiveSendTransaction = internalWallet.isActive ? async (tx) => {
     const signed = await internalWallet.signTransaction(tx);
     return connection.sendRawTransaction(signed.serialize());
@@ -1502,7 +1503,7 @@ export default function App() {
             {bulkMode ? (
               <BulkSendPanel tok={tokLive} connected={effectiveConnected} getLiveRate={getLiveCurrRate}
                 connection={connection} publicKey={effectivePublicKey}
-                sendTransaction={effectiveSendTransaction} signAllTransactions={signAllTransactions} />
+                sendTransaction={effectiveSendTransaction} signAllTransactions={effectiveSignAllTransactions} />
             ) : (
               <>
                 <div className="field">
