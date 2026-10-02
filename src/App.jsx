@@ -23,6 +23,12 @@ import { logTransaction } from './services/supabase';
 import WalletOnboard from './components/WalletOnboard';
 import WalletUnlock from './components/WalletUnlock';
 import { useInternalWallet } from './hooks/useInternalWallet';
+import NativeWalletHome from './components/NativeWalletHome';
+import ReceiveModal from './components/ReceiveModal';
+import BankDetailsModal from './components/BankDetailsModal';
+import SecurityModal from './components/SecurityModal';
+import TermsPrivacyModal from './components/TermsPrivacyModal';
+import WalletMenuDrawer from './components/WalletMenuDrawer';
 
 
 
@@ -285,6 +291,12 @@ export default function App() {
   const [guestBypass, setGuestBypass] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showOnboardModal, setShowOnboardModal] = useState(null); // null | 'create' | 'import' | 'choose'
+  const [showMenuDrawer, setShowMenuDrawer] = useState(false);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showClaimModal, setShowClaimModal] = useState(false);
 
   // Unified wallet connection state
   const effectiveConnected = connected || internalWallet.isActive;
@@ -310,6 +322,8 @@ export default function App() {
   // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
   // Only show full-screen unlock if the user already has a saved encrypted vault on this device and hasn't bypassed.
   const needsUnlock = !effectiveConnected && !guestBypass && internalWallet.hasVault;
+  // If the user has no saved vault, is not connected, and hasn't chosen guest mode -> Show Onboarding Screen (matching Image 2)
+  const needsOnboard = !effectiveConnected && !guestBypass && !internalWallet.hasVault;
 
 
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
@@ -349,7 +363,7 @@ export default function App() {
   }, []);
 
   const [bulkMode, setBulkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('p2p');
+  const [activeTab, setActiveTab] = useState('wallet');
   const [swipeDir, setSwipeDir] = useState(null); // 'left' | 'right' | null
   const swipeTouchRef = useRef({ startX: 0, startY: 0, active: false });
   const [showModal, setShowModal] = useState(false);
@@ -816,7 +830,7 @@ export default function App() {
     if (internalWallet.isActive) {
       internalWallet.lock();
     }
-    setGuestBypass(true);
+    setGuestBypass(false);
   }
 
   function handleLogoutReset() {
@@ -828,7 +842,7 @@ export default function App() {
       }
     }
     internalWallet.reset();
-    setGuestBypass(true);
+    setGuestBypass(false);
   }
 
   async function handleSend() {
@@ -1150,7 +1164,7 @@ export default function App() {
   }
 
   // ── Swipe gesture navigation ─────────────────────────────────────────────
-  const TAB_ORDER = ['p2p', 'fiatpay', 'send', 'swap'];
+  const TAB_ORDER = ['wallet', 'p2p', 'send', 'swap'];
 
   const handleTouchStart = useCallback((e) => {
     const t = e.touches[0];
@@ -1182,7 +1196,7 @@ export default function App() {
   // ── Render gate for unlock (only for returning users who have an encrypted vault on this device) ─────────
   if (needsUnlock) {
     return (
-      <div className="page">
+      <div className="page" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="hex-bg" />
         <WalletUnlock
           walletMeta={internalWallet.walletMeta}
@@ -1193,6 +1207,25 @@ export default function App() {
           onReset={internalWallet.reset}
           onConnectExternal={() => {
             setGuestBypass(true);
+            setVisible(true);
+          }}
+          onContinueGuest={() => setGuestBypass(true)}
+        />
+      </div>
+    );
+  }
+
+  // ── Render gate for onboard (plane background, 3 stacked options matching Image 2) ─────────
+  if (needsOnboard) {
+    return (
+      <div className="page" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="hex-bg" />
+        <WalletOnboard
+          onWalletReady={(walletData) => {
+            internalWallet.activate(walletData);
+            setGuestBypass(false);
+          }}
+          onConnectExternal={() => {
             setVisible(true);
           }}
           onContinueGuest={() => setGuestBypass(true)}
@@ -1293,8 +1326,9 @@ export default function App() {
 
       <nav>
         <div className="nav-logo-wrap">
-          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" />
+          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab('wallet')} style={{ cursor: 'pointer' }} />
           <div className="nav-links">
+            <button className={`nav-link-btn ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>Wallet</button>
             <button className={`nav-link-btn ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>P2P</button>
             <button className={`nav-link-btn ${activeTab === 'send' ? 'active' : ''}`} onClick={() => setActiveTab('send')}>Send</button>
             <button className={`nav-link-btn ${activeTab === 'swap' ? 'active' : ''}`} onClick={() => setActiveTab('swap')}>Swap</button>
@@ -1348,6 +1382,26 @@ export default function App() {
               Connect Wallet
             </button>
           )}
+
+          <button
+            onClick={() => setShowMenuDrawer(true)}
+            aria-label="Menu"
+            title="Wallet Menu"
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid var(--border)',
+              borderRadius: '10px',
+              color: 'white',
+              padding: '6px 12px',
+              fontSize: '16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            ☰
+          </button>
         </div>
       </nav>
 
@@ -1356,6 +1410,8 @@ export default function App() {
         onClaimSuccess={fetchBalances}
         effectivePublicKey={effectivePublicKey}
         effectiveConnected={effectiveConnected}
+        isOpen={showClaimModal}
+        onClose={() => setShowClaimModal(false)}
       />
 
       <div
@@ -1363,8 +1419,72 @@ export default function App() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
+        {/* ── Native Wallet Dashboard Card ── */}
+        <div className="app-card wallet-card" style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+          <div className="card-body" style={{ padding: '4px 0' }}>
+            <NativeWalletHome
+              walletAddress={effectivePublicKey?.toBase58()}
+              isInternal={internalWallet.isActive}
+              walletTokenList={walletTokenList}
+              solBalance={solBalance}
+              liveSolPrice={liveSolPrice}
+              liveRates={liveRates}
+              currency={currency}
+              currRate={currRate}
+              onOpenMenu={() => setShowMenuDrawer(true)}
+              onOpenReceive={() => setShowReceiveModal(true)}
+              onNavigateTab={(tab) => {
+                if (tab === 'send-bulk') {
+                  setActiveTab('send');
+                  setBulkMode(true);
+                } else if (tab === 'claim') {
+                  setShowClaimModal(true);
+                } else {
+                  setActiveTab(tab);
+                }
+              }}
+              onRefreshBalances={fetchBalances}
+              walletLoading={walletLoading}
+              onSelectToken={(sym) => {
+                setToken(sym);
+                setInputMode('crypto');
+              }}
+            />
+          </div>
+        </div>
+
         <div className="app-card p2p-card">
           <div className="card-body">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <button
+                onClick={() => setActiveTab('wallet')}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  color: 'white',
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontFamily: 'var(--ff)',
+                }}
+              >
+                ← Wallet
+              </button>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text2)' }}>
+                P2P Trading
+              </span>
+              <button
+                onClick={() => setShowMenuDrawer(true)}
+                style={{ background: 'none', border: 'none', color: 'white', fontSize: '18px', cursor: 'pointer', padding: '4px' }}
+              >
+                ☰
+              </button>
+            </div>
             <P2PPanel
               connected={effectiveConnected}
               walletTokenList={walletTokenList}
@@ -1637,6 +1757,14 @@ export default function App() {
 
       {/* Bottom Navigation for mobile view */}
       <div className="bottom-nav">
+        <button className={`bnav-item ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>
+          <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="4" />
+            <path d="M16 12h4" />
+            <circle cx="16" cy="12" r="1" fill="currentColor" />
+          </svg>
+          <span className="bnav-label">Wallet</span>
+        </button>
         <button className={`bnav-item ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>
           <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -1645,10 +1773,6 @@ export default function App() {
             <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
           </svg>
           <span className="bnav-label">P2P</span>
-        </button>
-        <button className={`bnav-item ${activeTab === 'fiatpay' ? 'active' : ''}`} onClick={() => setActiveTab('fiatpay')}>
-          <img src={fiatpayLogo} alt="FiatPay" className="bnav-icon" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
-          <span className="bnav-label">FiatPay</span>
         </button>
         <button className={`bnav-item ${activeTab === 'send' ? 'active' : ''}`} onClick={() => setActiveTab('send')}>
           <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1670,7 +1794,7 @@ export default function App() {
 
       {/* Swipe indicator dots — mobile only */}
       <div className="swipe-dots">
-        {['p2p', 'fiatpay', 'send', 'swap'].map(tab => (
+        {['wallet', 'p2p', 'send', 'swap'].map(tab => (
           <div
             key={tab}
             className={`swipe-dot${activeTab === tab ? ' active' : ''}`}
@@ -1846,6 +1970,55 @@ export default function App() {
             />
           </div>
         </div>
+      )}
+
+      {/* ── Slide-Out Wallet Menu Drawer ── */}
+      <WalletMenuDrawer
+        isOpen={showMenuDrawer}
+        onClose={() => setShowMenuDrawer(false)}
+        walletAddress={effectivePublicKey?.toBase58()}
+        isInternal={internalWallet.isActive}
+        onOpenBankDetails={() => setShowBankDetailsModal(true)}
+        onOpenSecurity={() => setShowSecurityModal(true)}
+        onOpenTerms={() => setShowTermsModal(true)}
+        onOpenSupportChat={() => {
+          const chatBtn = document.querySelector('.sc-trigger-btn');
+          if (chatBtn) chatBtn.click();
+        }}
+        onLock={handleDisconnect}
+        onLogout={handleLogoutReset}
+      />
+
+      {/* ── Receive Assets QR Modal ── */}
+      {showReceiveModal && effectivePublicKey && (
+        <ReceiveModal
+          address={effectivePublicKey.toBase58()}
+          onClose={() => setShowReceiveModal(false)}
+        />
+      )}
+
+      {/* ── Fiat Tag & Bank Details Modal ── */}
+      {showBankDetailsModal && effectivePublicKey && (
+        <BankDetailsModal
+          walletAddress={effectivePublicKey.toBase58()}
+          onClose={() => setShowBankDetailsModal(false)}
+        />
+      )}
+
+      {/* ── Wallet Security & PIN Modal ── */}
+      {showSecurityModal && (
+        <SecurityModal
+          walletAddress={effectivePublicKey?.toBase58()}
+          isInternal={internalWallet.isActive}
+          onClose={() => setShowSecurityModal(false)}
+          onLock={handleDisconnect}
+          onLogout={handleLogoutReset}
+        />
+      )}
+
+      {/* ── Terms of Service & Privacy Policy Modal ── */}
+      {showTermsModal && (
+        <TermsPrivacyModal onClose={() => setShowTermsModal(false)} />
       )}
 
       {/* Floating Support Chat */}

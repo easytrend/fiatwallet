@@ -51,16 +51,15 @@ export default function WalletUnlock({ walletMeta, onUnlocked, onReset, onConnec
   };
 
   const cardStyle = {
-    background: 'var(--card, #111e38)',
-    border: '1px solid var(--border, rgba(255,255,255,0.09))',
+    position: 'relative',
+    background: 'transparent',
+    border: 'none',
     borderRadius: '24px',
-    padding: '36px 26px',
+    padding: '24px 16px',
     maxWidth: '380px',
     width: '100%',
     margin: '0 auto',
     color: 'var(--text, #f0f6ff)',
-    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45), 0 0 20px rgba(34, 211, 238, 0.05)',
-    backdropFilter: 'blur(16px)',
     fontFamily: 'var(--ff, sans-serif)',
     textAlign: 'center',
   };

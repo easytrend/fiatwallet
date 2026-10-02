@@ -297,41 +297,151 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '85vh', padding: '24px 16px', position: 'relative', zIndex: 1 }}>
-      {/* SCREEN: Onboard (landing) */}
+      {/* SCREEN: Onboard (landing) - Plane background matching native mobile theme */}
       {screen === 'onboard' && (
-        <div style={cardStyle}>
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <img src={logoImg} alt="Fiatwallet" style={{ width: '64px', height: '64px', objectFit: 'contain', marginBottom: '14px' }} />
-            <h1 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.02em', margin: 0, color: 'white' }}>Fiatwallet</h1>
+        <div style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '380px',
+          margin: '0 auto',
+          textAlign: 'center',
+          fontFamily: 'var(--ff, sans-serif)',
+          padding: '24px 8px',
+        }}>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                background: 'none',
+                border: 'none',
+                color: 'var(--text2, rgba(240,246,255,0.6))',
+                fontSize: '20px',
+                cursor: 'pointer',
+                padding: '6px 10px',
+              }}
+            >
+              ✕
+            </button>
+          )}
+
+          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+            <img
+              src={logoImg}
+              alt="Fiatwallet"
+              style={{ width: '72px', height: '72px', objectFit: 'contain', marginBottom: '14px' }}
+            />
+            <h1 style={{ fontSize: '26px', fontWeight: '800', letterSpacing: '-0.02em', margin: 0, color: 'white' }}>
+              Fiatwallet
+            </h1>
             <p style={{ fontSize: '13px', color: 'var(--text2, rgba(240,246,255,0.55))', marginTop: '6px', lineHeight: '1.5' }}>
-              Your self-custodial gateway for crypto and local fiat.
+              Simple, safe &amp; self-custodial
             </p>
           </div>
 
-          <button style={btnSecondary} onClick={onConnectExternal}>
-            Connect Wallet
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button
+              style={{
+                width: '100%',
+                padding: '16px 20px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '16px',
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontFamily: 'var(--ff)',
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+              }}
+              onClick={onConnectExternal}
+            >
+              Connect wallet
+            </button>
 
-          <button style={btnPrimary} onClick={handleStartCreate} disabled={loading}>
-            {loading ? 'Creating Wallet...' : 'Create New Wallet'}
-          </button>
+            <button
+              style={{
+                width: '100%',
+                padding: '16px 20px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '16px',
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontFamily: 'var(--ff)',
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+              }}
+              onClick={handleStartCreate}
+              disabled={loading}
+            >
+              {loading ? 'Creating...' : 'Create wallet'}
+            </button>
 
-          <button style={btnSecondary} onClick={() => setScreen('import-choose')}>
-            Import Existing Wallet
-          </button>
+            <button
+              style={{
+                width: '100%',
+                padding: '16px 20px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '16px',
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontFamily: 'var(--ff)',
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+              }}
+              onClick={() => setScreen('import-choose')}
+            >
+              Import existing wallet
+            </button>
+          </div>
 
           {onContinueGuest && (
-            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+            <div style={{ textAlign: 'center', marginTop: '22px' }}>
               <button
                 onClick={onContinueGuest}
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: 'var(--text3, rgba(240,246,255,0.4))',
-                  fontSize: '12px',
+                  color: 'var(--text3, rgba(240,246,255,0.45))',
+                  fontSize: '13px',
                   cursor: 'pointer',
                   textDecoration: 'underline',
-                  padding: '4px',
+                  padding: '6px',
+                  fontFamily: 'var(--ff)',
                 }}
               >
                 or continue to app as Guest
@@ -339,8 +449,8 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
             </div>
           )}
 
-          <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.28))', lineHeight: '1.5' }}>
-            Self-custodial: Your private keys never leave your browser unencrypted.
+          <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.28))', lineHeight: '1.5' }}>
+            Non-custodial: Your private keys never leave your device.
           </div>
         </div>
       )}

@@ -79,13 +79,18 @@ const ClaimIcon = () => (
   </svg>
 );
 
-export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effectivePublicKey: propPublicKey, effectiveConnected: propConnected }) {
+export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effectivePublicKey: propPublicKey, effectiveConnected: propConnected, isOpen: externalIsOpen, onClose: externalOnClose }) {
   const { connection } = useConnection();
   const { publicKey: adapterPublicKey, connected: adapterConnected, sendTransaction, signAllTransactions } = useWallet();
   const connected = propConnected !== undefined ? propConnected : adapterConnected;
   const { setVisible: setWalletModalVisible } = useWalletModal();
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalOpen;
+  const setIsOpen = (val) => {
+    if (!val && externalOnClose) externalOnClose();
+    setInternalOpen(val);
+  };
   const [isDismissed, setIsDismissed] = useState(false);
 
   // Fallback to manual guest wallet if not connected via wallet adapter
