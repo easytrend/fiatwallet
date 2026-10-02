@@ -2114,11 +2114,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         }
       }
 
-      // Save recipient address for future guest visits
-      if ((isManualOfframp || !publicKey) && recipientAddress) {
+      // Save end-user wallet for future guest visits (never the relayer custody address)
+      if ((isManualOfframp || !publicKey) && userWalletAddress) {
         try {
-          localStorage.setItem('paj_manual_wallet', recipientAddress);
-          setManualWalletAddress(recipientAddress);
+          localStorage.setItem('paj_manual_wallet', userWalletAddress);
+          setManualWalletAddress(userWalletAddress);
         } catch {}
       }
 
@@ -2417,8 +2417,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
-      // If the user is buying a custom token (any token other than USDC), trigger the auto-swap if wallet connected
-      if (liveSelectedToken.symbol !== 'USDC' && publicKey && !isManualOfframp) {
+      // Onramp only: autoswap USDC → target when user buys a non-stable (e.g. SOL). Stables stay as USDC from PajCash.
+      const isOnrampStable =
+        liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT';
+      if (!isOnrampStable && publicKey && !isManualOfframp) {
         step = 'swapping';
         setOnrampStatus('swapping');
         await triggerJupiterSwap();
@@ -4754,25 +4756,27 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
                   {tokenOpen && (
                     <div className="drop-menu" style={{ right: 0, minWidth: '240px', maxHeight: '300px', overflowY: 'auto', zIndex: 100 }}>
-                      <input
-                        type="text"
-                        placeholder="Search ticker or address..."
-                        value={tokenSearchQuery}
-                        onChange={(e) => setTokenSearchQuery(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          width: 'calc(100% - 16px)',
-                          margin: '8px',
-                          padding: '6px 10px',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          borderRadius: '12px',
-                          color: 'white',
-                          fontSize: '12px',
-                          outline: 'none',
-                        }}
-                        autoFocus
-                      />
+                      {!isManualOfframp && (
+                        <input
+                          type="text"
+                          placeholder="Search ticker or address..."
+                          value={tokenSearchQuery}
+                          onChange={(e) => setTokenSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: 'calc(100% - 16px)',
+                            margin: '8px',
+                            padding: '6px 10px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            color: 'white',
+                            fontSize: '12px',
+                            outline: 'none',
+                          }}
+                          autoFocus
+                        />
+                      )}
                       {searchingTokens ? (
                         <div style={{ padding: '10px', textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>Searching...</div>
                       ) : tokenSearchQuery.trim() !== '' ? (
