@@ -77,9 +77,10 @@ const ClaimIcon = () => (
   </svg>
 );
 
-export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess }) {
+export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effectivePublicKey: propPublicKey, effectiveConnected: propConnected }) {
   const { connection } = useConnection();
-  const { publicKey: adapterPublicKey, connected, sendTransaction, signAllTransactions } = useWallet();
+  const { publicKey: adapterPublicKey, connected: adapterConnected, sendTransaction, signAllTransactions } = useWallet();
+  const connected = propConnected !== undefined ? propConnected : adapterConnected;
   const { setVisible: setWalletModalVisible } = useWalletModal();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -87,7 +88,9 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess }) {
 
   // Fallback to manual guest wallet if not connected via wallet adapter
   const effectivePublicKey = useMemo(() => {
+    if (propPublicKey) return propPublicKey;
     if (adapterPublicKey) return adapterPublicKey;
+
     const manualWalletStr = localStorage.getItem('paj_manual_wallet');
     if (manualWalletStr) {
       try {

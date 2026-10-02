@@ -1,13 +1,9 @@
 import { useState } from 'react';
 import { importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { decryptVault, loadVaultFromStorage, clearVaultFromStorage } from '../services/walletVault';
-import bs58 from 'bs58';
+import logoImg from '../assets/logo.png';
 
-// ── WalletUnlock ────────────────────────────────────────────
-// Shown on app load when a vault exists but no in-memory keypair is active.
-// User enters their PIN → vault decrypts → keypair goes into memory.
-
-export default function WalletUnlock({ walletMeta, onUnlocked, onReset }) {
+export default function WalletUnlock({ walletMeta, onUnlocked, onReset, onConnectExternal, onContinueGuest }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +21,6 @@ export default function WalletUnlock({ walletMeta, onUnlocked, onReset }) {
       let secretKey;
       let mnemonic = null;
 
-      // Plaintext is either a mnemonic (has spaces) or a base58 private key
       if (plaintext.includes(' ')) {
         const result = await importFromMnemonic(plaintext, 0);
         secretKey = result.secretKey;
@@ -42,7 +37,7 @@ export default function WalletUnlock({ walletMeta, onUnlocked, onReset }) {
         source: walletMeta.source,
       });
     } catch (e) {
-      setError(e.message);
+      setError(e.message || 'Incorrect PIN. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -53,99 +48,139 @@ export default function WalletUnlock({ walletMeta, onUnlocked, onReset }) {
     onReset();
   };
 
+  const cardStyle = {
+    background: 'var(--card, #111e38)',
+    border: '1px solid var(--border, rgba(255,255,255,0.09))',
+    borderRadius: '24px',
+    padding: '36px 26px',
+    maxWidth: '380px',
+    width: '100%',
+    margin: '0 auto',
+    color: 'var(--text, #f0f6ff)',
+    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45), 0 0 20px rgba(34, 211, 238, 0.05)',
+    backdropFilter: 'blur(16px)',
+    fontFamily: 'var(--ff, sans-serif)',
+    textAlign: 'center',
+  };
+
   const inputStyle = {
     width: '100%',
     padding: '14px',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(10, 22, 40, 0.75)',
+    border: '1px solid var(--border, rgba(255,255,255,0.09))',
     borderRadius: '12px',
-    color: 'white',
-    fontSize: '15px',
+    color: 'var(--text, #f0f6ff)',
+    fontSize: '18px',
     outline: 'none',
     textAlign: 'center',
-    letterSpacing: '0.2em',
+    letterSpacing: '0.25em',
     boxSizing: 'border-box',
-    fontFamily: 'inherit',
+    fontFamily: 'var(--mono, monospace)',
+    transition: 'border-color 0.2s',
   };
 
-  const btnStyle = {
+  const btnPrimary = {
     width: '100%',
     padding: '14px',
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.15)',
+    background: 'linear-gradient(135deg, rgba(163,230,53,0.18), rgba(163,230,53,0.08))',
+    border: '1px solid rgba(163,230,53,0.4)',
     borderRadius: '14px',
-    color: 'white',
+    color: 'var(--lime, #a3e635)',
     fontSize: '14px',
     fontWeight: '700',
     cursor: 'pointer',
-    marginBottom: '12px',
-    transition: 'background 0.2s',
+    marginTop: '16px',
+    marginBottom: '14px',
+    transition: 'all 0.2s',
+    letterSpacing: '0.01em',
   };
 
-  // Shorten public key for display
   const shortKey = walletMeta?.publicKey
-    ? `${walletMeta.publicKey.slice(0, 6)}...${walletMeta.publicKey.slice(-6)}`
+    ? `${walletMeta.publicKey.slice(0, 4)}...${walletMeta.publicKey.slice(-4)}`
     : '';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-      <div style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '20px',
-        padding: '32px 24px',
-        maxWidth: '360px',
-        width: '100%',
-        color: 'white',
-        textAlign: 'center',
-      }}>
-        <img src="/logo.png" alt="" style={{ width: '48px', height: '48px', marginBottom: '16px' }} onError={(e) => { e.target.style.display = 'none'; }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '85vh', padding: '24px 16px', position: 'relative', zIndex: 1 }}>
+      <div style={cardStyle}>
+        <img src={logoImg} alt="Fiatwallet" style={{ width: '56px', height: '56px', objectFit: 'contain', marginBottom: '14px' }} />
 
-        <div style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>Welcome Back</div>
-        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px', fontFamily: 'monospace' }}>
-          {shortKey}
+        <h1 style={{ fontSize: '22px', fontWeight: '800', margin: 0, color: 'white' }}>Welcome Back</h1>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.04)', padding: '4px 10px', borderRadius: '12px', marginTop: '10px', marginBottom: '16px', border: '1px solid var(--border)' }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--lime)' }} />
+          <span style={{ fontSize: '12px', color: 'var(--text2)', fontFamily: 'var(--mono, monospace)' }}>{shortKey}</span>
         </div>
-        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '28px' }}>
-          Enter your PIN to unlock your wallet
-        </div>
+
+        <p style={{ fontSize: '13px', color: 'var(--text2)', marginTop: 0, marginBottom: '22px' }}>
+          Enter your PIN to unlock your local wallet
+        </p>
 
         <input
           type="password"
           value={pin}
           onChange={e => setPin(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleUnlock(); }}
-          placeholder="Enter PIN"
+          placeholder="••••••"
           style={inputStyle}
           autoFocus
           autoComplete="current-password"
         />
 
         {error && (
-          <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#f87171', margin: '12px 0', textAlign: 'left', lineHeight: '1.5' }}>
+          <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: 'var(--red, #f87171)', margin: '14px 0', textAlign: 'center', lineHeight: '1.5' }}>
             {error}
           </div>
         )}
 
-        <button style={{ ...btnStyle, marginTop: '16px' }} onClick={handleUnlock} disabled={loading}>
-          {loading ? 'Unlocking...' : 'Unlock'}
+        <button style={btnPrimary} onClick={handleUnlock} disabled={loading}>
+          {loading ? 'Unlocking...' : 'Unlock Wallet'}
         </button>
 
-        <button
-          onClick={() => setShowReset(!showReset)}
-          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', fontSize: '12px', cursor: 'pointer', padding: '4px' }}
-        >
-          Forgot PIN / Reset Wallet
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', marginTop: '10px' }}>
+          {onConnectExternal && (
+            <button
+              onClick={onConnectExternal}
+              style={{ background: 'none', border: 'none', color: 'var(--text2)', fontSize: '12px', cursor: 'pointer', padding: '4px' }}
+            >
+              or connect with Phantom / Solflare
+            </button>
+          )}
+
+          {onContinueGuest && (
+            <button
+              onClick={onContinueGuest}
+              style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: '12px', cursor: 'pointer', padding: '4px' }}
+            >
+              continue as Guest
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowReset(!showReset)}
+            style={{ background: 'none', border: 'none', color: 'rgba(248,113,113,0.7)', fontSize: '11px', cursor: 'pointer', marginTop: '6px' }}
+          >
+            Forgot PIN / Reset Wallet
+          </button>
+        </div>
 
         {showReset && (
-          <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '12px', textAlign: 'left' }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: '#f87171' }}>Reset Wallet</div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginBottom: '14px', lineHeight: '1.5' }}>
-              This will permanently delete the encrypted vault from this device. Make sure you have your seed phrase before proceeding.
+          <div style={{ marginTop: '18px', padding: '16px', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '14px', textAlign: 'left' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '6px', color: 'var(--red, #f87171)' }}>Reset Local Wallet</div>
+            <div style={{ fontSize: '11px', color: 'var(--text2)', marginBottom: '14px', lineHeight: '1.5' }}>
+              This wipes the encrypted vault from this browser. You can restore later with your 12-word seed phrase.
             </div>
             <button
               onClick={handleReset}
-              style={{ ...btnStyle, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', marginBottom: 0 }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                background: 'rgba(248,113,113,0.15)',
+                border: '1px solid var(--red, #f87171)',
+                borderRadius: '10px',
+                color: 'var(--red, #f87171)',
+                fontWeight: '700',
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
             >
               I have my seed phrase — Reset
             </button>

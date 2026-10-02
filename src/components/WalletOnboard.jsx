@@ -1,15 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import * as bip39 from 'bip39';
 import bs58 from 'bs58';
 import { createNewWallet, importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { encryptVault, saveVaultToStorage, saveWalletMeta } from '../services/walletVault';
+import logoImg from '../assets/logo.png';
 
-// ── Screen states for the onboarding flow ────────────────────
-// onboard → create-edu → create-reveal → create-verify → create-pin
-//         → import-choose → import-mnemonic → import-key     → create-pin
-//         (connect wallet is handled by parent via useWalletModal)
-
-export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
+export default function WalletOnboard({ onWalletReady, onConnectExternal, onContinueGuest }) {
   const [screen, setScreen] = useState('onboard');
 
   // Create flow
@@ -34,8 +30,8 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
   const [privateKeyInput, setPrivateKeyInput] = useState('');
   const [isKeyHidden, setIsKeyHidden] = useState(true);
 
-  // PIN setup (shared by create & import)
-  const [pendingSecretKey, setPendingSecretKey] = useState(null); // Uint8Array
+  // PIN setup
+  const [pendingSecretKey, setPendingSecretKey] = useState(null);
   const [pendingMnemonic, setPendingMnemonic] = useState('');
   const [pendingPublicKey, setPendingPublicKey] = useState('');
   const [pendingSource, setPendingSource] = useState('');
@@ -47,7 +43,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // ── Screenshot protection on reveal screen ───────────────────
+  // Screenshot protection on reveal screen
   useEffect(() => {
     if (screen !== 'create-reveal') return;
     const handleKey = (e) => {
@@ -67,15 +63,12 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
     };
   }, [screen]);
 
-  // ── Sync word count grid ─────────────────────────────────────
   useEffect(() => {
     setImportWords(Array(wordCount).fill(''));
     setMnemonicInput('');
   }, [wordCount]);
 
-  // ════════════════════════════════════════════════════════════
   // FLOW: CREATE WALLET
-  // ════════════════════════════════════════════════════════════
   const handleStartCreate = async () => {
     setLoading(true);
     setError('');
@@ -99,7 +92,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
 
   const startQuiz = () => {
     const words = generatedMnemonic.split(' ');
-    const targetIdx = 2;
+    const targetIdx = 2; // Word #3
     setQuizTargetIndex(targetIdx);
     setQuizStep(1);
     const correct = words[targetIdx];
@@ -119,7 +112,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
       setQuizStatus('correct');
       if (quizStep === 1) {
         setTimeout(() => {
-          const nextIdx = 7;
+          const nextIdx = 7; // Word #8
           setQuizTargetIndex(nextIdx);
           setQuizStep(2);
           const next = words[nextIdx];
@@ -129,19 +122,17 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
           setQuizWordPool([...nextPool].sort(() => Math.random() - 0.5));
           setQuizSelectedWord(null);
           setQuizStatus('idle');
-        }, 600);
+        }, 500);
       } else {
-        setTimeout(() => setScreen('create-pin'), 600);
+        setTimeout(() => setScreen('create-pin'), 500);
       }
     } else {
       setQuizStatus('wrong');
-      setTimeout(() => { setQuizSelectedWord(null); setQuizStatus('idle'); }, 900);
+      setTimeout(() => { setQuizSelectedWord(null); setQuizStatus('idle'); }, 800);
     }
   };
 
-  // ════════════════════════════════════════════════════════════
   // FLOW: IMPORT WALLET
-  // ════════════════════════════════════════════════════════════
   const handleImportMnemonic = async () => {
     setLoading(true);
     setError('');
@@ -179,21 +170,17 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
     }
   };
 
-  // ════════════════════════════════════════════════════════════
   // FLOW: PIN SETUP & SAVE
-  // ════════════════════════════════════════════════════════════
   const handleSetPin = async () => {
     setPinError('');
     if (pin.length < 6) { setPinError('PIN must be at least 6 characters.'); return; }
     if (pin !== pinConfirm) { setPinError('PINs do not match. Please try again.'); return; }
     setLoading(true);
     try {
-      // Encrypt the secret material (mnemonic if available, otherwise base58 key)
       const secretMaterial = pendingMnemonic || bs58.encode(pendingSecretKey);
       const vault = await encryptVault(secretMaterial, pin);
       saveVaultToStorage(vault);
       saveWalletMeta(pendingPublicKey, pendingSource);
-      // Hand off to parent with the in-memory keypair (never stored plain)
       onWalletReady({
         publicKey: pendingPublicKey,
         secretKey: pendingSecretKey,
@@ -207,131 +194,190 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
     }
   };
 
-  // ════════════════════════════════════════════════════════════
-  // RENDER HELPERS
-  // ════════════════════════════════════════════════════════════
-  const words = generatedMnemonic ? generatedMnemonic.split(' ') : [];
-
-  const baseCard = {
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: '20px',
-    padding: '28px 24px',
-    maxWidth: '400px',
+  // Theme Styles matching Fiatwallet
+  const cardStyle = {
+    background: 'var(--card, #111e38)',
+    border: '1px solid var(--border, rgba(255,255,255,0.09))',
+    borderRadius: '24px',
+    padding: '32px 26px',
+    maxWidth: '420px',
     width: '100%',
     margin: '0 auto',
-    color: 'white',
+    color: 'var(--text, #f0f6ff)',
+    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45), 0 0 20px rgba(34, 211, 238, 0.05)',
+    backdropFilter: 'blur(16px)',
+    fontFamily: 'var(--ff, sans-serif)',
   };
 
   const btnPrimary = {
     width: '100%',
     padding: '14px',
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.15)',
+    background: 'linear-gradient(135deg, rgba(163,230,53,0.18), rgba(163,230,53,0.08))',
+    border: '1px solid rgba(163,230,53,0.4)',
     borderRadius: '14px',
-    color: 'white',
+    color: 'var(--lime, #a3e635)',
     fontSize: '14px',
     fontWeight: '700',
     cursor: 'pointer',
     marginBottom: '12px',
-    transition: 'background 0.2s',
+    transition: 'all 0.2s',
     letterSpacing: '0.01em',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
   };
 
   const btnSecondary = {
-    ...btnPrimary,
-    background: 'transparent',
-    border: '1px solid rgba(255,255,255,0.08)',
-    color: 'rgba(255,255,255,0.5)',
+    width: '100%',
+    padding: '13px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid var(--border2, rgba(255,255,255,0.16))',
+    borderRadius: '14px',
+    color: 'var(--text, #f0f6ff)',
+    fontSize: '13px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    marginBottom: '10px',
+    transition: 'all 0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+  };
+
+  const btnGhost = {
+    background: 'none',
+    border: 'none',
+    color: 'var(--text2, rgba(240,246,255,0.55))',
     fontSize: '13px',
     fontWeight: '500',
+    cursor: 'pointer',
+    padding: '6px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    transition: 'color 0.2s',
   };
 
   const inputStyle = {
     width: '100%',
-    padding: '12px 14px',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    padding: '13px 15px',
+    background: 'rgba(10, 22, 40, 0.75)',
+    border: '1px solid var(--border, rgba(255,255,255,0.09))',
     borderRadius: '12px',
-    color: 'white',
+    color: 'var(--text, #f0f6ff)',
     fontSize: '14px',
     outline: 'none',
     boxSizing: 'border-box',
-    fontFamily: 'inherit',
+    fontFamily: 'var(--ff, inherit)',
+    transition: 'border-color 0.2s',
   };
 
   const labelStyle = {
-    fontSize: '12px',
-    color: 'rgba(255,255,255,0.45)',
+    fontSize: '11px',
+    color: 'var(--text2, rgba(240,246,255,0.55))',
     marginBottom: '6px',
     display: 'block',
-    fontWeight: '500',
-    letterSpacing: '0.04em',
+    fontWeight: '600',
+    letterSpacing: '0.05em',
     textTransform: 'uppercase',
   };
 
   const errorBox = error ? (
-    <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#f87171', marginBottom: '14px', lineHeight: '1.5' }}>
+    <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: 'var(--red, #f87171)', marginBottom: '14px', lineHeight: '1.5' }}>
       {error}
     </div>
   ) : null;
 
-  // ── SCREEN: Onboard (landing) ─────────────────────────────
-  if (screen === 'onboard') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
-            <img src="/logo.png" alt="Fiatwallet" style={{ width: '60px', height: '60px', marginBottom: '16px' }} onError={(e) => { e.target.style.display = 'none'; }} />
-            <div style={{ fontSize: '22px', fontWeight: '800', letterSpacing: '-0.02em', marginBottom: '6px' }}>Fiatwallet</div>
-            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.5' }}>Your keys. Your crypto. Your fiat.</div>
+  const words = generatedMnemonic ? generatedMnemonic.split(' ') : [];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '85vh', padding: '24px 16px', position: 'relative', zIndex: 1 }}>
+      {/* SCREEN: Onboard (landing) */}
+      {screen === 'onboard' && (
+        <div style={cardStyle}>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <img src={logoImg} alt="Fiatwallet" style={{ width: '64px', height: '64px', objectFit: 'contain', marginBottom: '14px' }} />
+            <h1 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.02em', margin: 0, color: 'white' }}>Fiatwallet</h1>
+            <p style={{ fontSize: '13px', color: 'var(--text2, rgba(240,246,255,0.55))', marginTop: '6px', lineHeight: '1.5' }}>
+              Your self-custodial gateway for crypto and local fiat.
+            </p>
           </div>
 
-          <button style={btnPrimary} onClick={onConnectExternal}>Connect Wallet</button>
-          <button style={btnPrimary} onClick={handleStartCreate} disabled={loading}>
-            {loading ? 'Generating...' : 'Create Wallet'}
+          <button style={btnSecondary} onClick={onConnectExternal}>
+            Connect Wallet
           </button>
-          <button style={btnPrimary} onClick={() => setScreen('import-choose')}>Import Existing Wallet</button>
 
-          <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.2)', lineHeight: '1.6' }}>
-            By continuing, you acknowledge that this is a self-custodial wallet. You are solely responsible for your seed phrase.
+          <button style={btnPrimary} onClick={handleStartCreate} disabled={loading}>
+            {loading ? 'Creating Wallet...' : 'Create New Wallet'}
+          </button>
+
+          <button style={btnSecondary} onClick={() => setScreen('import-choose')}>
+            Import Existing Wallet
+          </button>
+
+          {onContinueGuest && (
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+              <button
+                onClick={onContinueGuest}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text3, rgba(240,246,255,0.4))',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: '4px',
+                }}
+              >
+                or continue to app as Guest
+              </button>
+            </div>
+          )}
+
+          <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.28))', lineHeight: '1.5' }}>
+            Self-custodial: Your private keys never leave your browser unencrypted.
           </div>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Create — Education ────────────────────────────
-  if (screen === 'create-edu') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <button onClick={() => setScreen('onboard')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', padding: 0, marginBottom: '20px' }}>
+      {/* SCREEN: Create — Education */}
+      {screen === 'create-edu' && (
+        <div style={cardStyle}>
+          <button onClick={() => setScreen('onboard')} style={btnGhost}>
             &larr; Back
           </button>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Before You Continue</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', lineHeight: '1.6', marginBottom: '24px' }}>
-            You are about to see your 12-word seed phrase. This is the only way to recover your wallet.
-          </div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>
+            Secure Your Secret Phrase
+          </h2>
+          <p style={{ fontSize: '13px', color: 'var(--text2)', lineHeight: '1.6', marginBottom: '22px' }}>
+            You will receive a 12-word seed phrase. It is the master key to your funds.
+          </p>
 
           {[
-            ['Write it on paper', 'Never store it digitally or take a screenshot.'],
-            ['Keep it offline', 'Never share it with anyone, including support staff.'],
-            ['Store it safely', 'Anyone with these words can access your funds.'],
+            ['Write it down physically', 'Save it on paper or a metal card. Do not save it in cloud notes.'],
+            ['Never share your phrase', 'Anyone with your phrase has complete control over your wallet.'],
+            ['Self-custody principle', 'Fiatwallet cannot recover your account if you lose this phrase.'],
           ].map(([title, desc]) => (
-            <div key={title} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'rgba(255,255,255,0.4)', marginTop: '6px', flexShrink: 0 }} />
+            <div key={title} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '16px', background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--lime)', marginTop: '7px', flexShrink: 0 }} />
               <div>
-                <div style={{ fontWeight: '700', fontSize: '13px', marginBottom: '2px' }}>{title}</div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.5' }}>{desc}</div>
+                <div style={{ fontWeight: '700', fontSize: '13px', color: 'white' }}>{title}</div>
+                <div style={{ fontSize: '12px', color: 'var(--text2)', marginTop: '2px', lineHeight: '1.4' }}>{desc}</div>
               </div>
             </div>
           ))}
 
-          <label style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '14px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px', marginTop: '8px' }}>
-            <input type="checkbox" checked={hasAcknowledgedEdu} onChange={e => setHasAcknowledgedEdu(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'white' }} />
-            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', lineHeight: '1.4' }}>
-              I understand that losing my seed phrase means losing access to my wallet permanently.
+          <label style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '12px 14px', background: 'rgba(163,230,53,0.05)', border: '1px solid rgba(163,230,53,0.2)', borderRadius: '12px', cursor: 'pointer', margin: '18px 0' }}>
+            <input
+              type="checkbox"
+              checked={hasAcknowledgedEdu}
+              onChange={e => setHasAcknowledgedEdu(e.target.checked)}
+              style={{ width: '16px', height: '16px', accentColor: 'var(--lime)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '12px', color: 'var(--text)', lineHeight: '1.4' }}>
+              I understand that losing my seed phrase means losing my funds permanently.
             </span>
           </label>
 
@@ -340,30 +386,25 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
             disabled={!hasAcknowledgedEdu}
             onClick={() => setScreen('create-reveal')}
           >
-            Show Seed Phrase
+            Reveal Seed Phrase
           </button>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Create — Reveal Seed Phrase ──────────────────
-  if (screen === 'create-reveal') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Your Seed Phrase</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '20px', lineHeight: '1.5' }}>
-            Write these 12 words in order and store them somewhere safe.
-          </div>
+      {/* SCREEN: Create — Reveal Seed Phrase */}
+      {screen === 'create-reveal' && (
+        <div style={cardStyle}>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: 'white' }}>Your 12-Word Phrase</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '18px', lineHeight: '1.5' }}>
+            Write down these words in exact order.
+          </p>
 
           {screenshotAttempted && (
-            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#f87171', marginBottom: '14px' }}>
-              Screenshot blocked. Please write your seed phrase on paper.
+            <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: 'var(--red)', marginBottom: '14px' }}>
+              Screenshot blocked. Please write the seed phrase manually.
             </div>
           )}
 
-          {/* Word grid */}
           <div style={{ position: 'relative', marginBottom: '20px' }}>
             <div
               style={{
@@ -379,76 +420,76 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
                 <div
                   key={i}
                   style={{
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'var(--card2, #0f1c32)',
+                    border: '1px solid var(--border)',
                     borderRadius: '10px',
                     padding: '10px 8px',
                     textAlign: 'center',
                     fontSize: '13px',
                   }}
                 >
-                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', display: 'block', marginBottom: '2px' }}>{i + 1}</span>
-                  <span style={{ fontWeight: '600', fontFamily: 'monospace' }}>{word}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text3)', display: 'block', marginBottom: '2px' }}>{i + 1}</span>
+                  <span style={{ fontWeight: '700', fontFamily: 'var(--mono, monospace)', color: 'white' }}>{word}</span>
                 </div>
               ))}
             </div>
+
             {!isSeedRevealed && (
               <div
                 style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                 onClick={() => setIsSeedRevealed(true)}
               >
-                <div style={{ background: 'rgba(20,20,30,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '14px 20px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '22px', marginBottom: '6px' }}>&#128065;</div>
-                  <div style={{ fontSize: '13px', fontWeight: '600' }}>Tap to reveal</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>Make sure no one is watching</div>
+                <div style={{ background: 'rgba(10,22,40,0.92)', border: '1px solid rgba(163,230,53,0.3)', borderRadius: '14px', padding: '16px 24px', textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--lime)' }}>Tap to reveal</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text2)', marginTop: '4px' }}>Make sure no one is looking</div>
                 </div>
               </div>
             )}
           </div>
 
-          <button style={btnPrimary} disabled={!isSeedRevealed} onClick={startQuiz} style={{ ...btnPrimary, opacity: isSeedRevealed ? 1 : 0.4, cursor: isSeedRevealed ? 'pointer' : 'not-allowed' }}>
-            I have written it down
+          <button
+            style={{ ...btnPrimary, opacity: isSeedRevealed ? 1 : 0.4, cursor: isSeedRevealed ? 'pointer' : 'not-allowed' }}
+            disabled={!isSeedRevealed}
+            onClick={startQuiz}
+          >
+            I have saved my phrase
           </button>
           <button style={btnSecondary} onClick={() => setScreen('create-edu')}>Back</button>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Create — Verify Quiz ─────────────────────────
-  if (screen === 'create-verify') {
-    const targetWord = generatedMnemonic.split(' ')[quizTargetIndex];
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Verify Your Phrase</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '24px', lineHeight: '1.5' }}>
-            Step {quizStep} of 2 — Select word #{quizTargetIndex + 1} from your seed phrase.
-          </div>
+      {/* SCREEN: Create — Verify Quiz */}
+      {screen === 'create-verify' && (
+        <div style={cardStyle}>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: 'white' }}>Confirm Phrase</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.5' }}>
+            Step {quizStep} of 2: Which word is <b>#{quizTargetIndex + 1}</b>?
+          </p>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
             {quizWordPool.map(word => {
-              let bg = 'rgba(255,255,255,0.05)';
-              let borderColor = 'rgba(255,255,255,0.1)';
+              let bg = 'rgba(255,255,255,0.04)';
+              let border = '1px solid var(--border)';
+              let color = 'white';
               if (quizSelectedWord === word) {
-                if (quizStatus === 'correct') { bg = 'rgba(163,230,53,0.1)'; borderColor = 'rgba(163,230,53,0.4)'; }
-                if (quizStatus === 'wrong') { bg = 'rgba(239,68,68,0.1)'; borderColor = 'rgba(239,68,68,0.4)'; }
+                if (quizStatus === 'correct') { bg = 'rgba(163,230,53,0.15)'; border = '1px solid var(--lime)'; color = 'var(--lime)'; }
+                if (quizStatus === 'wrong') { bg = 'rgba(248,113,113,0.15)'; border = '1px solid var(--red)'; color = 'var(--red)'; }
               }
               return (
                 <button
                   key={word}
                   onClick={() => handleQuizSelect(word)}
                   style={{
-                    padding: '10px 18px',
+                    padding: '12px 14px',
                     background: bg,
-                    border: `1px solid ${borderColor}`,
-                    borderRadius: '10px',
-                    color: 'white',
+                    border,
+                    borderRadius: '12px',
+                    color,
                     fontSize: '13px',
-                    fontWeight: '600',
+                    fontWeight: '700',
                     cursor: 'pointer',
                     transition: 'all 0.15s',
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--mono, monospace)',
                   }}
                 >
                   {word}
@@ -457,60 +498,79 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
             })}
           </div>
 
-          <button style={{ ...btnSecondary, marginTop: '24px' }} onClick={() => setScreen('create-reveal')}>Back to phrase</button>
+          <div style={{ marginTop: '24px' }}>
+            <button style={btnSecondary} onClick={() => setScreen('create-reveal')}>Back to phrase</button>
+          </div>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Import — Choose method ───────────────────────
-  if (screen === 'import-choose') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <button onClick={() => setScreen('onboard')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', padding: 0, marginBottom: '20px' }}>
+      {/* SCREEN: Import — Choose Method */}
+      {screen === 'import-choose' && (
+        <div style={cardStyle}>
+          <button onClick={() => setScreen('onboard')} style={btnGhost}>
             &larr; Back
           </button>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Import Wallet</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '24px', lineHeight: '1.5' }}>
-            Choose how you want to restore access to your wallet.
-          </div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>Import Wallet</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.5' }}>
+            Choose how you would like to restore your Solana wallet.
+          </p>
 
           <button style={btnPrimary} onClick={() => { setImportMode('mnemonic'); setScreen('import-mnemonic'); }}>
             Seed Phrase (12 or 24 words)
           </button>
-          <button style={btnPrimary} onClick={() => { setImportMode('key'); setScreen('import-key'); }}>
-            Private Key (base58)
+          <button style={btnSecondary} onClick={() => { setImportMode('key'); setScreen('import-key'); }}>
+            Private Key (Base58)
           </button>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Import — Mnemonic ─────────────────────────────
-  if (screen === 'import-mnemonic') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <button onClick={() => setScreen('import-choose')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', padding: 0, marginBottom: '20px' }}>
+      {/* SCREEN: Import — Mnemonic */}
+      {screen === 'import-mnemonic' && (
+        <div style={cardStyle}>
+          <button onClick={() => setScreen('import-choose')} style={btnGhost}>
             &larr; Back
           </button>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Enter Seed Phrase</div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '12px', color: 'white' }}>Enter Seed Phrase</h2>
 
           {/* Word count toggle */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
             {[12, 24].map(n => (
-              <button key={n} onClick={() => setWordCount(n)} style={{ padding: '6px 16px', background: wordCount === n ? 'rgba(255,255,255,0.12)' : 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+              <button
+                key={n}
+                onClick={() => setWordCount(n)}
+                style={{
+                  padding: '6px 16px',
+                  background: wordCount === n ? 'rgba(163,230,53,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: wordCount === n ? '1px solid var(--lime)' : '1px solid var(--border)',
+                  borderRadius: '20px',
+                  color: wordCount === n ? 'var(--lime)' : 'var(--text2)',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                }}
+              >
                 {n} words
               </button>
             ))}
           </div>
 
           {/* Input mode toggle */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
             {['paste', 'grid'].map(m => (
-              <button key={m} onClick={() => setInputMode(m)} style={{ padding: '5px 14px', background: inputMode === m ? 'rgba(255,255,255,0.1)' : 'transparent', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px', color: inputMode === m ? 'white' : 'rgba(255,255,255,0.4)', fontSize: '12px', cursor: 'pointer' }}>
-                {m === 'paste' ? 'Paste' : 'Word by word'}
+              <button
+                key={m}
+                onClick={() => setInputMode(m)}
+                style={{
+                  padding: '5px 14px',
+                  background: inputMode === m ? 'rgba(255,255,255,0.1)' : 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: '20px',
+                  color: inputMode === m ? 'white' : 'var(--text2)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {m === 'paste' ? 'Paste all' : 'Word by word'}
               </button>
             ))}
           </div>
@@ -519,20 +579,20 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
             <textarea
               value={mnemonicInput}
               onChange={e => setMnemonicInput(e.target.value)}
-              placeholder="Paste your seed phrase here..."
+              placeholder="Paste your 12 or 24 words separated by space..."
               rows={4}
-              style={{ ...inputStyle, resize: 'none', lineHeight: '1.6', marginBottom: '14px', fontFamily: 'monospace' }}
+              style={{ ...inputStyle, resize: 'none', lineHeight: '1.6', marginBottom: '14px', fontFamily: 'var(--mono, monospace)' }}
             />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '14px' }}>
               {importWords.map((w, i) => (
                 <div key={i} style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', top: '6px', left: '8px', fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>{i + 1}</span>
+                  <span style={{ position: 'absolute', top: '5px', left: '7px', fontSize: '9px', color: 'var(--text3)' }}>{i + 1}</span>
                   <input
                     type="text"
                     value={w}
                     onChange={e => { const arr = [...importWords]; arr[i] = e.target.value.trim().toLowerCase(); setImportWords(arr); }}
-                    style={{ ...inputStyle, paddingTop: '20px', paddingBottom: '6px', fontSize: '12px', fontFamily: 'monospace' }}
+                    style={{ ...inputStyle, paddingTop: '18px', paddingBottom: '6px', fontSize: '12px', fontFamily: 'var(--mono, monospace)' }}
                     autoComplete="off"
                     autoCapitalize="none"
                   />
@@ -544,38 +604,34 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
           {errorBox}
 
           <button style={btnPrimary} onClick={handleImportMnemonic} disabled={loading}>
-            {loading ? 'Verifying...' : 'Import Wallet'}
+            {loading ? 'Verifying...' : 'Restore Wallet'}
           </button>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Import — Private Key ─────────────────────────
-  if (screen === 'import-key') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <button onClick={() => setScreen('import-choose')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '13px', padding: 0, marginBottom: '20px' }}>
+      {/* SCREEN: Import — Private Key */}
+      {screen === 'import-key' && (
+        <div style={cardStyle}>
+          <button onClick={() => setScreen('import-choose')} style={btnGhost}>
             &larr; Back
           </button>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Enter Private Key</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '16px', lineHeight: '1.5' }}>
-            Enter your base58 encoded private key. It will be encrypted immediately.
-          </div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>Enter Private Key</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '16px', lineHeight: '1.5' }}>
+            Paste your Base58 encoded secret key.
+          </p>
 
           <div style={{ position: 'relative', marginBottom: '14px' }}>
             <input
               type={isKeyHidden ? 'password' : 'text'}
               value={privateKeyInput}
               onChange={e => setPrivateKeyInput(e.target.value)}
-              placeholder="Your private key..."
-              style={{ ...inputStyle, fontFamily: 'monospace', paddingRight: '50px' }}
+              placeholder="Base58 private key..."
+              style={{ ...inputStyle, fontFamily: 'var(--mono, monospace)', paddingRight: '54px' }}
               autoComplete="off"
             />
             <button
               onClick={() => setIsKeyHidden(!isKeyHidden)}
-              style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '12px' }}
+              style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
             >
               {isKeyHidden ? 'Show' : 'Hide'}
             </button>
@@ -584,30 +640,26 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
           {errorBox}
 
           <button style={btnPrimary} onClick={handleImportPrivateKey} disabled={loading || !privateKeyInput.trim()}>
-            {loading ? 'Verifying...' : 'Import Wallet'}
+            {loading ? 'Verifying...' : 'Restore Wallet'}
           </button>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  // ── SCREEN: Set PIN ───────────────────────────────────────
-  if (screen === 'create-pin') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: '24px', background: 'var(--bg, #0a0a0f)' }}>
-        <div style={baseCard}>
-          <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '6px' }}>Protect Your Wallet</div>
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginBottom: '24px', lineHeight: '1.5' }}>
-            Set a PIN to encrypt your wallet locally. You will need this to unlock the app.
-          </div>
+      {/* SCREEN: Set PIN */}
+      {screen === 'create-pin' && (
+        <div style={cardStyle}>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: 'white' }}>Set Local PIN</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.5' }}>
+            This PIN encrypts your keys locally on this device using AES-256.
+          </p>
 
-          <label style={labelStyle}>Create PIN</label>
+          <label style={labelStyle}>Create PIN (Min 6 digits/characters)</label>
           <input
             type="password"
             value={pin}
             onChange={e => setPin(e.target.value)}
-            placeholder="Minimum 6 characters"
-            style={{ ...inputStyle, marginBottom: '14px' }}
+            placeholder="••••••"
+            style={{ ...inputStyle, marginBottom: '14px', letterSpacing: '0.2em' }}
             autoComplete="new-password"
           />
 
@@ -616,28 +668,22 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal }) {
             type="password"
             value={pinConfirm}
             onChange={e => setPinConfirm(e.target.value)}
-            placeholder="Repeat your PIN"
-            style={{ ...inputStyle, marginBottom: '14px' }}
+            placeholder="••••••"
+            style={{ ...inputStyle, marginBottom: '16px', letterSpacing: '0.2em' }}
             autoComplete="new-password"
           />
 
           {pinError && (
-            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#f87171', marginBottom: '14px' }}>
+            <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: 'var(--red)', marginBottom: '14px' }}>
               {pinError}
             </div>
           )}
 
           <button style={btnPrimary} onClick={handleSetPin} disabled={loading || !pin || !pinConfirm}>
-            {loading ? 'Encrypting...' : 'Set PIN and Open Wallet'}
+            {loading ? 'Securing Wallet...' : 'Save & Open Wallet'}
           </button>
-
-          <div style={{ textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.2)', marginTop: '12px', lineHeight: '1.6' }}>
-            Your PIN encrypts your keys locally using AES-256. We never see or store it.
-          </div>
         </div>
-      </div>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 }

@@ -358,9 +358,11 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 // Component
 // ---------------------------------------------------------------------------
 
-export default function P2PPanel({ connected, walletTokenList, onRefreshBalances }) {
+export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction }) {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, signTransaction } = useWallet();
+  const { publicKey: adapterPublicKey, sendTransaction, signTransaction: adapterSignTransaction } = useWallet();
+  const publicKey = effectivePublicKey || adapterPublicKey;
+  const signTransaction = effectiveSignTransaction || adapterSignTransaction;
 
   // ── Env config ──────────────────────────────────────────────────────────
   const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;

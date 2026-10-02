@@ -281,32 +281,21 @@ export default function App() {
   // ── Internal (self-custodial) wallet ─────────────────────────────────────────
   const internalWallet = useInternalWallet();
 
-  // Gate: If no external wallet connected AND no internal wallet active,
-  // show Onboard (new user) or Unlock (returning user with a vault).
-  const needsOnboard = !connected && !internalWallet.isActive;
-  const needsUnlock  = !connected && !internalWallet.isActive && internalWallet.hasVault;
+  // Allow browsing in guest mode if user explicitly chooses
+  const [guestBypass, setGuestBypass] = useState(false);
 
-  if (needsUnlock) {
-    return (
-      <WalletUnlock
-        walletMeta={internalWallet.walletMeta}
-        onUnlocked={internalWallet.activate}
-        onReset={internalWallet.reset}
-      />
-    );
-  }
+  // Unified wallet connection state
+  const effectiveConnected = connected || internalWallet.isActive;
+  const effectivePublicKey = publicKey || (internalWallet.publicKey ? new PublicKey(internalWallet.publicKey) : null);
+  const effectiveSignTransaction = internalWallet.isActive ? internalWallet.signTransaction : signTransaction;
+  const effectiveSendTransaction = internalWallet.isActive ? async (tx) => {
+    const signed = await internalWallet.signTransaction(tx);
+    return connection.sendRawTransaction(signed.serialize());
+  } : sendTransaction;
 
-  if (needsOnboard) {
-    return (
-      <WalletOnboard
-        onWalletReady={internalWallet.activate}
-        onConnectExternal={() => setVisible(true)}
-      />
-    );
-  }
-
-  // ── Unified public key: prefer external wallet, fall back to internal ────────
-  const effectivePublicKey = publicKey || (internalWallet.isActive ? new PublicKey(internalWallet.publicKey) : null);
+  // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
+  const needsUnlock  = !effectiveConnected && !guestBypass && internalWallet.hasVault;
+  const needsOnboard = !effectiveConnected && !guestBypass && !internalWallet.hasVault;
 
 
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
@@ -496,7 +485,7 @@ export default function App() {
 
   // Build wallet token list — SOL + real SPL tokens from chain
   const walletTokenList = useMemo(() => {
-    if (!connected) return null;
+    if (!effectiveConnected) return null;
     const solEntry = {
       symbol: 'SOL', name: 'Solana', color: '#9945FF', bg: '#2d1a4e',
       price: liveSolPrice, balance: solBalance,
@@ -507,12 +496,12 @@ export default function App() {
       return { ...meta, ...t, price: liveRates.crypto[t.symbol] || t.price || meta.price || 0, balance: t.uiAmount };
     });
     return [solEntry, ...splEntries];
-  }, [connected, solBalance, splTokens, liveRates]);
+  }, [effectiveConnected, solBalance, splTokens, liveRates]);
 
   // When connected → show ONLY real wallet tokens
   // When not connected → show full static list so user can browse
   const selectableTokens = useMemo(() => {
-    if (connected && walletTokenList) return walletTokenList;
+    if (effectiveConnected && walletTokenList) return walletTokenList;
     return TOKENS.map(t => {
       let logoURI = '';
       if (t.symbol === 'SOL') {
@@ -523,7 +512,7 @@ export default function App() {
       }
       return { ...t, price: getLiveTokPrice(t.symbol) || t.price || 0, logoURI };
     });
-  }, [connected, walletTokenList, liveRates]);
+  }, [effectiveConnected, walletTokenList, liveRates]);
 
   const tok = token ? ((walletTokenList && walletTokenList.find(t => t.symbol === token))
     || TOKENS.find(t => t.symbol === token)) : null;
@@ -564,10 +553,10 @@ export default function App() {
         const testTransaction = new Transaction();
         testTransaction.add(
           createAssociatedTokenAccountIdempotentInstruction(
-            publicKey, ata, recipientPubkey, mintPubkey, tokenProgramId
+            effectivePublicKey, ata, recipientPubkey, mintPubkey, tokenProgramId
           )
         );
-        const { value: { err } } = await connection.simulateTransaction(testTransaction, [publicKey]);
+        const { value: { err } } = await connection.simulateTransaction(testTransaction, [effectivePublicKey]);
         if (!cancelled) setRentFeeInfo(err ? 'network' : 'rent');
       } catch (e) {
         
@@ -576,19 +565,20 @@ export default function App() {
     }
     const t = setTimeout(checkReceiverATA, 400);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [resolvedAddress, recipient, tokLive, connection, publicKey]);
+  }, [resolvedAddress, recipient, tokLive, connection, effectivePublicKey]);
 
   // Fetch real on-chain balances using the wallet-adapter connection object
   const fetchBalances = useCallback(async () => {
-    if (!publicKey || !connected) return;
+    const activeKey = effectivePublicKey;
+    if (!activeKey || !effectiveConnected) return;
     setWalletLoading(true);
     setWalletError(null);
     try {
       // 1. Fetch SOL balance and Token accounts in PARALLEL directly from RPC
       const [lamports, resp1, resp2] = await Promise.all([
-        connection.getBalance(publicKey, 'confirmed'),
-        connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID }),
-        connection.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => ({ value: [] })),
+        connection.getBalance(activeKey, 'confirmed'),
+        connection.getParsedTokenAccountsByOwner(activeKey, { programId: TOKEN_PROGRAM_ID }),
+        connection.getParsedTokenAccountsByOwner(activeKey, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => ({ value: [] })),
       ]);
 
       const solAmount = lamports / 1e9;
@@ -631,7 +621,7 @@ export default function App() {
       setWalletLoading(false);
 
       // Cache for instant next load
-      const walletKey = publicKey.toBase58();
+      const walletKey = activeKey.toBase58();
       try {
         localStorage.setItem(`fiat_cached_balance_${walletKey}`, JSON.stringify({
           sol: solAmount,
@@ -675,12 +665,12 @@ export default function App() {
       setWalletError(e.message || 'Failed to fetch balances');
       setWalletLoading(false);
     }
-  }, [connection, publicKey, connected]);
+  }, [connection, effectivePublicKey, effectiveConnected]);
 
   // Auto-fetch when wallet connects or changes, with instant cache hydration and live WebSocket listener
   useEffect(() => {
-    if (connected && publicKey) {
-      const pubkeyStr = publicKey.toBase58();
+    if (effectiveConnected && effectivePublicKey) {
+      const pubkeyStr = effectivePublicKey.toBase58();
       // 1. Instant hydration from cache (0ms UI render)
       try {
         const cachedRaw = localStorage.getItem(`fiat_cached_balance_${pubkeyStr}`);
@@ -698,7 +688,7 @@ export default function App() {
       let subId = null;
       try {
         subId = connection.onAccountChange(
-          publicKey,
+          effectivePublicKey,
           (accountInfo) => {
             const newSol = accountInfo.lamports / 1e9;
             setSolBalance(newSol);
@@ -743,7 +733,7 @@ export default function App() {
       setRecipient('');
       setAmount('');
     }
-  }, [connected, publicKey, connection, fetchBalances]);
+  }, [effectiveConnected, effectivePublicKey?.toBase58(), connection, fetchBalances]);
 
   // Auto-dismiss walletError after 10 seconds
   useEffect(() => {
@@ -757,11 +747,9 @@ export default function App() {
 
   // Separate domain lookup
   useEffect(() => {
-    if (connected && publicKey) {
-      const pubkeyStr = publicKey.toString();
+    if (effectiveConnected && effectivePublicKey) {
+      const pubkeyStr = effectivePublicKey.toBase58();
       // Use sessionStorage (tab-scoped) with a 1-hour TTL to limit persistence.
-      // localStorage is writable by extensions/XSS; sessionStorage reduces the attack
-      // surface and the TTL ensures stale domain mappings are re-verified.
       const TTL_MS = 60 * 60 * 1000; // 1 hour
       try {
         const raw = sessionStorage.getItem(`sns_${pubkeyStr}`);
@@ -785,7 +773,7 @@ export default function App() {
             .catch(() => Promise.reject());
 
           const rpcPromise = (async () => {
-            const domain = await robustReverseLookup(connection, publicKey);
+            const domain = await robustReverseLookup(connection, effectivePublicKey);
             if (domain) return domain;
             throw new Error('Not found');
           })();
@@ -793,7 +781,6 @@ export default function App() {
           const winner = await Promise.any([apiPromise, rpcPromise]).catch(() => null);
           if (winner) {
             setWalletDomain(winner);
-            // Persist with timestamp so TTL can be enforced on next reconnect
             sessionStorage.setItem(`sns_${pubkeyStr}`, JSON.stringify({ domain: winner, ts: Date.now() }));
           }
         } catch (e) {
@@ -802,16 +789,30 @@ export default function App() {
       };
       lookupDomain();
     }
-  }, [connected, publicKey?.toString(), connection]);
+  }, [effectiveConnected, effectivePublicKey?.toBase58(), connection]);
 
   function handleDisconnect() {
-    disconnect();
-    // state cleanup handled by useEffect watching [connected]
+    if (connected) {
+      disconnect();
+    }
+    if (internalWallet.isActive) {
+      internalWallet.lock();
+    }
+    setGuestBypass(false);
+  }
+
+  function handleLogoutReset() {
+    if (connected) {
+      disconnect();
+    }
+    internalWallet.reset();
+    setGuestBypass(false);
   }
 
   async function handleSend() {
     if (sending) return;
-    if (!publicKey || !connection || !num) return;
+    const activeKey = effectivePublicKey;
+    if (!activeKey || !connection || !num) return;
     setToast(null);
     
     setSending(true);
@@ -850,7 +851,7 @@ export default function App() {
       }
 
       // Guard against self-sends — sending to your own address is almost always a user error.
-      if (finalRecipient.equals(publicKey)) {
+      if (finalRecipient.equals(activeKey)) {
         throw new Error('Cannot send to your own wallet address.');
       }
 
@@ -868,7 +869,7 @@ export default function App() {
       const latestBlockhash = await connection.getLatestBlockhash('confirmed');
 
       const transaction = new Transaction();
-      transaction.feePayer = publicKey;
+      transaction.feePayer = activeKey;
       transaction.recentBlockhash = latestBlockhash.blockhash;
 
       let senderATA = null;
@@ -885,17 +886,17 @@ export default function App() {
         }
 
         // Fetch fresh SOL balance to calculate final send lamports if sending max
-        const freshLamports = await connection.getBalance(publicKey, 'confirmed');
+        const freshLamports = await connection.getBalance(activeKey, 'confirmed');
         const solBalanceLamports = BigInt(freshLamports);
 
         // If trying to send everything or very close to everything, estimate and subtract the exact fee
         if (lamports >= solBalanceLamports - BigInt(50000)) {
           // Build a probe transaction to estimate the fee accurately
           const probeTx = new Transaction();
-          probeTx.feePayer = publicKey;
+          probeTx.feePayer = activeKey;
           probeTx.recentBlockhash = latestBlockhash.blockhash;
           probeTx.add(SystemProgram.transfer({
-            fromPubkey: publicKey,
+            fromPubkey: activeKey,
             toPubkey: finalRecipient,
             lamports: Number(1000n)
           }));
@@ -919,7 +920,7 @@ export default function App() {
 
         transaction.add(
           SystemProgram.transfer({
-            fromPubkey: publicKey,
+            fromPubkey: activeKey,
             toPubkey: finalRecipient,
             lamports: Number(lamports)
           })
@@ -937,7 +938,7 @@ export default function App() {
           }
         } catch (e) { /* default to legacy Token program */ }
 
-        senderATA = getAssociatedTokenAddressSync(mintPubkey, publicKey, false, tokenProgramId);
+        senderATA = getAssociatedTokenAddressSync(mintPubkey, activeKey, false, tokenProgramId);
         const receiverATA = getAssociatedTokenAddressSync(mintPubkey, finalRecipient, false, tokenProgramId);
 
         // Check if recipient's ATA needs to be created
@@ -963,7 +964,7 @@ export default function App() {
         if (needsAtaCreation) {
           transaction.add(
             createAssociatedTokenAccountIdempotentInstruction(
-              publicKey,      // payer of rent
+              activeKey,      // payer of rent
               receiverATA,    // ATA to create
               finalRecipient, // owner of ATA
               mintPubkey,     // mint
@@ -978,7 +979,7 @@ export default function App() {
             senderATA,      // source token account
             mintPubkey,     // mint (verified by instruction)
             receiverATA,    // destination token account
-            publicKey,      // authority (owner of source ATA)
+            activeKey,      // authority (owner of source ATA)
             amountUnits,    // amount in base units
             decimals,       // decimals (verified by instruction)
             [],             // multisigners (none)
@@ -1012,7 +1013,7 @@ export default function App() {
       // ATOMIC BALANCE CHECK GUARD (Before simulation/send to minimize race window)
       // ────────────────────────────────────────────────────────────────────────
       if (tokLive.symbol === 'SOL') {
-        const latestBalance = await connection.getBalance(publicKey, 'confirmed');
+        const latestBalance = await connection.getBalance(activeKey, 'confirmed');
 
         if (BigInt(latestBalance) < solTransferLamports + estimatedFee) {
           throw new Error(`Insufficient SOL balance. You have ${(Number(latestBalance) / 1e9).toFixed(6)} SOL but need at least ${((Number(solTransferLamports) + estimatedFee) / 1e9).toFixed(6)} SOL.`);
@@ -1029,7 +1030,7 @@ export default function App() {
         }
 
         // Fetch fresh SOL balance for rent and transaction fee using confirmed commitment
-        const latestSolBalance = await connection.getBalance(publicKey, 'confirmed');
+        const latestSolBalance = await connection.getBalance(activeKey, 'confirmed');
         const requiredSOL = (needsAtaCreation ? 0.00203928 : 0) + 0.00001;
         if ((latestSolBalance / 1e9) < requiredSOL) {
           if (needsAtaCreation) {
@@ -1046,7 +1047,7 @@ export default function App() {
         amountBaseUnits: tokLive.symbol === 'SOL' ? solTransferLamports : amountUnits,
         mint: tokLive.symbol === 'SOL' ? null : tokLive.mint
       }];
-      verifyTransactionIntegrity(transaction, expectedTransfers, publicKey);
+      verifyTransactionIntegrity(transaction, expectedTransfers, activeKey);
 
       // Pre-flight simulation immediately before sendTransaction
       const simResult = await connection.simulateTransaction(transaction);
@@ -1057,7 +1058,7 @@ export default function App() {
       }
 
       // All checks passed — submit to wallet for signing and broadcast.
-      const signature = await sendTransaction(transaction, connection);
+      const signature = await effectiveSendTransaction(transaction, connection);
       
 
       // Poll for confirmation instead of relying on the WS subscription.
@@ -1098,7 +1099,7 @@ export default function App() {
 
         logTransaction({
           signature,
-          userAddress: publicKey.toBase58(),
+          userAddress: activeKey.toBase58(),
           type: 'send',
           symbol: tokLive.symbol,
           tokenAmount: tokAmt,
@@ -1155,6 +1156,41 @@ export default function App() {
       setTimeout(() => setSwipeDir(null), 320);
     }
   }, [activeTab]);
+
+  // ── Render gate for onboard/unlock (evaluated safely AFTER all hooks) ─────────
+  if (needsUnlock) {
+    return (
+      <div className="page">
+        <div className="hex-bg" />
+        <WalletUnlock
+          walletMeta={internalWallet.walletMeta}
+          onUnlocked={(walletData) => {
+            internalWallet.activate(walletData);
+            setGuestBypass(false);
+          }}
+          onReset={internalWallet.reset}
+          onConnectExternal={() => setVisible(true)}
+          onContinueGuest={() => setGuestBypass(true)}
+        />
+      </div>
+    );
+  }
+
+  if (needsOnboard) {
+    return (
+      <div className="page">
+        <div className="hex-bg" />
+        <WalletOnboard
+          onWalletReady={(walletData) => {
+            internalWallet.activate(walletData);
+            setGuestBypass(false);
+          }}
+          onConnectExternal={() => setVisible(true)}
+          onContinueGuest={() => setGuestBypass(true)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -1257,17 +1293,61 @@ export default function App() {
         </div>
 
         <div className="nav-actions">
-          {connected && publicKey && (
-            <span className="nav-addr" title={publicKey.toBase58()}>{walletDomain || (publicKey.toBase58().slice(0,4) + '…' + publicKey.toBase58().slice(-4))}</span>
+          {effectiveConnected && effectivePublicKey && (
+            <span className="nav-addr" title={effectivePublicKey.toBase58()}>
+              {walletDomain || (effectivePublicKey.toBase58().slice(0,4) + '…' + effectivePublicKey.toBase58().slice(-4))}
+              {internalWallet.isActive && (
+                <span style={{ fontSize: '10px', color: 'var(--lime)', marginLeft: '5px', fontWeight: 'bold' }}>
+                  • Local
+                </span>
+              )}
+            </span>
           )}
-          {connected
-            ? <button className="btn-connected" onClick={handleDisconnect}><span className="live-dot" />Disconnect ▾</button>
-            : <button className="btn-connect" onClick={() => setVisible(true)}>Connect Wallet</button>
-          }
+          {effectiveConnected ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                className="btn-connected"
+                onClick={handleDisconnect}
+                title={internalWallet.isActive ? "Lock local wallet" : "Disconnect wallet"}
+              >
+                <span className="live-dot" />
+                {internalWallet.isActive ? 'Lock' : 'Disconnect ▾'}
+              </button>
+              {internalWallet.isActive && (
+                <button
+                  onClick={handleLogoutReset}
+                  title="Logout and remove local wallet from this device"
+                  style={{
+                    background: 'rgba(248, 113, 113, 0.1)',
+                    border: '1px solid rgba(248, 113, 113, 0.25)',
+                    borderRadius: '10px',
+                    color: 'var(--red, #f87171)',
+                    padding: '7px 11px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--ff)',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  Logout
+                </button>
+              )}
+            </div>
+          ) : (
+            <button className="btn-connect" onClick={() => { setGuestBypass(false); setVisible(true); }}>
+              Connect Wallet
+            </button>
+          )}
         </div>
       </nav>
 
-      <FloatClaimWidget liveSolPrice={liveSolPrice} onClaimSuccess={fetchBalances} />
+      <FloatClaimWidget
+        liveSolPrice={liveSolPrice}
+        onClaimSuccess={fetchBalances}
+        effectivePublicKey={effectivePublicKey}
+        effectiveConnected={effectiveConnected}
+      />
 
       <div
         className={`main tab-${activeTab}${swipeDir ? ` swipe-${swipeDir}` : ''}`}
@@ -1276,7 +1356,13 @@ export default function App() {
       >
         <div className="app-card p2p-card">
           <div className="card-body">
-            <P2PPanel connected={connected} walletTokenList={walletTokenList} onRefreshBalances={fetchBalances} />
+            <P2PPanel
+              connected={effectiveConnected}
+              walletTokenList={walletTokenList}
+              onRefreshBalances={fetchBalances}
+              effectivePublicKey={effectivePublicKey}
+              effectiveSignTransaction={effectiveSignTransaction}
+            />
           </div>
         </div>
 
@@ -1406,9 +1492,9 @@ export default function App() {
             )}
 
             {bulkMode ? (
-              <BulkSendPanel tok={tokLive} connected={connected} getLiveRate={getLiveCurrRate}
-                connection={connection} publicKey={publicKey}
-                sendTransaction={sendTransaction} signAllTransactions={signAllTransactions} />
+              <BulkSendPanel tok={tokLive} connected={effectiveConnected} getLiveRate={getLiveCurrRate}
+                connection={connection} publicKey={effectivePublicKey}
+                sendTransaction={effectiveSendTransaction} signAllTransactions={signAllTransactions} />
             ) : (
               <>
                 <div className="field">
@@ -1419,10 +1505,10 @@ export default function App() {
                 {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
 
                 <button className="send-btn"
-                  disabled={!connected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
+                  disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
                   onClick={handleSend}>
                   {sending ? 'Sending…'
-                    : !connected ? 'Connect wallet to send'
+                    : !effectiveConnected ? 'Connect wallet to send'
                     : !tokLive ? 'Select a token to continue'
                     : ratesAreStale ? 'Waiting for fresh rates…'
                     : !resolvedAddress ? 'Enter a valid recipient'
@@ -1439,6 +1525,9 @@ export default function App() {
           currency={currency}
           setCurrency={setCurrency}
           currRate={currRate}
+          effectivePublicKey={effectivePublicKey}
+          effectiveConnected={effectiveConnected}
+          effectiveSendTransaction={effectiveSendTransaction}
         />
       </div>
 
