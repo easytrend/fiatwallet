@@ -19,9 +19,13 @@
     "@solana/wallet-adapter-wallets": "^0.19.38",
     "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.108.2",
+    "bip39": "^3.1.0",
+    "bs58": "^6.0.0",
     "buffer": "^6.0.3",
+    "ed25519-hd-key": "^2.0.0",
     "jsqr": "^1.4.0",
     "paj_ramp": "^1.5.4",
+    "qrcode": "^1.5.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "tesseract.js": "^7.0.0"

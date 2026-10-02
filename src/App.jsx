@@ -20,6 +20,10 @@ import SwapWidget from './components/SwapWidget';
 import P2PPanel from './components/P2PPanel';
 import SupportChat from './components/SupportChat';
 import { logTransaction } from './services/supabase';
+import WalletOnboard from './components/WalletOnboard';
+import WalletUnlock from './components/WalletUnlock';
+import { useInternalWallet } from './hooks/useInternalWallet';
+
 
 
 // SNS_LINK must not embed referral/tracking parameters.
@@ -273,6 +277,36 @@ export default function App() {
   const { connection } = useConnection();
   const { publicKey, connected, disconnect, sendTransaction, signAllTransactions } = useWallet();
   const { setVisible } = useWalletModal();
+
+  // ── Internal (self-custodial) wallet ─────────────────────────────────────────
+  const internalWallet = useInternalWallet();
+
+  // Gate: If no external wallet connected AND no internal wallet active,
+  // show Onboard (new user) or Unlock (returning user with a vault).
+  const needsOnboard = !connected && !internalWallet.isActive;
+  const needsUnlock  = !connected && !internalWallet.isActive && internalWallet.hasVault;
+
+  if (needsUnlock) {
+    return (
+      <WalletUnlock
+        walletMeta={internalWallet.walletMeta}
+        onUnlocked={internalWallet.activate}
+        onReset={internalWallet.reset}
+      />
+    );
+  }
+
+  if (needsOnboard) {
+    return (
+      <WalletOnboard
+        onWalletReady={internalWallet.activate}
+        onConnectExternal={() => setVisible(true)}
+      />
+    );
+  }
+
+  // ── Unified public key: prefer external wallet, fall back to internal ────────
+  const effectivePublicKey = publicKey || (internalWallet.isActive ? new PublicKey(internalWallet.publicKey) : null);
 
 
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
