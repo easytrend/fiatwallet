@@ -17,9 +17,14 @@ export default function WalletMenuDrawer({
   const [fiatTag, setFiatTag] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const effectiveAddr = walletAddress || (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '';
+
   useEffect(() => {
-    if (!walletAddress) return;
-    getFiatTagByWallet(walletAddress)
+    if (!effectiveAddr) {
+      setFiatTag(null);
+      return;
+    }
+    getFiatTagByWallet(effectiveAddr)
       .then(tag => {
         if (tag && tag.tag_name) {
           setFiatTag(tag.tag_name.startsWith('$') ? tag.tag_name.replace('$', '@') : `@${tag.tag_name}`);
@@ -28,16 +33,16 @@ export default function WalletMenuDrawer({
         }
       })
       .catch(() => setFiatTag(null));
-  }, [walletAddress, isOpen]);
+  }, [effectiveAddr, isOpen]);
 
   const handleCopyAddr = () => {
-    if (!walletAddress) return;
-    navigator.clipboard.writeText(walletAddress);
+    if (!effectiveAddr) return;
+    navigator.clipboard.writeText(effectiveAddr);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const shortAddr = walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : '';
+  const shortAddr = effectiveAddr ? `${effectiveAddr.slice(0, 4)}...${effectiveAddr.slice(-4)}` : '';
 
   if (!isOpen) return null;
 
@@ -103,20 +108,20 @@ export default function WalletMenuDrawer({
         </div>
 
         {/* User Identity Card */}
-        {walletAddress && (
-          <div
-            style={{
-              background: 'rgba(17, 30, 56, 0.6)',
-              border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-              borderRadius: '16px',
-              padding: '14px',
-              marginBottom: '24px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text3, rgba(240, 246, 255, 0.45))', textTransform: 'uppercase', fontWeight: '700' }}>
-                Active Account
-              </span>
+        <div
+          style={{
+            background: 'rgba(17, 30, 56, 0.6)',
+            border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+            borderRadius: '16px',
+            padding: '14px',
+            marginBottom: '24px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text3, rgba(240, 246, 255, 0.45))', textTransform: 'uppercase', fontWeight: '700' }}>
+              {effectiveAddr ? 'Active Account' : 'Guest Session'}
+            </span>
+            {effectiveAddr && (
               <button
                 onClick={handleCopyAddr}
                 style={{
@@ -131,38 +136,38 @@ export default function WalletMenuDrawer({
               >
                 {copied ? '✓ Copied' : 'Copy'}
               </button>
-            </div>
-            <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: '12px', fontWeight: '600', color: 'white' }}>
-              {shortAddr}
-            </div>
-
-            {/* Fiat Tag Badge */}
-            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text2)' }}>Fiat Tag:</span>
-              {fiatTag ? (
-                <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
-                  {fiatTag}
-                </span>
-              ) : (
-                <button
-                  onClick={() => { onClose(); onOpenBankDetails(); }}
-                  style={{
-                    background: 'rgba(163, 230, 53, 0.1)',
-                    border: '1px solid rgba(163, 230, 53, 0.3)',
-                    borderRadius: '6px',
-                    color: 'var(--lime, #a3e635)',
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    padding: '3px 8px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  + Link Tag
-                </button>
-              )}
-            </div>
+            )}
           </div>
-        )}
+          <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: '12px', fontWeight: '600', color: 'white' }}>
+            {effectiveAddr ? shortAddr : 'Guest Mode (Self-Custodial)'}
+          </div>
+
+          {/* Fiat Tag Badge */}
+          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text2)' }}>Fiat Tag:</span>
+            {fiatTag ? (
+              <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
+                {fiatTag}
+              </span>
+            ) : (
+              <button
+                onClick={() => { onClose(); onOpenBankDetails(); }}
+                style={{
+                  background: 'rgba(163, 230, 53, 0.1)',
+                  border: '1px solid rgba(163, 230, 53, 0.3)',
+                  borderRadius: '6px',
+                  color: 'var(--lime, #a3e635)',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  padding: '3px 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                + Link Tag
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Menu Items List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>

@@ -1951,7 +1951,7 @@ export default function App() {
       <WalletMenuDrawer
         isOpen={showMenuDrawer}
         onClose={() => setShowMenuDrawer(false)}
-        walletAddress={effectivePublicKey?.toBase58()}
+        walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : (localStorage.getItem('paj_manual_wallet') || '')}
         isInternal={internalWallet.isActive}
         onOpenBankDetails={() => setShowBankDetailsModal(true)}
         onOpenSecurity={() => setShowSecurityModal(true)}
@@ -1973,9 +1973,10 @@ export default function App() {
       )}
 
       {/* ── Fiat Tag & Bank Details Modal ── */}
-      {showBankDetailsModal && effectivePublicKey && (
+      {showBankDetailsModal && (
         <BankDetailsModal
-          walletAddress={effectivePublicKey.toBase58()}
+          walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : (localStorage.getItem('paj_manual_wallet') || '')}
+          isGuest={!effectivePublicKey}
           onClose={() => setShowBankDetailsModal(false)}
         />
       )}

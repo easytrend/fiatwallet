@@ -1,49 +1,140 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { getBanks, resolveBankAccount, initiateSession, verifySession } from '../services/pajcashService';
 import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession } from '../services/supabase';
 
 const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;
 
-export default function BankDetailsModal({ walletAddress, onClose, onTagSaved }) {
-  const [tagName, setTagName] = useState('');
-  const [banks, setBanks] = useState([]);
-  const [bankSearch, setBankSearch] = useState('');
-  const [selectedBankId, setSelectedBankId] = useState('');
-  const [selectedBankCode, setSelectedBankCode] = useState('');
-  const [selectedBankName, setSelectedBankName] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
-  const [resolving, setResolving] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+const getBankNameString = (b) => {
+  if (!b) return '';
+  if (typeof b === 'string') return b;
+  return b.name || b.bank_name || b.bankName || b.title || b.label || String(b.id || b.code || '');
+};
 
-  // PajCash session state
+const BANK_ALIASES = {
+  opay: ['paycom', 'opay'],
+  paycom: ['opay', 'paycom'],
+  palmpay: ['palmpay', 'palm pay'],
+  kuda: ['kuda'],
+  moniepoint: ['moniepoint', 'teamapt'],
+  teamapt: ['moniepoint', 'teamapt'],
+  gtb: ['guaranty trust', 'gtbank', 'gtb'],
+  gtbank: ['guaranty trust', 'gtbank', 'gtb'],
+  uba: ['united bank for africa', 'uba'],
+  fbn: ['first bank', 'firstbank', 'fbn'],
+  firstbank: ['first bank', 'firstbank', 'fbn'],
+  zenith: ['zenith'],
+  access: ['access'],
+  stanbic: ['stanbic', 'ibtc'],
+  sterling: ['sterling'],
+  wema: ['wema', 'alat'],
+  alat: ['wema', 'alat'],
+  vfd: ['vfd', 'vee'],
+  fairmoney: ['fairmoney', 'fair money'],
+  rubies: ['rubies'],
+  carbon: ['carbon'],
+  ecobank: ['ecobank', 'eco bank'],
+  fidelity: ['fidelity'],
+  fcmb: ['first city monument', 'fcmb'],
+  heritage: ['heritage'],
+  keystone: ['keystone'],
+  polaris: ['polaris', 'skye'],
+  providus: ['providus'],
+  jaiz: ['jaiz'],
+  taj: ['taj'],
+  union: ['union bank', 'union'],
+  unity: ['unity bank', 'unity'],
+};
+
+function searchMatchesBank(bankNameStr, rawQuery) {
+  if (!bankNameStr || typeof bankNameStr !== 'string') return { isMatch: false, score: 0 };
+  const query = rawQuery.toLowerCase().trim();
+  if (!query) return { isMatch: true, score: 0 };
+
+  const nameLower = bankNameStr.toLowerCase().trim();
+  const nameClean = nameLower.replace(/[^a-z0-9]/g, '');
+  const queryClean = query.replace(/[^a-z0-9]/g, '');
+
+  if (!queryClean) return { isMatch: true, score: 0 };
+
+  // 1. Exact match
+  if (nameLower === query || nameClean === queryClean) {
+    return { isMatch: true, score: 100 };
+  }
+
+  // 2. Starts with query
+  if (nameLower.startsWith(query) || nameClean.startsWith(queryClean)) {
+    return { isMatch: true, score: 85 };
+  }
+
+  // 3. Substring match
+  if (nameLower.includes(query) || nameClean.includes(queryClean)) {
+    return { isMatch: true, score: 65 };
+  }
+
+  // 4. Word-start match
+  const words = nameLower.split(/[\s\-_()]+/);
+  const wordStartsWith = words.some(w => w.startsWith(queryClean));
+  if (wordStartsWith) {
+    return { isMatch: true, score: 70 };
+  }
+
+  // 5. Alias match
+  for (const [key, aliases] of Object.entries(BANK_ALIASES)) {
+    if (queryClean === key || aliases.some(a => a.replace(/[^a-z0-9]/g, '') === queryClean)) {
+      if (aliases.some(a => nameLower.includes(a.toLowerCase()))) {
+        return { isMatch: true, score: 90 };
+      }
+    }
+  }
+
+  return { isMatch: false, score: 0 };
+}
+
+export default function BankDetailsModal({ walletAddress, isGuest = false, onClose, onTagSaved }) {
+  const [manualTagModalWallet, setManualTagModalWallet] = useState(() => {
+    return walletAddress || (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '';
+  });
+
+  const [userTagData, setUserTagData] = useState(null);
+  const [tagModalInput, setTagModalInput] = useState('');
+  const [tagModalBank, setTagModalBank] = useState('Choose Bank');
+  const [tagModalAcctNumber, setTagModalAcctNumber] = useState('');
+  const [tagModalAcctName, setTagModalAcctName] = useState('');
+  const [tagModalResolving, setTagModalResolving] = useState(false);
+  const [tagModalSaving, setTagModalSaving] = useState(false);
+  const [tagModalError, setTagModalError] = useState('');
+  const [tagModalSuccess, setTagModalSuccess] = useState('');
+
+  // Searchable bank dropdown state
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankSearch, setBankSearch] = useState('');
+  const [apiBanks, setApiBanks] = useState([]);
+
+  // Session state
   const [sessionToken, setSessionToken] = useState('');
   const [sessionEmail, setSessionEmail] = useState('');
   const [sessionLoading, setSessionLoading] = useState(true);
 
-  // Inline email OTP state (fallback if user has no session yet)
+  // Inline email OTP state (fallback if no active session exists)
   const [emailInput, setEmailInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [authStep, setAuthStep] = useState('email'); // 'email' | 'otp'
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
-  const resolveTimerRef = useRef(null);
+  const isGuestMode = isGuest || !walletAddress;
+  const effectiveWallet = (walletAddress || manualTagModalWallet || '').trim();
 
-  // 1. Resolve active PajCash session on mount
+  // 1. Restore PajCash session
   useEffect(() => {
     let isMounted = true;
-
-    async function checkSession() {
+    async function restoreSession() {
       setSessionLoading(true);
       try {
-        // ① Check localStorage for this specific wallet
-        if (walletAddress) {
-          const cachedToken = localStorage.getItem(`paj_sessionToken_${walletAddress}`);
-          const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${walletAddress}`);
-          const cachedEmail = localStorage.getItem(`paj_sessionEmail_${walletAddress}`);
+        if (effectiveWallet) {
+          const cachedToken = localStorage.getItem(`paj_sessionToken_${effectiveWallet}`);
+          const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${effectiveWallet}`);
+          const cachedEmail = localStorage.getItem(`paj_sessionEmail_${effectiveWallet}`);
 
           if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
             if (isMounted) {
@@ -54,9 +145,9 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
             return;
           }
 
-          // ② Check Supabase paj_sessions for this wallet
+          // Check Supabase paj_sessions table
           try {
-            const row = await loadSession(walletAddress);
+            const row = await loadSession(effectiveWallet);
             if (row?.session_token && isMounted) {
               const expiryMs = row.expires_at
                 ? new Date(row.expires_at).getTime()
@@ -66,21 +157,20 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
               setSessionEmail(row.email || '');
               setSessionLoading(false);
 
-              localStorage.setItem(`paj_sessionToken_${walletAddress}`, row.session_token);
-              if (row.email) localStorage.setItem(`paj_sessionEmail_${walletAddress}`, row.email);
-              localStorage.setItem(`paj_sessionExpiry_${walletAddress}`, String(expiryMs));
+              localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, row.session_token);
+              if (row.email) localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, row.email);
+              localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
               return;
             }
-          } catch (supErr) {
-            console.warn('[BankDetailsModal] Supabase session check error:', supErr);
+          } catch (e) {
+            console.warn('[BankDetailsModal] Supabase session lookup warning:', e);
           }
         }
 
-        // ③ Check manual / guest session
+        // Check manual / guest session
         const manualToken = localStorage.getItem('paj_manual_sessionToken');
         const manualExpiry = localStorage.getItem('paj_manual_sessionExpiry');
         const manualEmail = localStorage.getItem('paj_manual_sessionEmail');
-
         if (manualToken && (!manualExpiry || Date.now() < Number(manualExpiry))) {
           if (isMounted) {
             setSessionToken(manualToken);
@@ -90,7 +180,7 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
           return;
         }
 
-        // ④ Check any active paj_sessionToken_ in localStorage
+        // Check any active paj_sessionToken_ in localStorage
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
           if (k && k.startsWith('paj_sessionToken_')) {
@@ -112,157 +202,150 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
       }
     }
 
-    checkSession();
+    restoreSession();
     return () => { isMounted = false; };
-  }, [walletAddress]);
+  }, [effectiveWallet]);
 
-  // 2. Load existing tag if any
+  // 2. Load existing Fiat Tag & full account details
   useEffect(() => {
-    if (!walletAddress) return;
-    getFiatTagByWallet(walletAddress)
+    if (!effectiveWallet || effectiveWallet.length < 32) {
+      setUserTagData(null);
+      return;
+    }
+
+    let isMounted = true;
+    getFiatTagByWallet(effectiveWallet)
       .then(tag => {
+        if (!isMounted) return;
         if (tag) {
-          setTagName(tag.tag_name ? tag.tag_name.replace('$', '') : '');
-          setSelectedBankName(tag.bank_name || '');
-          setSelectedBankCode(tag.bank_code || '');
-          setSelectedBankId(tag.bank_id || tag.bank_code || '');
-          setAccountNumber(tag.account_number || '');
-          setAccountName(tag.account_name || '');
+          setUserTagData(tag);
+          setTagModalInput(tag.tag_name ? (tag.tag_name.startsWith('$') ? tag.tag_name : `$${tag.tag_name}`) : '');
+          setTagModalBank(tag.bank_name || 'Choose Bank');
+          setTagModalAcctNumber(tag.account_number || '');
+          setTagModalAcctName(tag.account_name || '');
+        } else {
+          setUserTagData(null);
         }
       })
-      .catch(err => console.warn('[BankDetailsModal] Error loading tag:', err));
-  }, [walletAddress]);
+      .catch(() => {
+        if (isMounted) setUserTagData(null);
+      });
 
-  // 3. Fetch supported banks from PajCash API
+    return () => { isMounted = false; };
+  }, [effectiveWallet]);
+
+  // 3. Fetch supported banks
   useEffect(() => {
     let isMounted = true;
-    const fetchBanks = async () => {
-      try {
-        const res = await getBanks(sessionToken || PAJCASH_API_KEY || undefined);
-        const list = Array.isArray(res) ? res : (res?.data || []);
-        if (list.length > 0 && isMounted) {
-          setBanks(list);
-          return;
+    getBanks(sessionToken || PAJCASH_API_KEY || undefined)
+      .then(list => {
+        const arr = Array.isArray(list) ? list : (list?.data || []);
+        if (arr.length > 0 && isMounted) {
+          setApiBanks(arr);
         }
-      } catch (sdkErr) {
-        console.warn('[BankDetailsModal] sdkGetBanks error, trying direct public endpoint:', sdkErr);
-      }
+      })
+      .catch(() => {
+        // Fallback to public endpoint
+        fetch('https://api.paj.cash/pub/bank')
+          .then(r => r.json())
+          .then(arr => {
+            const list = Array.isArray(arr) ? arr : (arr?.data || []);
+            if (list.length > 0 && isMounted) {
+              setApiBanks(list);
+            }
+          })
+          .catch(() => {});
+      });
 
-      // Public endpoint fallback
-      try {
-        const resp = await fetch('https://api.paj.cash/pub/bank');
-        if (resp.ok) {
-          const data = await resp.json();
-          const list = Array.isArray(data) ? data : (data?.data || []);
-          if (list.length > 0 && isMounted) {
-            setBanks(list);
-          }
-        }
-      } catch (pubErr) {
-        console.warn('[BankDetailsModal] Public bank fetch error:', pubErr);
-      }
-    };
-
-    fetchBanks();
     return () => { isMounted = false; };
   }, [sessionToken]);
 
-  // 4. Synchronize selectedBankId if bank_name or bank_code was preloaded
+  // Compute sorted unique bank names
+  const allBankNames = useMemo(() => {
+    const names = apiBanks.map(b => getBankNameString(b)).filter(Boolean);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [apiBanks]);
+
+  // Filtered bank names based on search query
+  const filteredBanksList = useMemo(() => {
+    const query = bankSearch.trim();
+    if (!query) return allBankNames;
+
+    const scored = [];
+    for (const b of allBankNames) {
+      const match = searchMatchesBank(b, query);
+      if (match.isMatch) {
+        scored.push({ name: b, score: match.score });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    return scored.map(s => s.name);
+  }, [allBankNames, bankSearch]);
+
+  // 4. Auto-resolve account name in Tag Registration modal
   useEffect(() => {
-    if (!banks.length) return;
-    if (!selectedBankId && (selectedBankCode || selectedBankName)) {
-      const match = banks.find(b =>
-        (selectedBankCode && (b.id === selectedBankCode || b.code === selectedBankCode)) ||
-        (selectedBankName && (b.name || '').toLowerCase() === selectedBankName.toLowerCase())
-      );
-      if (match) {
-        setSelectedBankId(match.id || match.code);
-        if (!selectedBankCode) setSelectedBankCode(match.code || match.bank_code || '');
-        if (!selectedBankName) setSelectedBankName(match.name || match.bank_name || '');
-      }
+    if (!tagModalAcctNumber || tagModalBank === 'Choose Bank') {
+      return;
     }
-  }, [banks, selectedBankCode, selectedBankName, selectedBankId]);
+    const cleanNum = tagModalAcctNumber.replace(/\D/g, '').trim();
+    if (cleanNum.length !== 10) return;
 
-  // 5. Auto-resolve bank account name when 10 digits and bank selected
-  useEffect(() => {
-    if (resolveTimerRef.current) {
-      clearTimeout(resolveTimerRef.current);
+    if (sessionLoading) return;
+
+    if (!sessionToken) {
+      setTagModalAcctName('');
+      setTagModalError('PajCash verification required. Please link your email below.');
+      return;
     }
 
-    const cleanNum = accountNumber.trim().replace(/\D/g, '');
+    setTagModalResolving(true);
+    setTagModalError('');
 
-    if (cleanNum.length === 10 && selectedBankId) {
-      if (sessionLoading) return; // Wait until session token resolution finishes
+    const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
+    const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : tagModalBank;
 
-      if (!sessionToken) {
-        setAccountName('');
-        setError('PajCash verification required. Please enter your email below to verify.');
-        return;
-      }
-
-      setResolving(true);
-      setError('');
-
-      resolveTimerRef.current = setTimeout(() => {
-        resolveBankAccount(sessionToken, selectedBankId, cleanNum)
-          .then(res => {
-            const resolvedName =
-              res?.accountName ||
-              res?.account_name ||
-              res?.name ||
-              res?.data?.account_name ||
-              res?.data?.accountName ||
-              '';
-
-            if (resolvedName) {
-              setAccountName(resolvedName);
-              setError('');
-            } else {
-              setAccountName('');
-              setError('Could not verify account name. Please check your bank and account number.');
+    const timer = setTimeout(() => {
+      resolveBankAccount(sessionToken, bankId, cleanNum)
+        .then(res => {
+          const name = res?.accountName || res?.name || res?.account_name || res?.data?.account_name || res?.data?.accountName || '';
+          setTagModalAcctName(name || 'No Bank Match');
+          if (name) {
+            setTagModalError('');
+          } else {
+            setTagModalError('Could not verify account name. Please check your bank and account number.');
+          }
+        })
+        .catch(err => {
+          setTagModalAcctName('No Bank Match');
+          const msg = err?.message || 'Error resolving bank account.';
+          setTagModalError(msg);
+          if (
+            msg.toLowerCase().includes('session') ||
+            msg.toLowerCase().includes('expired') ||
+            msg.toLowerCase().includes('unauthorized') ||
+            msg.toLowerCase().includes('invalid token')
+          ) {
+            setSessionToken('');
+            if (effectiveWallet) {
+              localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
+              localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
             }
-          })
-          .catch(err => {
-            setAccountName('');
-            const msg = err?.message || String(err);
-            setError(msg);
+          }
+        })
+        .finally(() => setTagModalResolving(false));
+    }, 300);
 
-            // Handle session invalidation
-            if (
-              msg.toLowerCase().includes('session') ||
-              msg.toLowerCase().includes('expired') ||
-              msg.toLowerCase().includes('unauthorized') ||
-              msg.toLowerCase().includes('invalid token')
-            ) {
-              setSessionToken('');
-              if (walletAddress) {
-                localStorage.removeItem(`paj_sessionToken_${walletAddress}`);
-                localStorage.removeItem(`paj_sessionExpiry_${walletAddress}`);
-              }
-            }
-          })
-          .finally(() => setResolving(false));
-      }, 350);
+    return () => clearTimeout(timer);
+  }, [tagModalAcctNumber, tagModalBank, sessionToken, sessionLoading, apiBanks, effectiveWallet]);
 
-      return () => {
-        if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current);
-      };
-    } else {
-      if (cleanNum.length !== 10) {
-        setAccountName('');
-      }
-    }
-  }, [accountNumber, selectedBankId, sessionToken, sessionLoading, walletAddress]);
-
-  // 6. Handle inline email OTP session initiation
-  const handleInitiateEmail = async (e) => {
-    if (e) e.preventDefault();
+  // 5. Handle inline email OTP initiation
+  const handleInitiateEmail = async () => {
     if (!emailInput.trim()) {
       setAuthError('Please enter your email.');
       return;
     }
-    const apiKey = PAJCASH_API_KEY;
-    if (!apiKey) {
+    if (!PAJCASH_API_KEY) {
       setAuthError('PajCash API key is not configured.');
       return;
     }
@@ -270,7 +353,7 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
     setAuthLoading(true);
     setAuthError('');
     try {
-      await initiateSession(emailInput.trim(), apiKey);
+      await initiateSession(emailInput.trim(), PAJCASH_API_KEY);
       setAuthStep('otp');
     } catch (err) {
       setAuthError(err.message || 'Failed to send OTP code.');
@@ -279,15 +362,13 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
     }
   };
 
-  // 7. Handle inline email OTP verification
-  const handleVerifyEmail = async (e) => {
-    if (e) e.preventDefault();
+  // 6. Handle inline email OTP verification
+  const handleVerifyEmail = async () => {
     if (!otpInput.trim()) {
       setAuthError('Please enter the 6-digit OTP code.');
       return;
     }
-    const apiKey = PAJCASH_API_KEY;
-    if (!apiKey) {
+    if (!PAJCASH_API_KEY) {
       setAuthError('PajCash API key is not configured.');
       return;
     }
@@ -295,19 +376,19 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
     setAuthLoading(true);
     setAuthError('');
     try {
-      const res = await verifySession(emailInput.trim(), otpInput.trim(), apiKey);
+      const res = await verifySession(emailInput.trim(), otpInput.trim(), PAJCASH_API_KEY);
       if (res?.token) {
         setSessionToken(res.token);
         setSessionEmail(emailInput.trim());
-        setError('');
+        setTagModalError('');
         setAuthError('');
 
         const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
-        if (walletAddress) {
-          localStorage.setItem(`paj_sessionToken_${walletAddress}`, res.token);
-          localStorage.setItem(`paj_sessionEmail_${walletAddress}`, emailInput.trim());
-          localStorage.setItem(`paj_sessionExpiry_${walletAddress}`, String(expiryMs));
-          saveSession(walletAddress, emailInput.trim(), res.token, expiryMs);
+        if (effectiveWallet) {
+          localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, res.token);
+          localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, emailInput.trim());
+          localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
+          saveSession(effectiveWallet, emailInput.trim(), res.token, expiryMs);
         } else {
           localStorage.setItem('paj_manual_sessionToken', res.token);
           localStorage.setItem('paj_manual_sessionEmail', emailInput.trim());
@@ -322,105 +403,104 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
     }
   };
 
-  // 8. Handle save Fiat Tag
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    const cleanTag = tagName.trim().replace(/^@/, '').replace(/^\$/, '');
+  // 7. Save user's Fiat Tag to Supabase
+  const handleSaveFiatTag = useCallback(async () => {
+    if (!effectiveWallet) {
+      setTagModalError('Please enter your Solana wallet address.');
+      return;
+    }
+    if (effectiveWallet.length < 32 || effectiveWallet.length > 44) {
+      setTagModalError('Please enter a valid Solana wallet address (32-44 characters).');
+      return;
+    }
+    if (!sessionToken) {
+      setTagModalError('Please verify your email first before creating a Fiat Tag.');
+      return;
+    }
+    const cleanTag = tagModalInput.trim().replace(/^@/, '').replace(/^\$/, '');
     if (!cleanTag || cleanTag.length < 3) {
-      setError('Fiat Tag must be at least 3 characters.');
+      setTagModalError('Please enter a valid tag name (minimum 3 characters).');
       return;
     }
-    if (!/^[a-zA-Z0-9_]+$/.test(cleanTag)) {
-      setError('Fiat Tag can only contain letters, numbers, and underscores.');
+    if (tagModalBank === 'Choose Bank') {
+      setTagModalError('Please select a bank.');
       return;
     }
-    if (!selectedBankName || !selectedBankId) {
-      setError('Please select your bank.');
+    const cleanAcct = tagModalAcctNumber.replace(/\D/g, '').trim();
+    if (cleanAcct.length !== 10) {
+      setTagModalError('Please enter a valid 10-digit account number.');
       return;
     }
-    const cleanNum = accountNumber.trim().replace(/\D/g, '');
-    if (cleanNum.length !== 10) {
-      setError('Please enter a valid 10-digit Nigerian account number.');
-      return;
-    }
-    if (!accountName.trim()) {
-      setError('Account name could not be verified. Please ensure the bank and account number are correct.');
+    if (!tagModalAcctName || tagModalAcctName === 'No Bank Match') {
+      setTagModalError('Account name could not be verified. Please check account details.');
       return;
     }
 
-    setSaving(true);
+    setTagModalSaving(true);
+    setTagModalError('');
+    setTagModalSuccess('');
+
     try {
-      const saved = await registerFiatTag({
-        walletAddress,
+      const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
+      const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
+
+      const registered = await registerFiatTag({
+        walletAddress: effectiveWallet,
         tagName: `$${cleanTag}`,
-        bankName: selectedBankName,
-        bankCode: selectedBankCode || selectedBankId,
-        accountNumber: cleanNum,
-        accountName: accountName.trim(),
+        bankName: tagModalBank,
+        bankCode,
+        accountNumber: cleanAcct,
+        accountName: tagModalAcctName,
       });
 
-      setSuccess(`@${cleanTag} and bank details saved successfully!`);
-      if (onTagSaved) onTagSaved(saved);
+      localStorage.setItem('paj_manual_wallet', effectiveWallet);
+      if (sessionToken) {
+        const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
+        saveSession(effectiveWallet, sessionEmail || emailInput?.trim() || '', sessionToken, expiryMs);
+      }
+
+      setUserTagData(registered);
+      setTagModalSuccess(`$${cleanTag} saved successfully!`);
+      if (onTagSaved) onTagSaved(registered);
+
       setTimeout(() => {
         if (onClose) onClose();
-      }, 1400);
+      }, 1200);
     } catch (err) {
-      setError(err.message || 'Failed to save Fiat Tag.');
+      setTagModalError(err.message || 'Failed to save Fiat Tag.');
     } finally {
-      setSaving(false);
+      setTagModalSaving(false);
     }
-  };
-
-  // Sorted and filtered banks
-  const sortedBanks = useMemo(() => {
-    return [...banks].sort((a, b) => {
-      const nameA = (a.name || a.bank_name || '').toLowerCase();
-      const nameB = (b.name || b.bank_name || '').toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
-  }, [banks]);
-
-  const filteredBanks = useMemo(() => {
-    if (!bankSearch.trim()) return sortedBanks;
-    const q = bankSearch.toLowerCase().trim();
-    return sortedBanks.filter(b =>
-      (b.name || b.bank_name || '').toLowerCase().includes(q)
-    );
-  }, [sortedBanks, bankSearch]);
+  }, [effectiveWallet, sessionToken, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, apiBanks, sessionEmail, emailInput, onTagSaved, onClose]);
 
   return (
     <div
+      className="p2p-success-overlay"
+      onClick={onClose}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1100,
-        background: 'rgba(5, 11, 20, 0.85)',
-        backdropFilter: 'blur(10px)',
+        zIndex: 9999,
+        background: 'rgba(0,0,0,0.88)',
+        backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '16px',
-        animation: 'fadeIn 0.2s ease',
       }}
-      onClick={onClose}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%',
-          maxWidth: '440px',
-          background: 'var(--card, #111e38)',
-          border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
+          background: '#131822',
+          border: '1px solid rgba(163, 230, 53, 0.4)',
           borderRadius: '24px',
-          padding: '24px 22px',
-          boxShadow: '0 20px 48px rgba(0, 0, 0, 0.6)',
-          fontFamily: 'var(--ff, sans-serif)',
-          color: 'var(--text, #f0f6ff)',
+          padding: '28px 24px',
+          width: '92%',
+          maxWidth: '400px',
           position: 'relative',
-          maxHeight: '90vh',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.9), 0 0 30px rgba(163,230,53,0.15)',
+          animation: 'slideUpCard 0.3s ease',
+          maxHeight: '92vh',
           overflowY: 'auto',
         }}
       >
@@ -430,73 +510,80 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
           style={{
             position: 'absolute',
             top: '16px',
-            right: '16px',
-            background: 'none',
-            border: 'none',
-            color: 'var(--text2, rgba(240, 246, 255, 0.6))',
-            fontSize: '20px',
+            right: '18px',
+            background: 'rgba(255,255,255,0.07)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '50%',
+            width: '30px',
+            height: '30px',
+            color: 'white',
             cursor: 'pointer',
-            padding: '4px 8px',
+            fontSize: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           ✕
         </button>
 
-        <h3 style={{ fontSize: '18px', fontWeight: '800', margin: '0 0 6px 0', color: 'white' }}>
-          Fiat Tag &amp; Bank Details
-        </h3>
-        <p style={{ fontSize: '12px', color: 'var(--text2, rgba(240, 246, 255, 0.6))', margin: '0 0 18px 0', lineHeight: '1.4' }}>
-          Link your personal @tag and bank account for instant one-click P2P payouts.
-        </p>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', marginBottom: '6px' }}>
+            {userTagData ? 'Edit Your Fiat Tag' : 'Create & Link Fiat Tag'}
+          </h3>
+          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.4' }}>
+            Link your bank account to a unique Fiat Tag so others can send you payouts using just your Tag.
+          </p>
+        </div>
 
-        {error && (
+        {tagModalError && (
           <div style={{
-            background: 'rgba(248, 113, 113, 0.1)',
-            border: '1px solid rgba(248, 113, 113, 0.3)',
-            borderRadius: '12px',
-            padding: '10px 14px',
-            fontSize: '12px',
-            color: 'var(--red, #f87171)',
-            marginBottom: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            fontSize: '11px',
+            color: '#f87171',
+            marginBottom: '14px',
             lineHeight: '1.4',
           }}>
-            {error}
+            {tagModalError}
           </div>
         )}
 
-        {success && (
+        {tagModalSuccess && (
           <div style={{
             background: 'rgba(163, 230, 53, 0.1)',
             border: '1px solid rgba(163, 230, 53, 0.3)',
-            borderRadius: '12px',
-            padding: '10px 14px',
-            fontSize: '12px',
-            color: 'var(--lime, #a3e635)',
-            marginBottom: '16px',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            fontSize: '11px',
+            color: 'var(--lime)',
+            marginBottom: '14px',
             lineHeight: '1.4',
           }}>
-            ✓ {success}
+            ✓ {tagModalSuccess}
           </div>
         )}
 
-        {/* ── Inline PajCash Email Verification Box (Shown only if no session token exists) ── */}
+        {/* ── Inline PajCash Email Verification (Shown only when session is missing) ── */}
         {!sessionLoading && !sessionToken && (
           <div style={{
             background: 'rgba(34, 211, 238, 0.06)',
             border: '1px solid rgba(34, 211, 238, 0.25)',
             borderRadius: '14px',
-            padding: '14px',
-            marginBottom: '18px',
+            padding: '12px 14px',
+            marginBottom: '16px',
           }}>
-            <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--cyan, #22d3ee)', marginBottom: '4px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--cyan, #22d3ee)', marginBottom: '3px' }}>
               Link Email with PajCash
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text2, rgba(240, 246, 255, 0.6))', marginBottom: '12px', lineHeight: '1.4' }}>
-              A verified PajCash session is required to look up and confirm Nigerian bank accounts.
+            <div style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '10px', lineHeight: '1.35' }}>
+              A verified PajCash session is required to link and confirm bank accounts.
             </div>
 
             {authError && (
-              <div style={{ fontSize: '11px', color: 'var(--red, #f87171)', marginBottom: '10px' }}>
+              <div style={{ fontSize: '10.5px', color: '#f87171', marginBottom: '8px' }}>
                 {authError}
               </div>
             )}
@@ -511,12 +598,12 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
                   disabled={authLoading}
                   style={{
                     flex: 1,
-                    padding: '10px 12px',
-                    background: 'rgba(10, 22, 40, 0.8)',
-                    border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-                    borderRadius: '10px',
+                    padding: '8px 10px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '8px',
                     color: 'white',
-                    fontSize: '13px',
+                    fontSize: '12px',
                     outline: 'none',
                   }}
                 />
@@ -525,12 +612,12 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
                   onClick={handleInitiateEmail}
                   disabled={authLoading || !emailInput.trim()}
                   style={{
-                    padding: '10px 14px',
+                    padding: '8px 12px',
                     background: 'linear-gradient(135deg, rgba(34, 211, 238, 0.25), rgba(34, 211, 238, 0.1))',
                     border: '1px solid rgba(34, 211, 238, 0.4)',
-                    borderRadius: '10px',
+                    borderRadius: '8px',
                     color: 'var(--cyan, #22d3ee)',
-                    fontSize: '12px',
+                    fontSize: '11.5px',
                     fontWeight: '700',
                     cursor: (authLoading || !emailInput.trim()) ? 'not-allowed' : 'pointer',
                     whiteSpace: 'nowrap',
@@ -552,12 +639,12 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
                     disabled={authLoading}
                     style={{
                       flex: 1,
-                      padding: '10px 12px',
-                      background: 'rgba(10, 22, 40, 0.8)',
-                      border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-                      borderRadius: '10px',
+                      padding: '8px 10px',
+                      background: 'rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '8px',
                       color: 'white',
-                      fontSize: '13px',
+                      fontSize: '12px',
                       letterSpacing: '0.1em',
                       outline: 'none',
                     }}
@@ -567,12 +654,12 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
                     onClick={handleVerifyEmail}
                     disabled={authLoading || otpInput.trim().length !== 6}
                     style={{
-                      padding: '10px 14px',
+                      padding: '8px 12px',
                       background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.25), rgba(163, 230, 53, 0.1))',
                       border: '1px solid rgba(163, 230, 53, 0.4)',
-                      borderRadius: '10px',
+                      borderRadius: '8px',
                       color: 'var(--lime, #a3e635)',
-                      fontSize: '12px',
+                      fontSize: '11.5px',
                       fontWeight: '700',
                       cursor: (authLoading || otpInput.trim().length !== 6) ? 'not-allowed' : 'pointer',
                       whiteSpace: 'nowrap',
@@ -587,8 +674,8 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: 'var(--text3, rgba(240, 246, 255, 0.45))',
-                    fontSize: '11px',
+                    color: 'rgba(255,255,255,0.5)',
+                    fontSize: '10.5px',
                     cursor: 'pointer',
                     padding: 0,
                     textDecoration: 'underline',
@@ -601,190 +688,125 @@ export default function BankDetailsModal({ walletAddress, onClose, onTagSaved })
           </div>
         )}
 
-        <form onSubmit={handleSave}>
-          {/* Tag Name Input */}
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text2)', marginBottom: '6px', textTransform: 'uppercase' }}>
-              Your Fiat Tag
-            </label>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: 'rgba(10, 22, 40, 0.8)',
-              border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
-              borderRadius: '12px',
-              padding: '0 14px',
-            }}>
-              <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700', fontSize: '15px' }}>@</span>
+        {/* ── Wallet Address Field (Shown in Guest / Manual Mode) ── */}
+        {isGuestMode && (
+          <div className="field" style={{ marginBottom: '14px' }}>
+            <div className="field-label">Your Solana Wallet Address</div>
+            <div className="input-wrap">
               <input
                 type="text"
-                value={tagName}
-                onChange={e => setTagName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                placeholder="satoshi"
-                maxLength={20}
-                style={{
-                  width: '100%',
-                  padding: '13px 8px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  outline: 'none',
-                  fontFamily: 'var(--ff)',
-                }}
+                value={manualTagModalWallet}
+                onChange={e => setManualTagModalWallet(e.target.value.trim())}
+                placeholder="Enter Solana wallet address (e.g. 7xK...)"
+                style={{ fontSize: '13px', fontWeight: '500', fontFamily: 'monospace' }}
               />
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text3, rgba(240, 246, 255, 0.4))', marginTop: '4px' }}>
-              Your unique handle on Fiatwallet (e.g. @{tagName || 'satoshi'})
+            <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>
+              Used to link your Fiat Tag and verify past transaction history.
             </div>
           </div>
+        )}
 
-          {/* Bank Selection */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text2)', textTransform: 'uppercase' }}>
-                Select Bank (Nigeria)
-              </label>
-              {banks.length > 10 && (
-                <input
-                  type="text"
-                  placeholder="Filter bank..."
-                  value={bankSearch}
-                  onChange={e => setBankSearch(e.target.value)}
-                  style={{
-                    padding: '2px 8px',
-                    fontSize: '11px',
-                    background: 'rgba(10, 22, 40, 0.6)',
-                    border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
-                    borderRadius: '6px',
-                    color: 'white',
-                    outline: 'none',
-                    width: '110px',
-                  }}
-                />
-              )}
-            </div>
-            <select
-              value={selectedBankId}
-              onChange={e => {
-                const id = e.target.value;
-                setSelectedBankId(id);
-                const found = banks.find(b => (b.id || b.code) === id);
-                if (found) {
-                  setSelectedBankName(found.name || found.bank_name || '');
-                  setSelectedBankCode(found.code || found.bank_code || '');
-                } else {
-                  setSelectedBankName('');
-                  setSelectedBankCode('');
-                }
-              }}
-              style={{
-                width: '100%',
-                padding: '13px 14px',
-                background: 'rgba(10, 22, 40, 0.8)',
-                border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
-                borderRadius: '12px',
-                color: selectedBankId ? 'white' : 'var(--text3)',
-                fontSize: '14px',
-                outline: 'none',
-                fontFamily: 'var(--ff)',
-              }}
-            >
-              <option value="" style={{ background: '#111e38', color: '#888' }}>
-                Select a bank...
-              </option>
-              {filteredBanks.map((b, i) => {
-                const id = b.id || b.code || String(i);
-                const name = b.name || b.bank_name;
-                return (
-                  <option key={id || i} value={id} style={{ background: '#111e38', color: 'white' }}>
-                    {name}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Account Number */}
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text2)', marginBottom: '6px', textTransform: 'uppercase' }}>
-              10-Digit Account Number
-            </label>
+        {/* ── Tag Name Field ── */}
+        <div className="field" style={{ marginBottom: '14px' }}>
+          <div className="field-label">Fiat Tag Name</div>
+          <div className="input-wrap" style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{ color: 'var(--lime)', fontWeight: '700', fontSize: '15px', marginRight: '4px' }}>$</span>
             <input
               type="text"
-              inputMode="numeric"
-              maxLength={10}
-              value={accountNumber}
-              onChange={e => setAccountNumber(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="0123456789"
-              style={{
-                width: '100%',
-                padding: '13px 14px',
-                background: 'rgba(10, 22, 40, 0.8)',
-                border: '1px solid var(--border, rgba(255, 255, 255, 0.1))',
-                borderRadius: '12px',
-                color: 'white',
-                fontSize: '15px',
-                letterSpacing: '0.05em',
-                outline: 'none',
-                fontFamily: 'var(--mono, monospace)',
-                boxSizing: 'border-box',
+              value={tagModalInput.replace(/^\$/, '')}
+              onChange={e => {
+                const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                setTagModalInput(val ? `$${val}` : '');
               }}
+              placeholder="yourtag"
+              style={{ fontSize: '14px', fontWeight: '600', flex: 1 }}
             />
           </div>
+        </div>
 
-          {/* Resolved Account Name */}
-          <div style={{ marginBottom: '22px' }}>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text2)', marginBottom: '6px', textTransform: 'uppercase' }}>
-              Account Name (Verified)
-            </label>
-            <div style={{
-              padding: '13px 14px',
-              background: 'rgba(10, 22, 40, 0.4)',
-              border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-              borderRadius: '12px',
-              minHeight: '44px',
-              display: 'flex',
-              alignItems: 'center',
-              boxSizing: 'border-box',
-            }}>
-              {resolving ? (
-                <span style={{ fontSize: '13px', color: 'var(--cyan, #22d3ee)' }}>Verifying account with bank...</span>
-              ) : accountName ? (
-                <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
-                  ✓ {accountName}
-                </span>
-              ) : (
-                <span style={{ fontSize: '12px', color: 'var(--text3, rgba(240, 246, 255, 0.35))' }}>
-                  Auto-resolved upon selecting bank and entering 10 digits
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={saving || resolving || !accountName}
-            style={{
-              width: '100%',
-              padding: '15px',
-              background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.2), rgba(163, 230, 53, 0.08))',
-              border: '1px solid rgba(163, 230, 53, 0.4)',
-              borderRadius: '14px',
-              color: 'var(--lime, #a3e635)',
-              fontSize: '14px',
-              fontWeight: '700',
-              cursor: (saving || resolving || !accountName) ? 'not-allowed' : 'pointer',
-              opacity: (saving || resolving || !accountName) ? 0.5 : 1,
-              transition: 'all 0.2s',
-              fontFamily: 'var(--ff)',
-            }}
+        {/* ── Bank Selector ── */}
+        <div className="field" style={{ marginBottom: '14px', position: 'relative' }}>
+          <div className="field-label">Bank</div>
+          <div
+            className="input-wrap"
+            onClick={() => setBankOpen(v => !v)}
+            style={{ cursor: 'pointer', justifyContent: 'space-between' }}
           >
-            {saving ? 'Saving...' : 'Link & Save Details'}
-          </button>
-        </form>
+            <span>{tagModalBank}</span>
+            <span style={{ fontSize: '11px', color: 'var(--text3)' }}>▼</span>
+          </div>
+          {bankOpen && (
+            <div className="drop-menu" style={{ left: 0, right: 0, width: '100%', zIndex: 1000 }} onClick={e => e.stopPropagation()}>
+              <div style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
+                <input
+                  type="text"
+                  placeholder="Search bank..."
+                  value={bankSearch}
+                  autoFocus
+                  onChange={e => setBankSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    background: 'rgba(0,0,0,0.2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'white',
+                    fontSize: '12px',
+                  }}
+                />
+              </div>
+              <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                {filteredBanksList.map(b => (
+                  <div
+                    key={b}
+                    className={`drop-item ${tagModalBank === b ? 'sel' : ''}`}
+                    onClick={() => {
+                      setTagModalBank(b);
+                      setBankOpen(false);
+                      setBankSearch('');
+                    }}
+                    style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '12px' }}
+                  >
+                    {b}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Account Number Field ── */}
+        <div className="field" style={{ marginBottom: '14px' }}>
+          <div className="field-label">10-Digit Account Number</div>
+          <div className="input-wrap">
+            <input
+              type="text"
+              maxLength={10}
+              value={tagModalAcctNumber}
+              onChange={e => setTagModalAcctNumber(e.target.value.replace(/\D/g, ''))}
+              placeholder="0000000000"
+              style={{ fontSize: '14px', fontWeight: '600' }}
+            />
+          </div>
+          <div style={{ marginTop: '4px', minHeight: '14px', fontSize: '11px', color: 'var(--lime)', fontWeight: 'bold' }}>
+            {tagModalResolving ? (
+              <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Resolving account...</span>
+            ) : tagModalAcctName ? (
+              <span>{tagModalAcctName}</span>
+            ) : null}
+          </div>
+        </div>
+
+        {/* ── Action Button ── */}
+        <button
+          className="send-btn"
+          onClick={handleSaveFiatTag}
+          disabled={tagModalSaving || tagModalResolving}
+          style={{ marginTop: '10px' }}
+        >
+          {tagModalSaving ? 'Saving Tag...' : (userTagData ? 'Update Fiat Tag' : 'Create Fiat Tag')}
+        </button>
       </div>
     </div>
   );
