@@ -363,7 +363,7 @@ export default function App() {
   }, []);
 
   const [bulkMode, setBulkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('wallet');
+  const [activeTab, setActiveTab] = useState('p2p');
   const [swipeDir, setSwipeDir] = useState(null); // 'left' | 'right' | null
   const swipeTouchRef = useRef({ startX: 0, startY: 0, active: false });
   const [showModal, setShowModal] = useState(false);
@@ -1226,6 +1226,7 @@ export default function App() {
             setGuestBypass(false);
           }}
           onConnectExternal={() => {
+            setGuestBypass(true);
             setVisible(true);
           }}
           onContinueGuest={() => setGuestBypass(true)}
@@ -1326,9 +1327,8 @@ export default function App() {
 
       <nav>
         <div className="nav-logo-wrap">
-          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab('wallet')} style={{ cursor: 'pointer' }} />
+          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab('p2p')} style={{ cursor: 'pointer' }} />
           <div className="nav-links">
-            <button className={`nav-link-btn ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>Wallet</button>
             <button className={`nav-link-btn ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>P2P</button>
             <button className={`nav-link-btn ${activeTab === 'send' ? 'active' : ''}`} onClick={() => setActiveTab('send')}>Send</button>
             <button className={`nav-link-btn ${activeTab === 'swap' ? 'active' : ''}`} onClick={() => setActiveTab('swap')}>Swap</button>
@@ -1455,36 +1455,6 @@ export default function App() {
 
         <div className="app-card p2p-card">
           <div className="card-body">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <button
-                onClick={() => setActiveTab('wallet')}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  padding: '6px 12px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontFamily: 'var(--ff)',
-                }}
-              >
-                ← Wallet
-              </button>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text2)' }}>
-                P2P Trading
-              </span>
-              <button
-                onClick={() => setShowMenuDrawer(true)}
-                style={{ background: 'none', border: 'none', color: 'white', fontSize: '18px', cursor: 'pointer', padding: '4px' }}
-              >
-                ☰
-              </button>
-            </div>
             <P2PPanel
               connected={effectiveConnected}
               walletTokenList={walletTokenList}
@@ -1757,14 +1727,6 @@ export default function App() {
 
       {/* Bottom Navigation for mobile view */}
       <div className="bottom-nav">
-        <button className={`bnav-item ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>
-          <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="4" width="20" height="16" rx="4" />
-            <path d="M16 12h4" />
-            <circle cx="16" cy="12" r="1" fill="currentColor" />
-          </svg>
-          <span className="bnav-label">Wallet</span>
-        </button>
         <button className={`bnav-item ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>
           <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -1794,7 +1756,7 @@ export default function App() {
 
       {/* Swipe indicator dots — mobile only */}
       <div className="swipe-dots">
-        {['wallet', 'p2p', 'send', 'swap'].map(tab => (
+        {['p2p', 'send', 'swap'].map(tab => (
           <div
             key={tab}
             className={`swipe-dot${activeTab === tab ? ' active' : ''}`}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import buffer from 'buffer';
 const Buffer = buffer.Buffer || buffer;
 import * as bip39 from 'bip39';
@@ -44,6 +44,25 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
   // General
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Tiny note popup: { text: string, type: 'info' | 'guest' }
+  const [tinyNote, setTinyNote] = useState(null);
+  const tinyNoteTimerRef = useRef(null);
+
+  const showTinyNote = (text, type = 'info', autoCloseMs = 2000) => {
+    if (tinyNoteTimerRef.current) clearTimeout(tinyNoteTimerRef.current);
+    setTinyNote({ text, type });
+    if (autoCloseMs > 0) {
+      tinyNoteTimerRef.current = setTimeout(() => {
+        setTinyNote(null);
+      }, autoCloseMs);
+    }
+  };
+
+  const closeTinyNote = () => {
+    if (tinyNoteTimerRef.current) clearTimeout(tinyNoteTimerRef.current);
+    setTinyNote(null);
+  };
 
   // Screenshot protection on reveal screen
   useEffect(() => {
@@ -342,6 +361,70 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
             </p>
           </div>
 
+          {/* Tiny note popup — no pop up card, no emoji */}
+          {tinyNote && (
+            <div
+              style={{
+                marginBottom: '16px',
+                background: 'rgba(15, 23, 42, 0.96)',
+                border: '1px solid rgba(255, 255, 255, 0.16)',
+                borderRadius: '12px',
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+                animation: 'fadeIn 0.15s ease-out',
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            >
+              <span style={{ fontSize: '13px', color: '#f0f6ff', fontWeight: '500', lineHeight: 1.4 }}>
+                {tinyNote.text}
+              </span>
+              {tinyNote.type === 'guest' && (
+                <button
+                  onClick={() => {
+                    closeTinyNote();
+                    if (onContinueGuest) onContinueGuest();
+                  }}
+                  style={{
+                    background: 'var(--lime, #a3e635)',
+                    color: '#0a1628',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--ff)',
+                    flexShrink: 0,
+                  }}
+                >
+                  Continue
+                </button>
+              )}
+              {tinyNote.type === 'guest' && (
+                <button
+                  onClick={closeTinyNote}
+                  aria-label="Dismiss"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    lineHeight: 1,
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button
               style={{
@@ -394,10 +477,9 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
                 e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
               }}
-              onClick={handleStartCreate}
-              disabled={loading}
+              onClick={() => showTinyNote('Coming soon', 'info', 2000)}
             >
-              {loading ? 'Creating...' : 'Create wallet'}
+              Create wallet
             </button>
 
             <button
@@ -423,31 +505,39 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
                 e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
               }}
-              onClick={() => setScreen('import-choose')}
+              onClick={() => showTinyNote('Coming soon', 'info', 2000)}
             >
               Import existing wallet
             </button>
-          </div>
 
-          {onContinueGuest && (
-            <div style={{ textAlign: 'center', marginTop: '22px' }}>
-              <button
-                onClick={onContinueGuest}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text3, rgba(240,246,255,0.45))',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  padding: '6px',
-                  fontFamily: 'var(--ff)',
-                }}
-              >
-                or continue to app as Guest
-              </button>
-            </div>
-          )}
+            <button
+              style={{
+                width: '100%',
+                padding: '16px 20px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '16px',
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                fontFamily: 'var(--ff)',
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+              }}
+              onClick={() => showTinyNote('Guest mode allows you to explore features without connecting a wallet.', 'guest', 0)}
+            >
+              Guest mode
+            </button>
+          </div>
 
           <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.28))', lineHeight: '1.5' }}>
             Non-custodial: Your private keys never leave your device.
