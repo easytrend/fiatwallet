@@ -45,9 +45,10 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Tiny note popup: { text: string, type: 'info' | 'guest' }
+  // Tiny note popup: { text: string, type: 'info' }
   const [tinyNote, setTinyNote] = useState(null);
   const tinyNoteTimerRef = useRef(null);
+  const [showGuestNote, setShowGuestNote] = useState(false);
 
   const showTinyNote = (text, type = 'info', autoCloseMs = 2000) => {
     if (tinyNoteTimerRef.current) clearTimeout(tinyNoteTimerRef.current);
@@ -361,7 +362,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
             </p>
           </div>
 
-          {/* Tiny note popup — no pop up card, no emoji */}
+          {/* Tiny note popup for Coming Soon — no pop up card, no emoji */}
           {tinyNote && (
             <div
               style={{
@@ -370,7 +371,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 border: '1px solid rgba(255, 255, 255, 0.16)',
                 borderRadius: '12px',
                 padding: '10px 14px',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '10px',
@@ -383,45 +384,6 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
               <span style={{ fontSize: '13px', color: '#f0f6ff', fontWeight: '500', lineHeight: 1.4 }}>
                 {tinyNote.text}
               </span>
-              {tinyNote.type === 'guest' && (
-                <button
-                  onClick={() => {
-                    closeTinyNote();
-                    if (onContinueGuest) onContinueGuest();
-                  }}
-                  style={{
-                    background: 'var(--lime, #a3e635)',
-                    color: '#0a1628',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '6px 14px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--ff)',
-                    flexShrink: 0,
-                  }}
-                >
-                  Continue
-                </button>
-              )}
-              {tinyNote.type === 'guest' && (
-                <button
-                  onClick={closeTinyNote}
-                  aria-label="Dismiss"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255, 255, 255, 0.5)',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    padding: '2px',
-                    lineHeight: 1,
-                  }}
-                >
-                  ✕
-                </button>
-              )}
             </div>
           )}
 
@@ -533,11 +495,137 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
                 e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
               }}
-              onClick={() => showTinyNote('Guest mode allows you to explore features without connecting a wallet.', 'guest', 0)}
+              onClick={() => setShowGuestNote(true)}
             >
               Guest mode
             </button>
           </div>
+
+          {/* Guest Mode Pop Up Card Note */}
+          {showGuestNote && (
+            <div
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '20px',
+                animation: 'fadeIn 0.2s ease',
+              }}
+              onClick={() => setShowGuestNote(false)}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: 'linear-gradient(160deg, rgba(22,22,22,0.98) 0%, rgba(12,12,12,0.99) 100%)',
+                  border: '1px solid rgba(163,230,53,0.25)',
+                  borderRadius: '20px',
+                  padding: '28px 24px',
+                  maxWidth: '360px',
+                  width: '100%',
+                  boxShadow: '0 0 40px rgba(163,230,53,0.12), 0 20px 60px rgba(0,0,0,0.6)',
+                  textAlign: 'left',
+                }}
+              >
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                  <div style={{
+                    width: '38px', height: '38px', borderRadius: '50%',
+                    background: 'rgba(163,230,53,0.12)',
+                    border: '1px solid rgba(163,230,53,0.3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#a3e635', fontSize: '24px', fontWeight: '900', lineHeight: 1, flexShrink: 0,
+                  }}>•</div>
+                  <div>
+                    <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>Welcome to Guest Room</div>
+                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '1px' }}>No wallet needed to get started</div>
+                  </div>
+                </div>
+
+                {/* Free features */}
+                <div style={{
+                  background: 'rgba(163,230,53,0.05)',
+                  border: '1px solid rgba(163,230,53,0.15)',
+                  borderRadius: '12px', padding: '14px', marginBottom: '14px',
+                }}>
+                  <div style={{ color: '#a3e635', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
+                    <span>Available without wallet</span>
+                  </div>
+                  {[
+                    ['Offramp', 'Convert crypto to cash — no wallet connect needed'],
+                    ['Onramp', 'Receive crypto straight to any Solana address'],
+                  ].map(([title, desc]) => (
+                    <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <span style={{ color: '#a3e635', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
+                      <div>
+                        <div style={{ color: 'white', fontWeight: '700', fontSize: '12px' }}>{title}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Wallet-required features */}
+                <div style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '12px', padding: '14px', marginBottom: '20px',
+                }}>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
+                    <span>Requires wallet connection</span>
+                  </div>
+                  {[
+                    ['Recovered SOL', 'Reclaim dust & rent-exempt SOL'],
+                    ['Claim CashBack', 'Claim cashback earn from pumpfun'],
+                    ['Swap', 'Instant token swaps on-chain'],
+                    ['Bulk / Single Send', 'Send tokens to multiple wallets'],
+                    ['Future Integrations', 'More DeFi tools coming soon'],
+                  ].map(([title, desc]) => (
+                    <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
+                      <div>
+                        <div style={{ color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: '12px' }}>{title}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CTA Button: Continue */}
+                <button
+                  onClick={() => {
+                    setShowGuestNote(false);
+                    if (onContinueGuest) onContinueGuest();
+                  }}
+                  style={{
+                    width: '100%', background: '#a3e635',
+                    border: 'none', borderRadius: '12px',
+                    color: '#000', fontWeight: '800', fontSize: '13px',
+                    padding: '12px', cursor: 'pointer',
+                    transition: 'opacity 0.2s',
+                    textAlign: 'center',
+                    fontFamily: 'var(--ff)',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  Continue
+                </button>
+                <button
+                  onClick={() => setShowGuestNote(false)}
+                  style={{
+                    width: '100%', background: 'transparent', border: 'none',
+                    color: 'rgba(255,255,255,0.35)', fontSize: '11px',
+                    padding: '10px', cursor: 'pointer', marginTop: '6px',
+                    textAlign: 'center', fontFamily: 'var(--ff)',
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
 
           <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.28))', lineHeight: '1.5' }}>
             Non-custodial: Your private keys never leave your device.

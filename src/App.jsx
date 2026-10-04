@@ -289,6 +289,7 @@ export default function App() {
 
   // Allow browsing in guest mode if user explicitly chooses
   const [guestBypass, setGuestBypass] = useState(false);
+  const [isGuestMode, setIsGuestMode] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [showOnboardModal, setShowOnboardModal] = useState(null); // null | 'create' | 'import' | 'choose'
   const [showMenuDrawer, setShowMenuDrawer] = useState(false);
@@ -831,6 +832,7 @@ export default function App() {
       internalWallet.lock();
     }
     setGuestBypass(false);
+    setIsGuestMode(false);
   }
 
   function handleLogoutReset() {
@@ -843,6 +845,7 @@ export default function App() {
     }
     internalWallet.reset();
     setGuestBypass(false);
+    setIsGuestMode(false);
   }
 
   async function handleSend() {
@@ -1224,12 +1227,17 @@ export default function App() {
           onWalletReady={(walletData) => {
             internalWallet.activate(walletData);
             setGuestBypass(false);
+            setIsGuestMode(false);
           }}
           onConnectExternal={() => {
+            setIsGuestMode(false);
             setGuestBypass(true);
             setVisible(true);
           }}
-          onContinueGuest={() => setGuestBypass(true)}
+          onContinueGuest={() => {
+            setIsGuestMode(true);
+            setGuestBypass(true);
+          }}
         />
       </div>
     );
@@ -1377,7 +1385,7 @@ export default function App() {
                 </button>
               )}
             </div>
-          ) : (
+          ) : isGuestMode ? null : (
             <button className="btn-connect" onClick={() => setShowConnectModal(true)}>
               Connect Wallet
             </button>
@@ -1461,6 +1469,7 @@ export default function App() {
               onRefreshBalances={fetchBalances}
               effectivePublicKey={effectivePublicKey}
               effectiveSignTransaction={effectiveSignTransaction}
+              isGuestMode={isGuestMode}
             />
           </div>
         </div>

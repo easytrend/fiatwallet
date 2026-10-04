@@ -359,7 +359,7 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 // Component
 // ---------------------------------------------------------------------------
 
-export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction }) {
+export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, isGuestMode = false }) {
   const { connection } = useConnection();
   const { publicKey: adapterPublicKey, sendTransaction, signTransaction: adapterSignTransaction } = useWallet();
   const publicKey = effectivePublicKey || adapterPublicKey;
@@ -447,9 +447,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [tagLookupError, setTagLookupError] = useState(null);
 
   // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
-  const [isManualOfframp, setIsManualOfframp] = useState(false);
+  const [isManualOfframp, setIsManualOfframp] = useState(() => Boolean(isGuestMode));
   const [showGuestNote, setShowGuestNote] = useState(false);
   const [guestMode, setGuestMode] = useState('sell'); // 'sell' | 'buy'
+
+  useEffect(() => {
+    if (isGuestMode) {
+      setIsManualOfframp(true);
+      setOfframpSubMode('tag');
+      setMode('sell');
+      setGuestMode('sell');
+    }
+  }, [isGuestMode]);
   const [manualWalletAddress, setManualWalletAddress] = useState(() => {
     try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
   });
