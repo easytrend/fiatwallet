@@ -2154,12 +2154,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setOnrampStatus('pending');
 
       // Log Onramp order in Supabase
-      const usdVal = parsedOnrampAmt / (onrampNgnRate || 1);
+      // usdValue = crypto the user will RECEIVE × live token USD price.
+      // For USDC this is ≈ the USDC amount (since 1 USDC ≈ $1).
+      // For SOL this correctly applies the live market price (not NGN/USDC cross rate).
+      // We prefer PajCash's exact net USDC figure (pajcashNetUsdc) when available;
+      // otherwise fall back to the estimated amount.
+      const onrampCryptoAmt = displayOnrampAmount > 0 ? displayOnrampAmount : estOnrampCrypto;
+      const usdVal = onrampCryptoAmt * (tokenPriceUsd || 1);
       logP2PTransaction({
         userAddress: userWalletAddress,
         orderId: order.id,
         tokenSymbol: liveSelectedToken.symbol,
-        cryptoAmount: displayOnrampAmount > 0 ? displayOnrampAmount : estOnrampCrypto,
+        cryptoAmount: onrampCryptoAmt,
         fiatCurrency: 'NGN',
         fiatAmount: parsedOnrampAmt,
         usdValue: usdVal,
