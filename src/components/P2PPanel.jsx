@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useLiveRates } from '../hooks/useLiveRates';
 import jsQR from 'jsqr';
 import { createWorker } from 'tesseract.js';
 import {
@@ -367,6 +368,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   // ── Env config ──────────────────────────────────────────────────────────
   const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;
   const isPajcashLive = !!PAJCASH_API_KEY;
+
+  // ── Live crypto prices (SOL, USDC, USDT) from CoinGecko / Coinbase / Binance ──
+  const { liveRates } = useLiveRates();
 
   // ── Session State ────────────────────────────────────────────────────────
   const [sessionToken, setSessionToken] = useState('');
@@ -1927,7 +1931,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   };
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const tokenPriceUsd = liveSelectedToken.price || (liveSelectedToken.symbol === 'SOL' ? 145.20 : 1.00);
+  // Priority: 1) walletTokenList price  2) live CoinGecko/Coinbase/Binance price  3) last-resort static fallback
+  const liveCryptoPrice = liveRates?.crypto?.[liveSelectedToken.symbol];
+  const tokenPriceUsd = liveSelectedToken.price || liveCryptoPrice || (liveSelectedToken.symbol === 'SOL' ? 145.20 : 1.00);
   const activeNgnRate = pajRates?.offRampRate?.rate || pajRates?.rate || 1550;
   const onrampNgnRate = pajRates?.onRampRate?.rate || pajRates?.rate || 1500;
   const ngnRate = tokenPriceUsd * activeNgnRate;
@@ -2596,7 +2602,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         cryptoAmount: actualCryptoAmount,
         fiatCurrency: selectedCountry.currency,
         fiatAmount: parsedAmt,
-        usdValue: parsedAmt / (activeNgnRate || 1),
+        usdValue: selectedCountry.currency === 'USD' ? parsedAmt : actualCryptoAmount * (tokenPriceUsd || 1),
         bankName: effectiveBankName,
         accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
         accountName: effectiveAcctName || 'Account Holder',
@@ -2974,9 +2980,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // instead of the correct NGN equivalent like 3100).
       const cryptoLogged = order.amount || estCryptoAmount;
       const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
+      // usdValue: for USD fiat, it's the fiat amount directly.
+      // For non-USD (e.g. NGN), derive from: cryptoAmount × live token USD price.
+      // This is accurate for both USDC/USDT (price ≈ 1.00) and SOL (live market price).
       const usdLogged = selectedCountry.currency === 'USD'
         ? fiatLogged
-        : fiatLogged / (ngnRate || 1);
+        : cryptoLogged * (tokenPriceUsd || 1);
 
       // BUG FIX 2: Log to Supabase immediately with PENDING status so the
       // record exists even if the confirmation poll times out due to a blip.
