@@ -1470,6 +1470,10 @@ export default function App() {
               effectivePublicKey={effectivePublicKey}
               effectiveSignTransaction={effectiveSignTransaction}
               isGuestMode={isGuestMode}
+              onExitGuest={() => {
+                setIsGuestMode(false);
+                setGuestBypass(false);
+              }}
             />
           </div>
         </div>
