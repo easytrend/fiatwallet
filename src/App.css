@@ -416,7 +416,7 @@ footer a { color:var(--lime); text-decoration:none; }
   inset: 0;
   background: rgba(5, 12, 28, 0.85);
   backdrop-filter: blur(8px);
-  z-index: 500;
+  z-index: 1000;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -433,11 +433,13 @@ footer a { color:var(--lime); text-decoration:none; }
   width: 100%;
   max-width: 500px;
   padding: 24px;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
   max-height: 80vh;
   overflow-y: auto;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   animation: slideUpClaim 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
+  z-index: 1001;
 }
 
 @keyframes fadeIn {

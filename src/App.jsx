@@ -1418,7 +1418,10 @@ export default function App() {
         onClaimSuccess={fetchBalances}
         effectivePublicKey={effectivePublicKey}
         effectiveConnected={effectiveConnected}
+        effectiveSendTransaction={effectiveSendTransaction}
+        effectiveSignAllTransactions={effectiveSignAllTransactions}
         isOpen={showClaimModal}
+        onOpen={() => setShowClaimModal(true)}
         onClose={() => setShowClaimModal(false)}
       />
 

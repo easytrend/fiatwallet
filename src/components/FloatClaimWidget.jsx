@@ -79,17 +79,39 @@ const ClaimIcon = () => (
   </svg>
 );
 
-export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effectivePublicKey: propPublicKey, effectiveConnected: propConnected, isOpen: externalIsOpen, onClose: externalOnClose }) {
+export default function FloatClaimWidget({
+  liveSolPrice,
+  onClaimSuccess,
+  effectivePublicKey: propPublicKey,
+  effectiveConnected: propConnected,
+  effectiveSendTransaction: propSendTransaction,
+  effectiveSignAllTransactions: propSignAllTransactions,
+  isOpen: externalIsOpen,
+  onOpen: externalOnOpen,
+  onClose: externalOnClose
+}) {
   const { connection } = useConnection();
-  const { publicKey: adapterPublicKey, connected: adapterConnected, sendTransaction, signAllTransactions } = useWallet();
+  const {
+    publicKey: adapterPublicKey,
+    connected: adapterConnected,
+    sendTransaction: adapterSendTransaction,
+    signAllTransactions: adapterSignAllTransactions
+  } = useWallet();
   const connected = propConnected !== undefined ? propConnected : adapterConnected;
+  const sendTransaction = propSendTransaction || adapterSendTransaction;
+  const signAllTransactions = propSignAllTransactions || adapterSignAllTransactions;
   const { setVisible: setWalletModalVisible } = useWalletModal();
 
   const [internalOpen, setInternalOpen] = useState(false);
-  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalOpen;
+  const isOpen = externalIsOpen !== undefined ? (externalIsOpen || internalOpen) : internalOpen;
   const setIsOpen = (val) => {
-    if (!val && externalOnClose) externalOnClose();
-    setInternalOpen(val);
+    if (val) {
+      setInternalOpen(true);
+      if (externalOnOpen) externalOnOpen();
+    } else {
+      setInternalOpen(false);
+      if (externalOnClose) externalOnClose();
+    }
   };
   const [isDismissed, setIsDismissed] = useState(false);
 
@@ -253,6 +275,12 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
     }
   }, [effectivePublicKey?.toString(), connected]);
 
+  useEffect(() => {
+    if (isOpen && effectivePublicKey) {
+      fetchClaimables();
+    }
+  }, [isOpen]);
+
   // Auto-dismiss local toast after 10 seconds
   useEffect(() => {
     if (toast) {
@@ -263,8 +291,8 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
 
   // Check if wallet has no empty accounts or cashback left
   const isRealWalletClean = useMemo(() => {
-    return !!effectivePublicKey && emptyAccounts.length === 0 && realCashback === 0;
-  }, [effectivePublicKey, emptyAccounts, realCashback]);
+    return !!effectivePublicKey && !loading && emptyAccounts.length === 0 && realCashback === 0;
+  }, [effectivePublicKey, loading, emptyAccounts, realCashback]);
 
   // ─── Fee & rate constants ───────────────────────────────────────────────
   const RENT_FEE_PCT      = 0.06;  // 6%  protocol fee on rent reclaim
@@ -323,12 +351,11 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
   // 3. Close Empty Accounts
   const handleClaimRent = async () => {
     if (claimingRent) return;
-    if (!connected || !adapterPublicKey || !connection) {
-      setIsOpen(false);
+    const publicKey = effectivePublicKey || adapterPublicKey;
+    if (!connected || !publicKey || !connection) {
       setWalletModalVisible(true);
       return;
     }
-    const publicKey = adapterPublicKey;
     setClaimingRent(true);
     setToast(null);
     try {
@@ -475,12 +502,11 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
   // 4. Claim Pump.fun Cashback (Calls the actual pumpdev.io API, no fallback in live mode)
   const handleClaimCashback = async () => {
     if (claimingCashback) return;
-    if (!connected || !adapterPublicKey || !connection) {
-      setIsOpen(false);
+    const publicKey = effectivePublicKey || adapterPublicKey;
+    if (!connected || !publicKey || !connection) {
       setWalletModalVisible(true);
       return;
     }
-    const publicKey = adapterPublicKey;
     setClaimingCashback(true);
     setToast(null);
     try {
@@ -698,54 +724,75 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
     setClaimingCashback(false);
   };
 
-  // Render nothing if no known wallet or if real balances are 0 or dismissed
-  if (!effectivePublicKey) return null;
-  if (isDismissed) return null;
-  if (totalSOL === 0) return null;
+  // Determine if the floating pill should be visible
+  const showPill = !isOpen && !isDismissed && effectivePublicKey && totalSOL > 0;
+
+  // If the modal is not open and the floating pill shouldn't be shown, render nothing
+  if (!isOpen && !showPill) return null;
 
   return (
     <>
       {/* 1. Floating Pill */}
-      <div className="claim-float-pill" onClick={() => setIsOpen(true)}>
-        <div className="claim-pill-content">
-          <div className="claim-icon-wrapper">
-            {/* Official Solana S Logo */}
-            <svg viewBox="0 0 21 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="solana-svg">
-              <path d="M 3.8 1 H 20.2 L 17.4 5 H 1 Z" fill="url(#solana-gradient)"/>
-              <path d="M 1 7 H 17.4 L 20.2 11 H 3.8 Z" fill="url(#solana-gradient)"/>
-              <path d="M 3.8 13 H 20.2 L 17.4 17 H 1 Z" fill="url(#solana-gradient)"/>
-              <defs>
-                <linearGradient id="solana-gradient" x1="0" y1="18" x2="21" y2="0" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#9945FF"/>
-                  <stop offset="100%" stopColor="#14F195"/>
-                </linearGradient>
-              </defs>
-            </svg>
-            {/* Custom Green/White Medicine Capsule */}
-            <div className="capsule-pill"></div>
+      {showPill && (
+        <div className="claim-float-pill" onClick={() => setIsOpen(true)}>
+          <div className="claim-pill-content">
+            <div className="claim-icon-wrapper">
+              {/* Official Solana S Logo */}
+              <svg viewBox="0 0 21 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="solana-svg">
+                <path d="M 3.8 1 H 20.2 L 17.4 5 H 1 Z" fill="url(#solana-gradient)"/>
+                <path d="M 1 7 H 17.4 L 20.2 11 H 3.8 Z" fill="url(#solana-gradient)"/>
+                <path d="M 3.8 13 H 20.2 L 17.4 17 H 1 Z" fill="url(#solana-gradient)"/>
+                <defs>
+                  <linearGradient id="solana-gradient" x1="0" y1="18" x2="21" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#9945FF"/>
+                    <stop offset="100%" stopColor="#14F195"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+              {/* Custom Green/White Medicine Capsule */}
+              <div className="capsule-pill"></div>
+            </div>
+            <div className="claim-pill-text">
+              <strong>Claim your Sol</strong>
+            </div>
+            <button 
+              className="claim-pill-close" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDismissed(true);
+              }}
+              title="Dismiss Claim Center"
+            >
+              ✕
+            </button>
           </div>
-          <div className="claim-pill-text">
-            <strong>Claim your Sol</strong>
-          </div>
-          <button 
-            className="claim-pill-close" 
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsDismissed(true);
-            }}
-            title="Dismiss Claim Center"
-          >
-            ✕
-          </button>
         </div>
-      </div>
+      )}
 
       {/* 2. Modal Panel */}
       {isOpen && (
         <div className="claim-modal-overlay" onClick={() => setIsOpen(false)}>
           <div className="claim-modal-sheet" onClick={(e) => e.stopPropagation()}>
             
-            <div className="claim-modal-header">
+            <div className="claim-modal-header" style={{ position: 'relative' }}>
+              <button
+                onClick={() => setIsOpen(false)}
+                style={{
+                  position: 'absolute',
+                  right: '0',
+                  top: '0',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text3, rgba(240, 246, 255, 0.45))',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  lineHeight: 1,
+                }}
+                title="Close"
+              >
+                ✕
+              </button>
               <h2 className="claim-modal-title">SOL Available to Claim</h2>
               <p className="claim-modal-subtitle" style={{ margin: 0 }}>
                 Review recoverable SOL from token-account rent and Pump.fun cashback in your wallet.
@@ -753,8 +800,39 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
             </div>
 
             <div className="claim-cards-container">
+              {/* Loading scanner state */}
+              {loading && (
+                <div className="claim-clean-status" style={{ padding: '32px 16px' }}>
+                  <span className="claim-spin" style={{ display: 'inline-block', width: '28px', height: '28px', borderWidth: '3px', marginBottom: '14px' }}></span>
+                  <div className="clean-status-title" style={{ fontSize: '15px' }}>Scanning Wallet...</div>
+                  <div className="clean-status-msg">
+                    Checking on-chain data for empty accounts with reclaimable rent SOL and Pump.fun cashback.
+                  </div>
+                </div>
+              )}
+
+              {/* No wallet connected state */}
+              {!loading && !effectivePublicKey && (
+                <div className="claim-clean-status" style={{ padding: '28px 16px' }}>
+                  <div className="clean-status-title" style={{ fontSize: '15px' }}>No Wallet Connected</div>
+                  <div className="clean-status-msg">
+                    Connect your Solana wallet to scan and claim recoverable rent SOL and Pump.fun cashback.
+                  </div>
+                  <button 
+                    className="claim-lime-btn" 
+                    style={{ marginTop: '16px', width: 'auto', padding: '10px 24px', display: 'inline-block' }}
+                    onClick={() => {
+                      setIsOpen(false);
+                      setWalletModalVisible(true);
+                    }}
+                  >
+                    Connect Wallet
+                  </button>
+                </div>
+              )}
+
               {/* Card 1: Empty token accounts */}
-              {rentSOL > 0 && (
+              {!loading && effectivePublicKey && rentSOL > 0 && (
                 <div className="claim-card">
                   <div className="claim-card-top">
                     <div className="claim-card-title-wrap">
@@ -788,7 +866,7 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
               )}
 
               {/* Card 2: Pump.fun cashback */}
-              {cashbackSOL > 0 && (
+              {!loading && effectivePublicKey && cashbackSOL > 0 && (
                 <div className="claim-card">
                   <div className="claim-card-top">
                     <span className="claim-card-label">Pump.fun cashback</span>
@@ -818,14 +896,18 @@ export default function FloatClaimWidget({ liveSolPrice, onClaimSuccess, effecti
                 </div>
               )}
 
-
-
               {/* If no real balances are left, show a helpful status */}
-              {isRealWalletClean && (
+              {!loading && effectivePublicKey && isRealWalletClean && (
                 <div className="claim-clean-status">
-                  <div className="clean-status-icon">🎉</div>
-                  <div className="clean-status-title">All Claimed!</div>
-                  <div className="clean-status-msg">Your wallet is fully optimized. There are no empty accounts or pending cashback.</div>
+                  <div className="clean-status-title" style={{ color: 'var(--lime, #a3e635)', fontSize: '15px' }}>✓ All Claimed!</div>
+                  <div className="clean-status-msg">Your wallet is fully optimized. There are no empty accounts or pending cashback to claim right now.</div>
+                  <button
+                    className="claim-back-btn"
+                    style={{ marginTop: '14px', width: 'auto', padding: '8px 18px', border: '1px solid rgba(255,255,255,0.1)' }}
+                    onClick={fetchClaimables}
+                  >
+                    Re-scan Wallet
+                  </button>
                 </div>
               )}
             </div>
