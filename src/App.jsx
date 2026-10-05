@@ -376,8 +376,6 @@ export default function App() {
     }
   }, [effectiveConnected]);
 
-  const [swipeDir, setSwipeDir] = useState(null); // 'left' | 'right' | null
-  const swipeTouchRef = useRef({ startX: 0, startY: 0, active: false });
   const [showModal, setShowModal] = useState(false);
 
   // ── PWA / APK Install Banner State ──
@@ -1195,36 +1193,6 @@ export default function App() {
     setSending(false);
   }
 
-  // ── Swipe gesture navigation ─────────────────────────────────────────────
-  const TAB_ORDER = isGuestMode ? ['p2p', 'explorer', 'send', 'send-bulk', 'swap'] : ['wallet', 'p2p', 'explorer', 'send', 'send-bulk', 'swap'];
-
-  const handleTouchStart = useCallback((e) => {
-    const t = e.touches[0];
-    swipeTouchRef.current = { startX: t.clientX, startY: t.clientY, active: true };
-  }, []);
-
-  const handleTouchEnd = useCallback((e) => {
-    if (!swipeTouchRef.current.active) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - swipeTouchRef.current.startX;
-    const dy = t.clientY - swipeTouchRef.current.startY;
-    swipeTouchRef.current.active = false;
-    // Require horizontal dominance and minimum 60px distance to avoid accidental triggers
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-    const currentIndex = TAB_ORDER.indexOf(activeTab);
-    if (dx < 0 && currentIndex < TAB_ORDER.length - 1) {
-      // Swipe left -> next tab
-      setSwipeDir('left');
-      setActiveTab(TAB_ORDER[currentIndex + 1]);
-      setTimeout(() => setSwipeDir(null), 320);
-    } else if (dx > 0 && currentIndex > 0) {
-      // Swipe right -> previous tab
-      setSwipeDir('right');
-      setActiveTab(TAB_ORDER[currentIndex - 1]);
-      setTimeout(() => setSwipeDir(null), 320);
-    }
-  }, [activeTab]);
-
   // ── Render gate for unlock (only for returning users who have an encrypted vault on this device) ─────────
   if (needsUnlock) {
     return (
@@ -1423,11 +1391,7 @@ export default function App() {
         onClose={() => setShowClaimModal(false)}
       />
 
-      <div
-        className={`main tab-${activeTab}${swipeDir ? ` swipe-${swipeDir}` : ''}`}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
+      <div className={`main tab-${activeTab}`}>
         {/* ── Native Wallet Dashboard Card ── */}
         <div className="app-card wallet-card" style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
           <div className="card-body" style={{ padding: '4px 0' }}>
@@ -1913,7 +1877,7 @@ export default function App() {
       </footer>
 
       {/* ── Fixed Bottom Navigation Bar (Centered Explorer Only) ── */}
-      <nav className="bottom-nav bottom-nav-solo" aria-label="Bottom Navigation">
+      <div className="bottom-nav bottom-nav-solo" role="navigation" aria-label="Bottom Navigation">
         {/* Center Explorer Button — Elevated & Highlighted */}
         <button
           className={`bnav-item bnav-item-center bnav-item-solo ${activeTab === 'explorer' ? 'active' : ''}`}
@@ -1928,14 +1892,14 @@ export default function App() {
           title={activeTab === 'explorer' ? 'Return to Wallet' : 'Open dApp Explorer'}
         >
           <div className="bnav-center-btn">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
             </svg>
           </div>
           <span className="bnav-label">Explorer</span>
         </button>
-      </nav>
+      </div>
 
 
       {showModal && (

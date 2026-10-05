@@ -1610,98 +1610,87 @@ footer a { color:var(--lime); text-decoration:none; }
 
 /* Mobile & Universal Bottom Navigation Bar (Centered Explorer Solo) */
 .bottom-nav {
-  position: fixed;
-  bottom: 16px;
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
-  width: auto;
-  min-width: 84px;
-  height: auto;
-  background: rgba(10, 22, 40, 0.92);
+  position: fixed !important;
+  top: auto !important;
+  bottom: 24px !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  width: auto !important;
+  height: auto !important;
+  max-height: 64px !important;
+  min-width: 0 !important;
+  background: rgba(10, 22, 40, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 36px;
   display: flex !important;
+  flex-direction: row !important;
   justify-content: center;
   align-items: center;
   z-index: 999;
-  padding: 8px 16px;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65), 0 0 20px rgba(163, 230, 53, 0.18);
+  padding: 6px 14px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65), 0 0 20px rgba(163, 230, 53, 0.2);
 }
 .bnav-item {
   background: none;
   border: none;
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   color: var(--text3);
   cursor: pointer;
-  height: 100%;
-  gap: 3px;
+  gap: 8px;
   transition: all 0.2s;
   font-family: var(--ff);
   padding: 0;
 }
-.bnav-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s;
-}
 .bnav-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
   transition: color 0.2s;
+  letter-spacing: 0.02em;
+  padding-right: 4px;
 }
-.bnav-item:hover {
+.bnav-item:hover .bnav-label {
   color: var(--text);
 }
-.bnav-item.active {
+.bnav-item.active .bnav-label {
   color: var(--lime);
-}
-.bnav-item.active .bnav-icon {
-  transform: translateY(-2px);
-  filter: drop-shadow(0 0 6px var(--lime));
 }
 
 /* Center Highlighted Explorer Button */
-.bnav-item.bnav-item-center {
-  position: relative;
-}
 .bnav-center-btn {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, rgba(163,230,53,0.22), rgba(34,211,238,0.18));
   border: 1.5px solid var(--lime);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 16px rgba(163, 230, 53, 0.35);
-  margin-top: 0;
+  box-shadow: 0 0 14px rgba(163, 230, 53, 0.4);
+  margin: 0;
   transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
   color: var(--lime);
+  flex-shrink: 0;
 }
-.bnav-item-center:hover .bnav-center-btn,
-.bnav-item-center.active .bnav-center-btn {
-  transform: translateY(-3px) scale(1.06);
-  box-shadow: 0 0 24px rgba(163, 230, 53, 0.6), 0 4px 12px rgba(0, 0, 0, 0.5);
+.bnav-item:hover .bnav-center-btn,
+.bnav-item.active .bnav-center-btn {
+  transform: scale(1.08);
+  box-shadow: 0 0 24px rgba(163, 230, 53, 0.65), 0 4px 12px rgba(0, 0, 0, 0.5);
   background: linear-gradient(135deg, var(--lime), #65a30d);
   color: #090d16;
-}
-.bnav-item-center.active .bnav-label {
-  color: var(--lime);
-  font-weight: 700;
 }
 
 @media (min-width: 768px) {
   .bottom-nav {
-    bottom: 20px;
-    padding: 9px 20px;
-    border-radius: 32px;
+    bottom: 24px !important;
+    padding: 7px 18px;
+    border-radius: 38px;
   }
 }
 
@@ -1935,48 +1924,6 @@ footer a { color:var(--lime); text-decoration:none; }
 
 
 
-
-/* ── Swipe gesture slide animations ────────────────────────────────────── */
-@keyframes slideInFromRight {
-  from { opacity: 0; transform: translateX(48px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-@keyframes slideInFromLeft {
-  from { opacity: 0; transform: translateX(-48px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-.main.swipe-left .app-card {
-  animation: slideInFromRight 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-.main.swipe-right .app-card {
-  animation: slideInFromLeft 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-
-/* Swipe indicator dots — mobile only */
-@media (max-width: 700px) {
-  .swipe-dots {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 0 2px;
-    position: relative;
-    z-index: 10;
-  }
-  .swipe-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    transition: all 0.25s ease;
-  }
-  .swipe-dot.active {
-    width: 18px;
-    border-radius: 3px;
-    background: var(--lime);
-  }
-}
 
 /* Guest Mode Button — pulsing lime glow */
 @keyframes guestGlow {
