@@ -112,6 +112,12 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
     }
   };
 
+  useEffect(() => {
+    if (initialScreen === 'create' || initialScreen === 'create-edu') {
+      handleStartCreate();
+    }
+  }, [initialScreen]);
+
   const startQuiz = () => {
     const words = generatedMnemonic.split(' ');
     const targetIdx = 2; // Word #3
@@ -426,22 +432,28 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 color: '#ffffff',
                 fontSize: '15px',
                 fontWeight: '600',
-                cursor: 'pointer',
+                cursor: loading ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s',
                 fontFamily: 'var(--ff)',
                 textAlign: 'center',
+                opacity: loading ? 0.7 : 1,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
-                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                if (!loading) {
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
-                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                if (!loading) {
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                }
               }}
-              onClick={() => showTinyNote('Coming soon', 'info', 2000)}
+              onClick={handleStartCreate}
+              disabled={loading}
             >
-              Create wallet
+              {loading && screen === 'onboard' ? 'Creating...' : 'Create wallet'}
             </button>
 
             <button
@@ -467,7 +479,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
                 e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
               }}
-              onClick={() => showTinyNote('Coming soon', 'info', 2000)}
+              onClick={() => setScreen('import-choose')}
             >
               Import existing wallet
             </button>
@@ -637,7 +649,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       {screen === 'create-edu' && (
         <div style={cardStyle}>
           <button onClick={() => setScreen('onboard')} style={btnGhost}>
-            &larr; Back
+            ← Back
           </button>
           <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>
             Secure Your Secret Phrase
@@ -799,7 +811,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       {screen === 'import-choose' && (
         <div style={cardStyle}>
           <button onClick={() => setScreen('onboard')} style={btnGhost}>
-            &larr; Back
+            ← Back
           </button>
           <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>Import Wallet</h2>
           <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.5' }}>
@@ -819,7 +831,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       {screen === 'import-mnemonic' && (
         <div style={cardStyle}>
           <button onClick={() => setScreen('import-choose')} style={btnGhost}>
-            &larr; Back
+            ← Back
           </button>
           <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '12px', color: 'white' }}>Enter Seed Phrase</h2>
 
@@ -904,7 +916,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       {screen === 'import-key' && (
         <div style={cardStyle}>
           <button onClick={() => setScreen('import-choose')} style={btnGhost}>
-            &larr; Back
+            ← Back
           </button>
           <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>Enter Private Key</h2>
           <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '16px', lineHeight: '1.5' }}>
@@ -939,7 +951,18 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       {/* SCREEN: Set PIN */}
       {screen === 'create-pin' && (
         <div style={cardStyle}>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '6px', color: 'white' }}>Set Local PIN</h2>
+          <button
+            onClick={() => {
+              if (pendingSource === 'created') setScreen('create-reveal');
+              else if (pendingSource === 'imported-mnemonic') setScreen('import-mnemonic');
+              else if (pendingSource === 'imported-privatekey') setScreen('import-key');
+              else setScreen('onboard');
+            }}
+            style={btnGhost}
+          >
+            ← Back
+          </button>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', marginTop: '12px', marginBottom: '6px', color: 'white' }}>Set Local PIN</h2>
           <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.5' }}>
             This PIN encrypts your keys locally on this device using AES-256.
           </p>
