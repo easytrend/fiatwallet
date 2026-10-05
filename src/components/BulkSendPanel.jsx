@@ -694,7 +694,7 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
             onClick={() => fileRef.current.click()}
             onDragOver={e => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)} onDrop={handleDrop}>
-            <div className="upload-icon">📂</div>
+            <div className="upload-icon">↑</div>
             <div className="upload-title">Drop file or click to browse</div>
             <div className="upload-sub">Supports <span>.csv</span> and <span>.xlsx</span> · Up to 1,000 recipients</div>
             <input ref={fileRef} type="file" className="upload-input" accept=".csv,.xlsx,.xls,.txt" onChange={handleFile} />
@@ -742,10 +742,10 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
           {/* Progress/status area */}
           {sendingState && (
             <div style={{marginTop:12, padding:'12px', background:'rgba(255,255,255,0.05)', borderRadius:8, fontSize:13}}>
-              {sendingState === 'resolving' && <span style={{color:'var(--text2)'}}>🔍 Resolving domains...</span>}
-              {sendingState === 'signing'   && <span style={{color:'var(--text2)'}}>✍️ Please sign the transaction(s) in your wallet...</span>}
-              {sendingState === 'sending'   && <span style={{color:'var(--lime)'}}>🚀 Confirming batch {progress.current + 1} of {progress.total}...</span>}
-              {sendingState === 'done'      && <span style={{color:'var(--lime)'}}>✅ All {validRows.length} recipients paid!</span>}
+              {sendingState === 'resolving' && <span style={{color:'var(--text2)'}}>• Resolving domains...</span>}
+              {sendingState === 'signing'   && <span style={{color:'var(--text2)'}}>• Please sign the transaction(s) in your wallet...</span>}
+              {sendingState === 'sending'   && <span style={{color:'var(--lime)'}}>• Confirming batch {progress.current + 1} of {progress.total}...</span>}
+              {sendingState === 'done'      && <span style={{color:'var(--lime)'}}>✓ All {validRows.length} recipients paid!</span>}
               {sendingState === 'error'     && <span style={{color:'#f87171'}}>✕ {errorMsg}</span>}
             </div>
           )}

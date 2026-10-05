@@ -29,6 +29,7 @@ import BankDetailsModal from './components/BankDetailsModal';
 import SecurityModal from './components/SecurityModal';
 import TermsPrivacyModal from './components/TermsPrivacyModal';
 import WalletMenuDrawer from './components/WalletMenuDrawer';
+import DAppExplorer from './components/DAppExplorer';
 
 
 
@@ -1195,7 +1196,7 @@ export default function App() {
   }
 
   // ── Swipe gesture navigation ─────────────────────────────────────────────
-  const TAB_ORDER = isGuestMode ? ['p2p', 'send', 'send-bulk', 'swap'] : ['wallet', 'p2p', 'send', 'send-bulk', 'swap'];
+  const TAB_ORDER = isGuestMode ? ['p2p', 'explorer', 'send', 'send-bulk', 'swap'] : ['wallet', 'p2p', 'explorer', 'send', 'send-bulk', 'swap'];
 
   const handleTouchStart = useCallback((e) => {
     const t = e.touches[0];
@@ -1287,7 +1288,7 @@ export default function App() {
           gap: '14px', padding: '10px 20px', fontSize: '13px', fontWeight: '500',
           boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
         }}>
-          <span>🆕 A new version of Fiatwallet is available — refresh to get the latest features and fixes.</span>
+          <span>• A new version of Fiatwallet is available — refresh to get the latest features and fixes.</span>
           <button
             onClick={() => window.location.reload()}
             style={{
@@ -1325,7 +1326,7 @@ export default function App() {
           zIndex: 998,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '14px' }}>📱</span>
+            <span style={{ color: 'var(--lime)', fontWeight: 'bold' }}>•</span>
             <span>Get the native Android app for the best P2P experience.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1500,6 +1501,59 @@ export default function App() {
               onExitGuest={() => {
                 setIsGuestMode(false);
                 setGuestBypass(false);
+              }}
+            />
+          </div>
+        </div>
+
+        {/* ── dApp Explorer Card ── */}
+        <div className="app-card explorer-card" style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+          <div className="card-body">
+            {!isGuestMode && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <button
+                  onClick={() => setActiveTab('wallet')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    color: 'white',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontFamily: 'var(--ff)',
+                  }}
+                >
+                  ← Wallet
+                </button>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text2)' }}>
+                  dApp Explorer
+                </span>
+                <div style={{ width: '60px' }} />
+              </div>
+            )}
+            <DAppExplorer
+              connection={connection}
+              effectivePublicKey={effectivePublicKey}
+              effectiveConnected={effectiveConnected}
+              effectiveSignTransaction={effectiveSignTransaction}
+              effectiveSendTransaction={effectiveSendTransaction}
+              isInternal={internalWallet.isActive}
+              solBalance={solBalance}
+              isGuestMode={isGuestMode}
+              onOpenConnect={() => setShowConnectModal(true)}
+              onNavigateTab={(tab) => {
+                if (tab === 'claim') {
+                  setShowClaimModal(true);
+                } else if (tab === 'swap') {
+                  setShowSwapModal(true);
+                } else {
+                  setActiveTab(tab);
+                }
               }}
             />
           </div>
@@ -1838,7 +1892,7 @@ export default function App() {
         alignItems: 'center',
         justifyContent: 'center',
         gap: '12px',
-        padding: '1.5rem 1rem 2rem',
+        padding: '1.5rem 1rem 6.5rem',
         borderTop: '1px solid var(--border)',
       }}>
         {/* Compliance Row */}
@@ -1857,6 +1911,88 @@ export default function App() {
           </a>
         </div>
       </footer>
+
+      {/* ── Fixed Bottom Navigation Bar (Centered Explorer) ── */}
+      <nav className="bottom-nav" aria-label="Bottom Navigation">
+        {!isGuestMode && (
+          <button
+            className={`bnav-item ${activeTab === 'wallet' ? 'active' : ''}`}
+            onClick={() => setActiveTab('wallet')}
+            aria-label="Wallet"
+          >
+            <div className="bnav-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+                <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
+                <circle cx="18" cy="14" r="1" />
+              </svg>
+            </div>
+            <span className="bnav-label">Wallet</span>
+          </button>
+        )}
+
+        <button
+          className={`bnav-item ${activeTab === 'p2p' ? 'active' : ''}`}
+          onClick={() => setActiveTab('p2p')}
+          aria-label={isGuestMode ? 'Offramp' : 'P2P'}
+        >
+          <div className="bnav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
+          </div>
+          <span className="bnav-label">{isGuestMode ? 'Offramp' : 'P2P'}</span>
+        </button>
+
+        {/* Center Explorer Button — Elevated & Highlighted */}
+        <button
+          className={`bnav-item bnav-item-center ${activeTab === 'explorer' ? 'active' : ''}`}
+          onClick={() => setActiveTab('explorer')}
+          aria-label="Explorer"
+        >
+          <div className="bnav-center-btn">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+            </svg>
+          </div>
+          <span className="bnav-label">Explorer</span>
+        </button>
+
+        <button
+          className={`bnav-item ${activeTab === 'send' || activeTab === 'send-bulk' ? 'active' : ''}`}
+          onClick={() => setActiveTab('send')}
+          aria-label="Send"
+        >
+          <div className="bnav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </div>
+          <span className="bnav-label">Send</span>
+        </button>
+
+        <button
+          className={`bnav-item ${activeTab === 'swap' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('swap');
+            setShowSwapModal(true);
+          }}
+          aria-label="Swap"
+        >
+          <div className="bnav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16 3 21 3 21 8" />
+              <line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" />
+              <line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+          </div>
+          <span className="bnav-label">Swap</span>
+        </button>
+      </nav>
 
 
       {showModal && (

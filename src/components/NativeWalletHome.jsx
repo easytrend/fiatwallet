@@ -29,6 +29,15 @@ function IconBulkSend() {
   );
 }
 
+function IconExplorer() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </svg>
+  );
+}
+
 function ClaimSolLogo() {
   return (
     <div style={{
@@ -147,6 +156,12 @@ export default function NativeWalletHome({
       label:   'P2P Trade',
       icon:    <IconP2P />,
       onClick: () => onNavigateTab('p2p'),
+    },
+    {
+      key:     'explorer',
+      label:   'Explorer',
+      icon:    <IconExplorer />,
+      onClick: () => onNavigateTab('explorer'),
     },
     {
       key:     'send-bulk',
@@ -383,8 +398,8 @@ export default function NativeWalletHome({
 
         <div style={{
           display:               'grid',
-          gridTemplateColumns:   'repeat(4, 1fr)',
-          gap:                   '8px',
+          gridTemplateColumns:   'repeat(5, 1fr)',
+          gap:                   '6px',
         }}>
           {features.map(f => (
             <div

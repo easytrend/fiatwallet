@@ -27,7 +27,12 @@ export default function TokenModal({ filteredTokens, connected, walletLoading, s
         {/* ── Not connected: gate the list ── */}
         {!connected ? (
           <div style={{textAlign:'center', padding:'2.5rem 1rem'}}>
-            <div style={{fontSize:36, marginBottom:14}}>🔐</div>
+            <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
             <div style={{fontSize:15, fontWeight:600, color:'var(--text)', marginBottom:6}}>Wallet not connected</div>
             <div style={{fontSize:13, color:'var(--text2)'}}>
               Connect your wallet to see your actual SOL &amp; SPL token balances.

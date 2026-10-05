@@ -807,7 +807,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       .then(row => {
         if (row) {
           // Found a valid session in Supabase — auto-login, no email prompt
-          console.log('[Session] ✅ Supabase session found! Auto-logging in. Email:', row.email);
+          console.log('[Session] ✓ Supabase session found! Auto-logging in. Email:', row.email);
           const expiryMs = new Date(row.expires_at).getTime();
           setSessionToken(row.session_token);
           setSessionEmail(row.email);
@@ -819,7 +819,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           localStorage.setItem(`paj_sessionExpiry_${key}`, String(expiryMs));
         } else {
           // No session anywhere — show full email + OTP form
-          console.log('[Session] ❌ No Supabase session found — showing email/OTP form');
+          console.log('[Session] ✕ No Supabase session found — showing email/OTP form');
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
@@ -827,7 +827,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       })
       .catch((err) => {
         // Supabase unreachable — show form so user can verify manually
-        console.warn('[Session] ❌ Supabase query failed:', err?.message || err);
+        console.warn('[Session] ✕ Supabase query failed:', err?.message || err);
         setSessionToken('');
         setSessionEmail('');
         setAuthStep('input_email');
@@ -2495,7 +2495,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           
           if (status && status !== currentStatus) {
             setOnrampStatus(status.toLowerCase());
-            // ✅ Sync status back to Supabase (always canonical status)
+            // ✓ Sync status back to Supabase (always canonical status)
             const mappedStatus = (status === 'COMPLETED' || status === 'SUCCESSFUL' || status === 'CONFIRMED') ? 'COMPLETED'
               : (status === 'FAILED' || status === 'CANCELLED' || status === 'EXPIRED') ? 'ERROR'
               : 'PENDING';
@@ -3100,7 +3100,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         onOrderUpdate: (data) => {
           const newStatus = (data?.status || '').toUpperCase();
           if (newStatus === 'COMPLETED' || newStatus === 'SUCCESSFUL' || newStatus === 'CONFIRMED') {
-            // ✅ Write final status to Supabase immediately
+            // ✓ Write final status to Supabase immediately
             updateP2PTransactionStatus(order.id, 'COMPLETED', data?.txHash || data?.signature || null);
             // Update modal to show TRANSFER CONFIRMED
             setSuccessDetails(prev => prev ? { ...prev, status: newStatus } : prev);
@@ -3110,7 +3110,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               offrampSocketRef.current = null;
             }
           } else if (newStatus === 'FAILED') {
-            // ✅ Write FAILED status to Supabase immediately
+            // ✓ Write FAILED status to Supabase immediately
             updateP2PTransactionStatus(order.id, 'ERROR', null);
             setSuccessDetails(prev => prev ? { ...prev, status: 'FAILED' } : prev);
             loadPayoutLogs();
@@ -3119,7 +3119,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               offrampSocketRef.current = null;
             }
           } else if (newStatus === 'PAID') {
-            // ✅ Write PAID status to Supabase immediately
+            // ✓ Write PAID status to Supabase immediately
             updateP2PTransactionStatus(order.id, 'PENDING', null);
             setSuccessDetails(prev => prev ? { ...prev, status: 'PAID' } : prev);
             loadPayoutLogs();
@@ -3429,7 +3429,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               </div>
           ) : logError ? (
               <div style={{ fontSize: '11px', color: '#f87171', background: 'rgba(239,68,68,0.08)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                ⚠️ {logError}
+                • {logError}
               </div>
           ) : paginatedLogs.length === 0 ? (
               <div style={{ fontSize: '12px', color: 'var(--text3)', textAlign: 'center', padding: '24px' }}>
@@ -4800,7 +4800,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           {/* Session notice if not yet logged in */}
           {authStep !== 'logged_in' && (
             <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '10px 14px', fontSize: '11px', color: '#facc15', lineHeight: '1.5' }}>
-              🔒 Please verify your email (above) to activate the Buy gateway.
+              • Please verify your email (above) to activate the Buy gateway.
             </div>
           )}
 
@@ -4965,7 +4965,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     className="send-btn"
                     style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', color: 'var(--lime)', fontWeight: '700', fontSize: '15px' }}
                   >
-                    {onrampLoading ? <><span className="p2p-mini-spinner" style={{ marginRight: '8px' }} />Processing...</> : '✅ I Have Paid'}
+                    {onrampLoading ? <><span className="p2p-mini-spinner" style={{ marginRight: '8px' }} />Processing...</> : '✓ I Have Paid'}
                   </button>
                 )}
 
@@ -5024,11 +5024,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     Pay ₦{parsedOnrampAmt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </span>
                   <span style={{ fontSize: '11px', fontWeight: '500', opacity: 0.75 }}>
-                    🏦 Get Bank Details →
+                    Get Bank Details →
                   </span>
                 </>
               ) : (
-                <span style={{ fontSize: '14px' }}>🏦 Get Bank Details</span>
+                <span style={{ fontSize: '14px' }}>Get Bank Details</span>
               )}
             </button>
           )}
@@ -5043,7 +5043,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           background: 'rgba(255,255,255,0.01)', border: '1.5px dashed rgba(255,255,255,0.1)',
           borderRadius: '16px', margin: '10px 0',
         }}>
-          <div style={{ fontSize: '38px', marginBottom: '14px' }}>🚀</div>
+          <div style={{ fontSize: '38px', marginBottom: '14px', color: 'var(--lime)' }}>•</div>
           <h4 style={{ fontSize: '15px', fontWeight: 'bold', color: 'white', marginBottom: '10px' }}>
             {mode === 'buy' ? 'Buy Coming Soon for this Region' : `${selectedCountry.name} Payouts Coming Soon`}
           </h4>
@@ -5513,7 +5513,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                         <span className="p2p-mini-spinner" /> Releasing USDC...
                       </span>
                     ) : (
-                      '🏦 Release USDC to Wallet'
+                      'Release USDC to Wallet'
                     )}
                   </button>
                   {releaseError && (
@@ -6074,7 +6074,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   gap: '6px'
                 }}
               >
-                <span>{copiedManualAddr ? '✓ Address Copied' : '📋 Copy Deposit Address'}</span>
+                <span>{copiedManualAddr ? '✓ Address Copied' : 'Copy Deposit Address'}</span>
               </button>
             </div>
 

@@ -1608,21 +1608,23 @@ footer a { color:var(--lime); text-decoration:none; }
   box-shadow: 0 0 8px var(--lime);
 }
 
-/* Mobile Bottom Navigation Bar */
+/* Mobile & Universal Bottom Navigation Bar */
 .bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   height: 64px;
-  background: rgba(10, 22, 40, 0.85);
+  background: rgba(10, 22, 40, 0.92);
   backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex !important;
   justify-content: space-around;
   align-items: center;
   z-index: 999;
   padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
 }
 .bnav-item {
   background: none;
@@ -1635,16 +1637,21 @@ footer a { color:var(--lime); text-decoration:none; }
   cursor: pointer;
   flex: 1;
   height: 100%;
-  gap: 4px;
+  gap: 3px;
   transition: all 0.2s;
   font-family: var(--ff);
+  padding: 4px 0;
 }
 .bnav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: transform 0.2s;
 }
 .bnav-label {
   font-size: 11px;
   font-weight: 600;
+  transition: color 0.2s;
 }
 .bnav-item:hover {
   color: var(--text);
@@ -1657,6 +1664,54 @@ footer a { color:var(--lime); text-decoration:none; }
   filter: drop-shadow(0 0 6px var(--lime));
 }
 
+/* Center Highlighted Explorer Button */
+.bnav-item.bnav-item-center {
+  flex: 1.15;
+  position: relative;
+}
+.bnav-center-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(163,230,53,0.22), rgba(34,211,238,0.18));
+  border: 1.5px solid var(--lime);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px rgba(163, 230, 53, 0.35);
+  margin-top: -12px;
+  transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: var(--lime);
+}
+.bnav-item-center:hover .bnav-center-btn,
+.bnav-item-center.active .bnav-center-btn {
+  transform: translateY(-4px) scale(1.08);
+  box-shadow: 0 0 24px rgba(163, 230, 53, 0.6), 0 4px 12px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(135deg, var(--lime), #65a30d);
+  color: #090d16;
+}
+.bnav-item-center.active .bnav-label {
+  color: var(--lime);
+  font-weight: 700;
+}
+
+/* Desktop Floating Dock */
+@media (min-width: 768px) {
+  .bottom-nav {
+    bottom: 16px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: 480px;
+    max-width: calc(100vw - 32px);
+    border-radius: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 14px 45px rgba(0, 0, 0, 0.65), 0 0 22px rgba(34, 211, 238, 0.09);
+    padding-bottom: 0;
+    height: 68px;
+  }
+}
+
 /* Desktop Card Switching & Layout Logic (>= 1100px) */
 .wallet-card {
   display: none;
@@ -1665,16 +1720,28 @@ footer a { color:var(--lime); text-decoration:none; }
   box-shadow: none !important;
 }
 .fiatpay-card,
-.bulk-send-card {
+.bulk-send-card,
+.explorer-card {
   display: none;
 }
 @media (min-width: 1100px) {
-  .bottom-nav {
-    display: none !important;
-  }
   .fiatpay-card,
-  .bulk-send-card {
+  .bulk-send-card,
+  .explorer-card {
     display: none;
+  }
+  .main.tab-explorer .explorer-card {
+    display: block !important;
+    width: 100%;
+    max-width: 620px;
+    margin: 0 auto;
+  }
+  .main.tab-explorer .wallet-card,
+  .main.tab-explorer .send-card,
+  .main.tab-explorer .bulk-send-card,
+  .main.tab-explorer .p2p-card,
+  .main.tab-explorer .fiatpay-card {
+    display: none !important;
   }
   .main.tab-fiatpay .fiatpay-card {
     display: block !important;
@@ -1685,7 +1752,8 @@ footer a { color:var(--lime); text-decoration:none; }
   .main.tab-fiatpay .send-card,
   .main.tab-fiatpay .bulk-send-card,
   .main.tab-fiatpay .p2p-card,
-  .main.tab-fiatpay .wallet-card {
+  .main.tab-fiatpay .wallet-card,
+  .main.tab-fiatpay .explorer-card {
     display: none;
   }
   .main.tab-wallet .wallet-card {
@@ -1697,7 +1765,8 @@ footer a { color:var(--lime); text-decoration:none; }
   .main.tab-wallet .send-card,
   .main.tab-wallet .bulk-send-card,
   .main.tab-wallet .p2p-card,
-  .main.tab-wallet .fiatpay-card {
+  .main.tab-wallet .fiatpay-card,
+  .main.tab-wallet .explorer-card {
     display: none;
   }
   .main.tab-send .wallet-card,
@@ -1788,13 +1857,19 @@ footer a { color:var(--lime); text-decoration:none; }
   .nav-links {
     display: none !important;
   }
-  .wallet-card, .send-card, .bulk-send-card, .p2p-card, .fiatpay-card {
+  .wallet-card, .send-card, .bulk-send-card, .p2p-card, .fiatpay-card, .explorer-card {
     display: none;
   }
   .main.tab-wallet .wallet-card {
     display: block;
     width: 100%;
     max-width: 480px;
+    margin: 0 auto;
+  }
+  .main.tab-explorer .explorer-card {
+    display: block !important;
+    width: 100%;
+    max-width: 600px;
     margin: 0 auto;
   }
   .main.tab-send .send-card {
@@ -1813,9 +1888,9 @@ footer a { color:var(--lime); text-decoration:none; }
     display: none !important;
   }
   
-  /* Adjusted bottom padding now that bottom-nav is removed */
+  /* Adjusted bottom padding for fixed bottom-nav */
   .main {
-    padding-bottom: 2rem !important;
+    padding-bottom: 96px !important;
   }
 
   /* Swap card mobile positioning when tab-swap is active */

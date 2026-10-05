@@ -171,7 +171,7 @@ export default function FloatClaimWidget({
         success = true;
         
       } catch (err) {
-        console.error('❌ Failed to scan accounts:', err.message);
+        console.error('Failed to scan accounts:', err.message);
         throw err;
       }
 

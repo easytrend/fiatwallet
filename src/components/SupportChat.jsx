@@ -49,8 +49,8 @@ const SUPPORT_LINKS = [
 
 // Typing animation messages
 const BOT_MESSAGES = [
-  { id: 1, text: "👋 Hey! Welcome to FiatWallet Support.", delay: 0 },
-  { id: 2, text: "Need help? Connect with our community on any of the platforms below 👇", delay: 800 },
+  { id: 1, text: "Hey! Welcome to FiatWallet Support.", delay: 0 },
+  { id: 2, text: "Need help? Connect with our community on any of the platforms below.", delay: 800 },
 ];
 
 export default function SupportChat() {
@@ -175,7 +175,9 @@ export default function SupportChat() {
               flexShrink: 0,
               fontSize: '16px',
             }}>
-              💬
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#090d16" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
             </div>
             <div>
               <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text, #f0f6ff)' }}>

@@ -997,7 +997,7 @@ export default function SwapWidget({
                 <span className="swp-countdown" onClick={refresh} title="Click to refresh" style={{ cursor: 'pointer' }}>
                   {quoteLoading
                     ? <><span className="swp-mini-spin" /> Refreshing…</>
-                    : <>🔄 {countdown}s</>
+                    : <>↻ {countdown}s</>
                   }
                 </span>
               )}
@@ -1060,7 +1060,7 @@ export default function SwapWidget({
 
             {/* Quote error */}
             {quoteError && hasAmount && !quoteLoading && (
-              <div className="swp-error-msg">⚠ {quoteError}</div>
+              <div className="swp-error-msg">• {quoteError}</div>
             )}
 
             {/* Swap error */}
