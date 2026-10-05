@@ -453,7 +453,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   useEffect(() => {
     if (isGuestMode) {
       setIsManualOfframp(true);
-      setOfframpSubMode('tag');
+      setOfframpSubMode('standard');
       setMode('sell');
       setGuestMode('sell');
     }
@@ -572,7 +572,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampOrder(null);
     setOnrampStatus(null);
     if (nextMode === 'sell') {
-      setOfframpSubMode('tag');
+      setOfframpSubMode('standard');
     }
   }, []);
 
@@ -1161,8 +1161,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Resolve account name ──────────────────────────────────────────────────
   useEffect(() => {
-    // Never resolve account names while the user is on the TAG page
-    if (offrampSubMode === 'tag') {
+    // Never resolve account names while the user is on the TAG page or when a tag is resolved
+    if (offrampSubMode === 'tag' || resolvedTagData) {
       setAccountName('');
       return;
     }
@@ -1217,13 +1217,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setAccountName('');
       setAmount('');
       setResolvingName(false);
-    } else {
-      // Returning to standard Offramp: clear all TAG-specific fields.
-      setRecipientTagInput('');
-      setResolvedTagData(null);
-      setResolvingTag(false);
-      setTagLookupError(null);
-      setAmount(''); // Clear amount typed in TAG mode
     }
   }, [offrampSubMode]);
 
@@ -1463,9 +1456,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       .catch(() => setUserTagData(null));
   }, [publicKey, sessionToken]);
 
-  // ── Real-time resolution of recipient Tag in TAG offramp mode ───────────
+  // ── Real-time resolution of recipient Tag in standard and tag offramp ───
   useEffect(() => {
-    if (offrampSubMode !== 'tag' || !recipientTagInput) {
+    if (!recipientTagInput) {
       setResolvedTagData(null);
       setTagLookupError(null);
       setResolvingTag(false);
@@ -1473,7 +1466,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     const clean = recipientTagInput.trim();
-    if (clean.length < 2) {
+    const tagBare = clean.replace(/^\$/, '');
+    if (tagBare.length < 2) {
       setResolvedTagData(null);
       setTagLookupError(null);
       setResolvingTag(false);
@@ -1489,12 +1483,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           if (data) {
             // Store resolved data ONLY in resolvedTagData — never touch the shared
             // offramp fields (selectedBank / accountNumber / accountName) so that
-            // switching pages never exposes the recipient's private details.
+            // recipient's private details are never exposed.
             setResolvedTagData(data);
             setTagLookupError(null);
           } else {
             setResolvedTagData(null);
-            if (clean.length >= 3) {
+            if (tagBare.length >= 3) {
               setTagLookupError('Tag not found. Please check spelling.');
             }
           }
@@ -1507,7 +1501,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [recipientTagInput, offrampSubMode]);
+  }, [recipientTagInput]);
 
   // ── Auto-resolve account name in Tag Registration modal ──────────────────
   useEffect(() => {
@@ -2049,8 +2043,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       !offrampExceedsMaximum &&
       (isManualOfframp || !offrampExceedsBalance);
 
-    if (offrampSubMode === 'tag') {
-      // TAG mode: valid when a tag has been successfully resolved
+    if (resolvedTagData || offrampSubMode === 'tag') {
+      // TAG mode or resolved tag: valid when a tag has been successfully resolved
       return base && !!resolvedTagData && !resolvingTag;
     }
 
@@ -2573,13 +2567,21 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (!sessionToken) { setP2pError('Please verify your email OTP session first.'); return; }
     if (apiError) { setP2pError(`PajCash API error: ${apiError}`); return; }
     if (!amount || parseFloat(amount) <= 0) { setP2pError('Please enter a valid amount.'); return; }
-    if (!resolvedTagData) { setP2pError('Please enter a valid Fiat Tag to send to.'); return; }
+    if (resolvedTagData || offrampSubMode === 'tag') {
+      if (!resolvedTagData) { setP2pError('Please enter a valid Fiat Tag to send to.'); return; }
+    } else {
+      if (!accountNumber) { setP2pError('Please enter your bank account number or search a Fiat Tag.'); return; }
+      if (selectedBank === 'Choose Bank') { setP2pError('Please select a bank.'); return; }
+      if (!accountName || accountName === 'No Bank Match') { setP2pError('Please enter a valid matching bank account.'); return; }
+    }
 
     setSubmitting(true);
     try {
-      const effectiveBankName   = resolvedTagData?.bank_name   || '';
-      const effectiveAcctNumber = resolvedTagData?.account_number || '';
-      const effectiveAcctName   = resolvedTagData?.account_name  || '';
+      const isTagOfframp = Boolean(resolvedTagData || offrampSubMode === 'tag');
+      const effectiveBankName   = isTagOfframp ? (resolvedTagData?.bank_name   || '') : selectedBank;
+      const effectiveAcctNumber = isTagOfframp ? (resolvedTagData?.account_number || '') : accountNumber;
+      const effectiveAcctName   = isTagOfframp ? (resolvedTagData?.account_name  || '') : (accountName || 'Account Holder');
+      const effectiveTag        = isTagOfframp ? (recipientTagInput || (resolvedTagData?.tag_name ? `$${resolvedTagData.tag_name}` : undefined)) : undefined;
 
       const bankObj = apiBanks.find(b => getBankNameString(b) === effectiveBankName);
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
@@ -2623,7 +2625,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         status: 'INIT',
         userEmail: sessionEmail || undefined,
         depositAddress: order.address,
-        recipientTag: recipientTagInput || undefined,
+        recipientTag: effectiveTag,
       });
 
       setManualOrder({
@@ -2636,7 +2638,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         bankName: effectiveBankName,
         accountNumber: effectiveAcctNumber,
         accountName: effectiveAcctName,
-        recipientTag: recipientTagInput,
+        recipientTag: effectiveTag,
       });
       setManualOrderStatus('WAITING');
       setManualTimeLeft(1800); // 30 mins
@@ -2739,7 +2741,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (apiError) { setP2pError(`PajCash API error: ${apiError}`); return; }
     if (!connected || !publicKey) { setP2pError('Please connect your Solana wallet first.'); return; }
     if (!amount || parseFloat(amount) <= 0) { setP2pError('Please enter a valid amount.'); return; }
-    if (offrampSubMode === 'tag') {
+    if (resolvedTagData || offrampSubMode === 'tag') {
       if (!resolvedTagData) { setP2pError('Please enter a valid Fiat Tag to send to.'); return; }
     } else {
       if (!accountNumber) { setP2pError('Please enter your bank account number.'); return; }
@@ -2753,11 +2755,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         throw new Error(`Insufficient ${liveSelectedToken.symbol} balance. You have ${balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${liveSelectedToken.symbol} but need ${estCryptoAmount.toFixed(4)} ${liveSelectedToken.symbol}.`);
       }
 
-      // In TAG mode, read bank/account details from the privately resolved tag data
-      // so the shared offramp fields are never touched or exposed.
-      const effectiveBankName   = offrampSubMode === 'tag' ? (resolvedTagData?.bank_name   || '') : selectedBank;
-      const effectiveAcctNumber = offrampSubMode === 'tag' ? (resolvedTagData?.account_number || '') : accountNumber;
-      const effectiveAcctName   = offrampSubMode === 'tag' ? (resolvedTagData?.account_name  || '') : accountName;
+      // In TAG mode or when a tag is resolved, read bank/account details from the privately resolved tag data
+      // so the recipient's private details are never exposed.
+      const isTagOfframp = Boolean(resolvedTagData || offrampSubMode === 'tag');
+      const effectiveBankName   = isTagOfframp ? (resolvedTagData?.bank_name   || '') : selectedBank;
+      const effectiveAcctNumber = isTagOfframp ? (resolvedTagData?.account_number || '') : accountNumber;
+      const effectiveAcctName   = isTagOfframp ? (resolvedTagData?.account_name  || '') : accountName;
+      const effectiveTag        = isTagOfframp ? (recipientTagInput || (resolvedTagData?.tag_name ? `$${resolvedTagData.tag_name}` : undefined)) : undefined;
 
       const bankObj = apiBanks.find(b => getBankNameString(b) === effectiveBankName);
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
@@ -2972,14 +2976,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         id: order.id,
         sig,
         ts: Date.now(),
-        bank: offrampSubMode === 'tag' ? effectiveBankName : displayBank,
+        bank: isTagOfframp ? effectiveBankName : displayBank,
         account: effectiveAcctNumber.trim(),
         name: effectiveAcctName || 'Account Holder',
-        recipient_tag: offrampSubMode === 'tag' ? recipientTagInput : undefined
+        recipient_tag: effectiveTag
       });
       localStorage.setItem(`paj_user_orders_${walletKey}`, JSON.stringify(existing.slice(0, 100)));
       // Only persist Offramp details to localStorage (not TAG — those are private)
-      if (offrampSubMode !== 'tag') {
+      if (!isTagOfframp) {
         localStorage.setItem(`paj_account_number_${walletKey}`, effectiveAcctNumber.trim());
         localStorage.setItem(`paj_bank_name_${walletKey}`, displayBank);
         localStorage.setItem(`paj_account_name_${walletKey}`, effectiveAcctName || 'Account Holder');
@@ -3012,13 +3016,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         fiatCurrency: selectedCountry.currency,
         fiatAmount: fiatLogged,
         usdValue: usdLogged,
-        bankName: offrampSubMode === 'tag' ? effectiveBankName : displayBank,
+        bankName: isTagOfframp ? effectiveBankName : displayBank,
         accountNumber: effectiveAcctNumber.trim(),
         accountName: effectiveAcctName || 'Account Holder',
         status: 'PENDING',
         userEmail: sessionEmail || undefined,
         depositAddress: order.address,
-        recipientTag: offrampSubMode === 'tag' ? recipientTagInput : undefined,
+        recipientTag: effectiveTag,
       });
 
       // 8. Poll for on-chain confirmation
@@ -3054,13 +3058,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setSuccessDetails({
         amount: `${baseCryptoAmount.toFixed(4)} ${liveSelectedToken.symbol}`,
         fiat: `${selectedCountry.symbol}${fiatAmountText}`,
-        bank: offrampSubMode === 'tag' ? effectiveBankName : displayBank,
+        bank: isTagOfframp ? effectiveBankName : displayBank,
         account: effectiveAcctNumber,
         name: effectiveAcctName || 'Account Holder',
         orderId: order.id,
         sig,
         status: 'PENDING',
-        recipientTag: offrampSubMode === 'tag' ? recipientTagInput : undefined
+        recipientTag: effectiveTag
       });
       setShowSuccess(true);
 
@@ -3206,7 +3210,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           borderRadius: '12px', padding: '12px 14px', fontSize: '12px', color: '#f87171',
           marginBottom: '1.25rem', lineHeight: '1.5',
         }}>
-          ⚠️ <strong>Payout Gateway Offline:</strong> {apiError}
+          <strong>Payout Gateway Offline:</strong> {apiError}
         </div>
       )}
 
@@ -3248,7 +3252,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               {userTagData && <span style={{ fontSize: '9.5px', opacity: 0.9 }}>({userTagData.tag_name})</span>}
             </button>
 
-            {offrampSubMode === 'tag' && (
+            {sessionToken && mode === 'sell' && (
               <button
                 type="button"
                 onClick={() => {
@@ -3392,7 +3396,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 type="button"
                 onClick={() => {
                   setIsManualOfframp(true);
-                  setOfframpSubMode('tag');
+                  setOfframpSubMode('standard');
                   setMode('sell');
                 }}
                 style={{
@@ -3413,7 +3417,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
                 }}
               >
-                <span>⚡</span>
+                <span style={{ fontSize: '13px' }}>•</span>
                 <span>Offramp Without Connecting Wallet (Guest Mode)</span>
                 <span style={{ fontSize: '13px' }}>→</span>
               </button>
@@ -3499,10 +3503,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       {!showHistoryView && (
         <p className="card-sub" style={{ marginBottom: '1.25rem' }}>
           {isManualOfframp
-            ? (mode === 'buy' ? 'Receive crypto directly to your wallet.' : 'Send money to any Bank account.')
+            ? (mode === 'buy' ? 'Receive crypto directly to your wallet.' : 'Send money to any Bank account or Fiat Tag.')
             : offrampSubMode === 'tag'
               ? 'Send money directly to any Fiat Tag.'
-              : (mode === 'sell' ? 'Send money to any Bank account.' : 'Receive money from any Bank account.')
+              : (mode === 'sell' ? 'Send money to any Bank account or Fiat Tag.' : 'Receive money from any Bank account.')
           }
         </p>
       )}
@@ -3849,318 +3853,450 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           </div>
         ) : (
           <>
-            {offrampSubMode === 'tag' ? (
-              /* ── Fiat Tag Input Field (Bank & Account details resolved in background) ── */
-              <div className="field" style={{ position: 'relative', marginBottom: '1.25rem', zIndex: (isTagInputFocused && tagQueryText.length >= 3 && matchingPastTags.length > 0) ? 1200 : 2 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <div className="field-label" style={{ marginBottom: 0 }}>Fiat Tag</div>
-                  {resolvedTagData && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--lime)', fontWeight: '700' }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      <span>Verified Tag</span>
+            {resolvedTagData ? (
+              /* ── Verified Fiat Tag Recipient Card (Remaining fields disappeared!) ── */
+              <div className="field" style={{ marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div className="field-label" style={{ marginBottom: 0 }}>Recipient</div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    color: 'var(--lime)',
+                    fontWeight: '700',
+                    background: 'rgba(163,230,53,0.12)',
+                    padding: '2px 8px',
+                    borderRadius: '12px'
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>Verified Tag</span>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(163, 230, 53, 0.35)',
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '50%',
+                      background: 'rgba(163, 230, 53, 0.15)',
+                      border: '1px solid rgba(163, 230, 53, 0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--lime)',
+                      fontWeight: '800',
+                      fontSize: '17px'
+                    }}>
+                      $
                     </div>
-                  )}
-                </div>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: '800', fontSize: '16px', letterSpacing: '0.02em' }}>
+                        {recipientTagInput.startsWith('$') ? recipientTagInput : `$${resolvedTagData.tag_name || recipientTagInput}`}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.45)', marginTop: '2px' }}>
+                        Linked recipient destination verified
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="input-wrap" style={{ opacity: canTransact ? 1 : 0.6, display: 'flex', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--lime)', fontWeight: '700', fontSize: '15px', marginRight: '4px', userSelect: 'none' }}>$</span>
-                  <input
-                    type="text"
-                    value={recipientTagInput.replace(/^\$/, '')}
-                    onChange={e => {
-                      const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
-                      setRecipientTagInput(val ? `$${val}` : '');
-                      setIsTagInputFocused(true);
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecipientTagInput('');
+                      setResolvedTagData(null);
+                      setTagLookupError(null);
                     }}
-                    onFocus={() => setIsTagInputFocused(true)}
-                    onBlur={() => setTimeout(() => setIsTagInputFocused(false), 250)}
-                    placeholder="recipientTag"
-                    disabled={!canTransact}
-                    style={{ fontSize: '15px', fontWeight: '600', flex: 1 }}
-                  />
-                  {resolvingTag && (
-                    <span className="p2p-mini-spinner" style={{ marginLeft: '8px' }} />
-                  )}
-                </div>
-
-                {/* Past Tag autocomplete dropdown */}
-                {isTagInputFocused && tagQueryText.length >= 3 && matchingPastTags.length > 0 && (
-                  <div
                     style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 4px)',
-                      left: 0,
-                      right: 0,
-                      background: '#131822',
-                      border: '1px solid rgba(163,230,53,0.25)',
-                      borderRadius: '12px',
-                      padding: '8px',
-                      zIndex: 1300,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.16)',
+                      borderRadius: '10px',
+                      padding: '6px 12px',
+                      color: 'rgba(255, 255, 255, 0.85)',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                      e.currentTarget.style.color = '#fff';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                      e.currentTarget.style.color = 'rgba(255, 255, 255, 0.85)';
                     }}
                   >
-                    <div style={{ padding: '4px 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: 'var(--lime)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Recent Tags ({matchingPastTags.length})</span>
-                      <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', textTransform: 'none' }}>Tap to fill</span>
-                    </div>
-                    {matchingPastTags.map((tag, idx) => (
-                      <div
-                        key={tag}
-                        onMouseDown={e => {
-                          e.preventDefault();
-                          setRecipientTagInput(tag.startsWith('$') ? tag : `$${tag}`);
-                          setIsTagInputFocused(false);
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '10px',
-                          background: 'rgba(255,255,255,0.05)',
-                          marginBottom: idx < matchingPastTags.length - 1 ? '4px' : 0,
-                          cursor: 'pointer',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          transition: 'background 0.15s, border-color 0.15s',
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.background = 'rgba(163,230,53,0.12)';
-                          e.currentTarget.style.borderColor = 'rgba(163,230,53,0.3)';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-                        }}
-                      >
-                        <span style={{ color: 'var(--lime)', fontWeight: '700', fontSize: '14px' }}>
-                          {tag.startsWith('$') ? tag : `$${tag}`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ marginTop: '6px', minHeight: '16px', fontSize: '12px' }}>
-                  {resolvingTag ? (
-                    <span style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
-                      <span className="p2p-mini-spinner" /> Searching Tag...
-                    </span>
-                  ) : tagLookupError ? (
-                    <span style={{ color: '#f87171' }}>
-                      {tagLookupError}
-                    </span>
-                  ) : null}
+                    Change
+                  </button>
                 </div>
               </div>
             ) : (
-              /* ── Standard Account Number & Bank Selector ── */
+              /* ── Fiat Tag Search & Optional Standard Bank Inputs ── */
               <>
-                {/* Account Number — shown first */}
-                <div className="field" style={{ position: 'relative', zIndex: (isAcctInputFocused && acctQueryText.length >= 3 && matchingPastAccounts.length > 0) ? 1200 : 2 }}>
+                {/* Fiat Tag Input Field */}
+                <div className="field" style={{ position: 'relative', marginBottom: offrampSubMode === 'tag' ? '1.25rem' : '10px', zIndex: (isTagInputFocused && tagQueryText.length >= 3 && matchingPastTags.length > 0) ? 1200 : 2 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <div className="field-label" style={{ marginBottom: 0 }}>Account Number</div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="p2p-btn-badge" onClick={handlePaste} disabled={!canTransact} style={{ opacity: canTransact ? 1 : 0.6 }}>Paste</button>
+                    <div className="field-label" style={{ marginBottom: 0 }}>Fiat Tag (Recipient)</div>
+                    {offrampSubMode !== 'tag' && (
+                      <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)' }}>
+                        Search tag or use bank below
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="input-wrap" style={{ opacity: canTransact ? 1 : 0.6, display: 'flex', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--lime)', fontWeight: '700', fontSize: '15px', marginRight: '4px', userSelect: 'none' }}>$</span>
+                    <input
+                      type="text"
+                      value={recipientTagInput.replace(/^\$/, '')}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                        setRecipientTagInput(val ? `$${val}` : '');
+                        setIsTagInputFocused(true);
+                      }}
+                      onFocus={() => setIsTagInputFocused(true)}
+                      onBlur={() => setTimeout(() => setIsTagInputFocused(false), 250)}
+                      placeholder="Search recipient tag (e.g. username)..."
+                      disabled={!canTransact}
+                      style={{ fontSize: '14px', fontWeight: '600', flex: 1 }}
+                    />
+                    {resolvingTag && (
+                      <span className="p2p-mini-spinner" style={{ marginLeft: '8px' }} />
+                    )}
+                    {recipientTagInput && (
                       <button
-                        className="p2p-btn-badge"
-                        onClick={() => setScannerActive(true)}
-                        disabled={!canTransact}
-                        style={{ opacity: canTransact ? 1 : 0.6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="Scan QR Code"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <rect x="2" y="2" width="20" height="20" rx="4" stroke="currentColor" strokeWidth="2.5" fill="none" />
-                          <rect x="1" y="10" width="22" height="4" fill="currentColor" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ position: 'relative' }}>
-                    <div className="input-wrap" style={{ opacity: canTransact ? 1 : 0.6 }}>
-                      <input
-                        type="text"
-                        value={accountNumber}
-                        onChange={e => {
-                          setAccountNumber(e.target.value);
-                          setIsAcctInputFocused(true);
+                        type="button"
+                        onClick={() => {
+                          setRecipientTagInput('');
+                          setResolvedTagData(null);
+                          setTagLookupError(null);
                         }}
-                        onFocus={() => setIsAcctInputFocused(true)}
-                        onBlur={() => setTimeout(() => setIsAcctInputFocused(false), 250)}
-                        placeholder="Enter 10-digit number or search name..."
-                        disabled={!canTransact}
-                      />
-                    </div>
-
-                    {/* ── Auto-pop matching previous accounts card (>= 3 chars typed) ── */}
-                    {isAcctInputFocused && acctQueryText.length >= 3 && matchingPastAccounts.length > 0 && (
-                      <div
-                        className="p2p-account-suggestions"
                         style={{
-                          position: 'absolute',
-                          top: 'calc(100% + 4px)',
-                          left: 0,
-                          right: 0,
-                          background: '#131822',
-                          border: '1px solid rgba(163, 230, 53, 0.4)',
-                          borderRadius: '14px',
-                          padding: '8px',
-                          zIndex: 1500,
-                          boxShadow: '0 16px 40px rgba(0,0,0,0.95), 0 0 25px rgba(163, 230, 53, 0.2)',
-                          maxHeight: '220px',
-                          overflowY: 'auto',
-                          backdropFilter: 'blur(16px)',
+                          background: 'none',
+                          border: 'none',
+                          color: 'rgba(255, 255, 255, 0.4)',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          padding: '0 4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}
+                        title="Clear tag"
                       >
-                        <div style={{ padding: '4px 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: 'var(--lime)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>Select Saved Account ({matchingPastAccounts.length})</span>
-                          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', textTransform: 'none' }}>Tap to choose</span>
-                        </div>
-                        {matchingPastAccounts.map((acc, idx) => (
-                          <div
-                            key={`${acc.accountNumber}_${idx}`}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              handleSelectPastAccount(acc);
-                            }}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: '10px',
-                              background: 'rgba(255,255,255,0.05)',
-                              marginBottom: idx < matchingPastAccounts.length - 1 ? '4px' : 0,
-                              cursor: 'pointer',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              transition: 'background 0.15s, border-color 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(163, 230, 53, 0.12)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                          >
-                            <div>
-                              <div style={{ fontSize: '13px', fontWeight: '700', color: '#ffffff', letterSpacing: '0.04em', fontFamily: 'var(--mono)' }}>
-                                {acc.accountNumber}
-                              </div>
-                              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>
-                                {acc.bankName}
-                              </div>
-                            </div>
-                            {acc.accountName && (
-                              <div style={{ textAlign: 'right', maxWidth: '140px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--lime)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {acc.accountName}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                        ✕
+                      </button>
                     )}
                   </div>
 
-                  <div style={{ marginTop: '6px', minHeight: '16px', fontSize: '12px', color: 'var(--lime)', fontWeight: 'bold' }}>
-                    {accountNumber && selectedBank !== 'Choose Bank' && (
-                      resolvingName
-                        ? <span style={{ fontStyle: 'italic', color: 'var(--text3)', fontWeight: 'normal' }}><span className="p2p-mini-spinner" /> Resolving...</span>
-                        : accountName && (
-                          <span
-                            className="animated-fade-in"
-                            style={{ color: accountName === 'No Bank Match' ? '#f87171' : 'var(--lime)' }}
-                          >
-                            {accountName}
+                  {/* Past Tag autocomplete dropdown */}
+                  {isTagInputFocused && tagQueryText.length >= 3 && matchingPastTags.length > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        right: 0,
+                        background: '#131822',
+                        border: '1px solid rgba(163,230,53,0.25)',
+                        borderRadius: '12px',
+                        padding: '8px',
+                        zIndex: 1300,
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      <div style={{ padding: '4px 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: 'var(--lime)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Recent Tags ({matchingPastTags.length})</span>
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', textTransform: 'none' }}>Tap to fill</span>
+                      </div>
+                      {matchingPastTags.map((tag, idx) => (
+                        <div
+                          key={tag}
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            setRecipientTagInput(tag.startsWith('$') ? tag : `$${tag}`);
+                            setIsTagInputFocused(false);
+                          }}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            background: 'rgba(255,255,255,0.05)',
+                            marginBottom: idx < matchingPastTags.length - 1 ? '4px' : 0,
+                            cursor: 'pointer',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'background 0.15s, border-color 0.15s',
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.background = 'rgba(163,230,53,0.12)';
+                            e.currentTarget.style.borderColor = 'rgba(163,230,53,0.3)';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+                          }}
+                        >
+                          <span style={{ color: 'var(--lime)', fontWeight: '700', fontSize: '14px' }}>
+                            {tag.startsWith('$') ? tag : `$${tag}`}
                           </span>
-                        )
-                    )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '6px', minHeight: '16px', fontSize: '12px' }}>
+                    {resolvingTag ? (
+                      <span style={{ fontStyle: 'italic', color: 'var(--text3)' }}>
+                        <span className="p2p-mini-spinner" /> Searching Tag...
+                      </span>
+                    ) : tagLookupError ? (
+                      <span style={{ color: '#f87171' }}>
+                        {tagLookupError}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
-                {/* Bank selector — shown second */}
-                <div className="field" style={{ position: 'relative' }}>
-                  <div className="field-label">Bank</div>
-                  <div
-                    className="input-wrap"
-                    onClick={() => { if (canTransact) setBankOpen(!bankOpen); }}
-                    style={{ cursor: canTransact ? 'pointer' : 'not-allowed', justifyContent: 'space-between', opacity: canTransact ? 1 : 0.6 }}
-                  >
-                    {loadingBanks ? (
-                      <span style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic' }}>
-                        <span className="p2p-mini-spinner" /> Loading banks...
+                {/* If NOT in exclusive tag mode, render the standard bank fields below */}
+                {offrampSubMode !== 'tag' && (
+                  <>
+                    {/* Divider between Tag search and Bank inputs */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '6px 0 14px 0' }}>
+                      <div style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
+                      <span style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        or pay with bank account
                       </span>
-                    ) : (
-                      <span style={{ color: selectedBank === 'Choose Bank' ? 'var(--text3)' : 'var(--text)' }}>
-                        {selectedBank}
-                      </span>
-                    )}
-                    <span style={{ color: 'var(--text3)', fontSize: '11px' }}>▼</span>
-                  </div>
+                      <div style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
+                    </div>
 
-                  {bankOpen && (
-                    <div className="drop-menu" style={{ left: 0, right: 0, width: '100%', zIndex: 1000 }} onClick={e => e.stopPropagation()}>
-                      <div style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
-                        <input
-                          type="text"
-                          placeholder="Search bank name..."
-                          value={bankSearch}
-                          autoFocus
-                          onChange={e => setBankSearch(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            background: 'rgba(0,0,0,0.2)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '6px',
-                            color: 'white',
-                            fontSize: '12px',
-                            outline: 'none',
-                          }}
-                        />
+                    {/* Account Number — shown first */}
+                    <div className="field" style={{ position: 'relative', zIndex: (isAcctInputFocused && acctQueryText.length >= 3 && matchingPastAccounts.length > 0) ? 1200 : 2 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div className="field-label" style={{ marginBottom: 0 }}>Account Number</div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="p2p-btn-badge" onClick={handlePaste} disabled={!canTransact} style={{ opacity: canTransact ? 1 : 0.6 }}>Paste</button>
+                          <button
+                            className="p2p-btn-badge"
+                            onClick={() => setScannerActive(true)}
+                            disabled={!canTransact}
+                            style={{ opacity: canTransact ? 1 : 0.6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Scan QR Code"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <rect x="2" y="2" width="20" height="20" rx="4" stroke="currentColor" strokeWidth="2.5" fill="none" />
+                              <rect x="1" y="10" width="22" height="4" fill="currentColor" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                      <div ref={bankListScrollRef} style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                        {filteredBanksList.map(b => {
-                          const meta = getBankMetadata(b);
-                          const isSelected = selectedBank === b;
-                          return (
-                            <div
-                              key={b}
-                              className={`drop-item ${isSelected ? 'sel' : ''}`}
-                              onClick={() => { setSelectedBank(b); setBankOpen(false); setBankSearch(''); }}
-                              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', cursor: 'pointer' }}
-                            >
-                              {meta.logo ? (
-                                <img
-                                  src={meta.logo} alt={meta.name}
-                                  onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                  style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
-                                />
-                              ) : null}
-                              <div
-                                className="bank-avatar"
-                                style={{
-                                  display: meta.logo ? 'none' : 'flex',
-                                  width: '22px', height: '22px', borderRadius: '50%',
-                                  background: meta.color, color: 'white', fontSize: '9px',
-                                  fontWeight: 'bold', alignItems: 'center', justifyContent: 'center',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {meta.initial}
-                              </div>
-                              <span className="di-name" style={{ marginLeft: 0 }}>{b}</span>
+
+                      <div style={{ position: 'relative' }}>
+                        <div className="input-wrap" style={{ opacity: canTransact ? 1 : 0.6 }}>
+                          <input
+                            type="text"
+                            value={accountNumber}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val.startsWith('$') || val.startsWith('@')) {
+                                setRecipientTagInput(val);
+                                setAccountNumber('');
+                                setIsTagInputFocused(true);
+                                return;
+                              }
+                              setAccountNumber(val);
+                              setIsAcctInputFocused(true);
+                            }}
+                            onFocus={() => setIsAcctInputFocused(true)}
+                            onBlur={() => setTimeout(() => setIsAcctInputFocused(false), 250)}
+                            placeholder="Enter 10-digit number or search name..."
+                            disabled={!canTransact}
+                          />
+                        </div>
+
+                        {/* Saved Accounts Suggestions */}
+                        {isAcctInputFocused && acctQueryText.length >= 3 && matchingPastAccounts.length > 0 && (
+                          <div
+                            className="p2p-account-suggestions"
+                            style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 4px)',
+                              left: 0,
+                              right: 0,
+                              background: '#131822',
+                              border: '1px solid rgba(163, 230, 53, 0.4)',
+                              borderRadius: '14px',
+                              padding: '8px',
+                              zIndex: 1500,
+                              boxShadow: '0 16px 40px rgba(0,0,0,0.95), 0 0 25px rgba(163, 230, 53, 0.2)',
+                              maxHeight: '220px',
+                              overflowY: 'auto',
+                              backdropFilter: 'blur(16px)',
+                            }}
+                          >
+                            <div style={{ padding: '4px 8px 6px 8px', fontSize: '10px', fontWeight: '700', color: 'var(--lime)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>Select Saved Account ({matchingPastAccounts.length})</span>
+                              <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', textTransform: 'none' }}>Tap to choose</span>
                             </div>
-                          );
-                        })}
-                        {filteredBanksList.length === 0 && (
-                          <div style={{ fontSize: '11px', color: 'var(--text3)', fontStyle: 'italic', padding: '12px', textAlign: 'center' }}>
-                            {bankSearch ? `No banks matching "${bankSearch}"` : 'No banks found'}
+                            {matchingPastAccounts.map((acc, idx) => (
+                              <div
+                                key={`${acc.accountNumber}_${idx}`}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectPastAccount(acc);
+                                }}
+                                style={{
+                                  padding: '10px 12px',
+                                  borderRadius: '10px',
+                                  background: 'rgba(255,255,255,0.05)',
+                                  marginBottom: idx < matchingPastAccounts.length - 1 ? '4px' : 0,
+                                  cursor: 'pointer',
+                                  border: '1px solid rgba(255,255,255,0.08)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  transition: 'background 0.15s, border-color 0.15s',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(163, 230, 53, 0.12)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                              >
+                                <div>
+                                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#ffffff', letterSpacing: '0.04em', fontFamily: 'var(--mono)' }}>
+                                    {acc.accountNumber}
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginTop: '2px' }}>
+                                    {acc.bankName}
+                                  </div>
+                                </div>
+                                {acc.accountName && (
+                                  <div style={{ textAlign: 'right', maxWidth: '140px' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--lime)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {acc.accountName}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
+
+                      <div style={{ marginTop: '6px', minHeight: '16px', fontSize: '12px', color: 'var(--lime)', fontWeight: 'bold' }}>
+                        {accountNumber && selectedBank !== 'Choose Bank' && (
+                          resolvingName
+                            ? <span style={{ fontStyle: 'italic', color: 'var(--text3)', fontWeight: 'normal' }}><span className="p2p-mini-spinner" /> Resolving...</span>
+                            : accountName && (
+                              <span
+                                className="animated-fade-in"
+                                style={{ color: accountName === 'No Bank Match' ? '#f87171' : 'var(--lime)' }}
+                              >
+                                {accountName}
+                              </span>
+                            )
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Bank selector — shown second */}
+                    <div className="field" style={{ position: 'relative' }}>
+                      <div className="field-label">Bank</div>
+                      <div
+                        className="input-wrap"
+                        onClick={() => { if (canTransact) setBankOpen(!bankOpen); }}
+                        style={{ cursor: canTransact ? 'pointer' : 'not-allowed', justifyContent: 'space-between', opacity: canTransact ? 1 : 0.6 }}
+                      >
+                        {loadingBanks ? (
+                          <span style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic' }}>
+                            <span className="p2p-mini-spinner" /> Loading banks...
+                          </span>
+                        ) : (
+                          <span style={{ color: selectedBank === 'Choose Bank' ? 'var(--text3)' : 'var(--text)' }}>
+                            {selectedBank}
+                          </span>
+                        )}
+                        <span style={{ color: 'var(--text3)', fontSize: '11px' }}>▼</span>
+                      </div>
+
+                      {bankOpen && (
+                        <div className="drop-menu" style={{ left: 0, right: 0, width: '100%', zIndex: 1000 }} onClick={e => e.stopPropagation()}>
+                          <div style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
+                            <input
+                              type="text"
+                              placeholder="Search bank name..."
+                              value={bankSearch}
+                              autoFocus
+                              onChange={e => setBankSearch(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '6px 10px',
+                                background: 'rgba(0,0,0,0.2)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '6px',
+                                color: 'white',
+                                fontSize: '12px',
+                                outline: 'none',
+                              }}
+                            />
+                          </div>
+                          <div ref={bankListScrollRef} style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                            {filteredBanksList.map(b => {
+                              const meta = getBankMetadata(b);
+                              const isSelected = selectedBank === b;
+                              return (
+                                <div
+                                  key={b}
+                                  className={`drop-item ${isSelected ? 'sel' : ''}`}
+                                  onClick={() => { setSelectedBank(b); setBankOpen(false); setBankSearch(''); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', cursor: 'pointer' }}
+                                >
+                                  {meta.logo ? (
+                                    <img
+                                      src={meta.logo} alt={meta.name}
+                                      onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                      style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
+                                    />
+                                  ) : null}
+                                  <div
+                                    className="bank-avatar"
+                                    style={{
+                                      display: meta.logo ? 'none' : 'flex',
+                                      width: '22px', height: '22px', borderRadius: '50%',
+                                      background: meta.color, color: 'white', fontSize: '9px',
+                                      fontWeight: 'bold', alignItems: 'center', justifyContent: 'center',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {meta.initial}
+                                  </div>
+                                  <span className="di-name" style={{ marginLeft: 0 }}>{b}</span>
+                                </div>
+                              );
+                            })}
+                            {filteredBanksList.length === 0 && (
+                              <div style={{ fontSize: '11px', color: 'var(--text3)', fontStyle: 'italic', padding: '12px', textAlign: 'center' }}>
+                                {bankSearch ? `No banks matching "${bankSearch}"` : 'No banks found'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -6071,9 +6207,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 }}>
                   {manualOrderStatus === 'CONFIRMED' ? '✓ Transfer Confirmed'
                     : manualOrderStatus === 'FAILED' ? '✕ Failed'
-                    : manualOrderStatus === 'EXPIRED' ? '⏱️ Expired'
-                    : manualOrderStatus === 'PENDING' ? '🔄 Crypto Received'
-                    : '⏳ Awaiting Deposit'}
+                    : manualOrderStatus === 'EXPIRED' ? '✕ Expired'
+                    : manualOrderStatus === 'PENDING' ? '• Crypto Received'
+                    : '• Awaiting Deposit'}
                 </span>
               </div>
 
