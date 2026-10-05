@@ -1402,7 +1402,7 @@ export default function App() {
               )}
             </span>
           )}
-          {!effectiveConnected && (
+          {!effectiveConnected && !isGuestMode && (
             <button className="btn-connect" onClick={() => setShowConnectModal(true)}>
               Connect Wallet
             </button>
