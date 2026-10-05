@@ -430,7 +430,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [relayerActive, setRelayerActive] = useState(false);
 
   // ── Fiat Tag (P2P Tag) State ─────────────────────────────────────────────
-  const [offrampSubMode, setOfframpSubMode] = useState('standard'); // 'standard' | 'tag'
   const [userTagData, setUserTagData] = useState(null); // User's registered tag object
   const [showTagModal, setShowTagModal] = useState(false);
   const [tagModalInput, setTagModalInput] = useState('');
@@ -453,7 +452,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   useEffect(() => {
     if (isGuestMode) {
       setIsManualOfframp(true);
-      setOfframpSubMode('standard');
       setMode('sell');
       setGuestMode('sell');
     }
@@ -571,9 +569,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampError(null);
     setOnrampOrder(null);
     setOnrampStatus(null);
-    if (nextMode === 'sell') {
-      setOfframpSubMode('standard');
-    }
   }, []);
 
   // ── Computed ─────────────────────────────────────────────────────────────
@@ -1161,8 +1156,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Resolve account name ──────────────────────────────────────────────────
   useEffect(() => {
-    // Never resolve account names while the user is on the TAG page or when a tag is resolved
-    if (offrampSubMode === 'tag' || resolvedTagData) {
+    // Never resolve account names when a tag is resolved
+    if (resolvedTagData) {
       setAccountName('');
       return;
     }
@@ -1204,21 +1199,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }, 300);
 
     return () => { clearTimeout(timer); setResolvingName(false); };
-  }, [accountNumber, selectedBank, selectedCountry, apiBanks, sessionToken, offrampSubMode]);
-
-  // ── Isolate TAG vs Offramp state on page switch ───────────────────────────
-  // Ensures the two pages are completely private from each other.
-  useEffect(() => {
-    if (offrampSubMode === 'tag') {
-      // Entering TAG mode: clear all Offramp-specific fields so they
-      // don't carry over or resolve in the background.
-      setSelectedBank('Choose Bank');
-      setAccountNumber('');
-      setAccountName('');
-      setAmount('');
-      setResolvingName(false);
-    }
-  }, [offrampSubMode]);
+  }, [accountNumber, selectedBank, selectedCountry, apiBanks, sessionToken, resolvedTagData]);
 
   // ── Reset on country / mode change ───────────────────────────────────────
   useEffect(() => {
@@ -2043,8 +2024,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       !offrampExceedsMaximum &&
       (isManualOfframp || !offrampExceedsBalance);
 
-    if (resolvedTagData || offrampSubMode === 'tag') {
-      // TAG mode or resolved tag: valid when a tag has been successfully resolved
+    if (resolvedTagData) {
+      // Resolved tag: valid when a tag has been successfully resolved
       return base && !!resolvedTagData && !resolvingTag;
     }
 
@@ -2567,7 +2548,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (!sessionToken) { setP2pError('Please verify your email OTP session first.'); return; }
     if (apiError) { setP2pError(`PajCash API error: ${apiError}`); return; }
     if (!amount || parseFloat(amount) <= 0) { setP2pError('Please enter a valid amount.'); return; }
-    if (resolvedTagData || offrampSubMode === 'tag') {
+    if (resolvedTagData) {
       if (!resolvedTagData) { setP2pError('Please enter a valid Fiat Tag to send to.'); return; }
     } else {
       if (!accountNumber) { setP2pError('Please enter your bank account number or search a Fiat Tag.'); return; }
@@ -2577,7 +2558,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     setSubmitting(true);
     try {
-      const isTagOfframp = Boolean(resolvedTagData || offrampSubMode === 'tag');
+      const isTagOfframp = Boolean(resolvedTagData);
       const effectiveBankName   = isTagOfframp ? (resolvedTagData?.bank_name   || '') : selectedBank;
       const effectiveAcctNumber = isTagOfframp ? (resolvedTagData?.account_number || '') : accountNumber;
       const effectiveAcctName   = isTagOfframp ? (resolvedTagData?.account_name  || '') : (accountName || 'Account Holder');
@@ -2741,7 +2722,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (apiError) { setP2pError(`PajCash API error: ${apiError}`); return; }
     if (!connected || !publicKey) { setP2pError('Please connect your Solana wallet first.'); return; }
     if (!amount || parseFloat(amount) <= 0) { setP2pError('Please enter a valid amount.'); return; }
-    if (resolvedTagData || offrampSubMode === 'tag') {
+    if (resolvedTagData) {
       if (!resolvedTagData) { setP2pError('Please enter a valid Fiat Tag to send to.'); return; }
     } else {
       if (!accountNumber) { setP2pError('Please enter your bank account number.'); return; }
@@ -2755,9 +2736,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         throw new Error(`Insufficient ${liveSelectedToken.symbol} balance. You have ${balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${liveSelectedToken.symbol} but need ${estCryptoAmount.toFixed(4)} ${liveSelectedToken.symbol}.`);
       }
 
-      // In TAG mode or when a tag is resolved, read bank/account details from the privately resolved tag data
+      // When a tag is resolved, read bank/account details from the privately resolved tag data
       // so the recipient's private details are never exposed.
-      const isTagOfframp = Boolean(resolvedTagData || offrampSubMode === 'tag');
+      const isTagOfframp = Boolean(resolvedTagData);
       const effectiveBankName   = isTagOfframp ? (resolvedTagData?.bank_name   || '') : selectedBank;
       const effectiveAcctNumber = isTagOfframp ? (resolvedTagData?.account_number || '') : accountNumber;
       const effectiveAcctName   = isTagOfframp ? (resolvedTagData?.account_name  || '') : accountName;
@@ -3214,81 +3195,53 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         </div>
       )}
 
-      {/* Top Navigation Row: Wallet Connected TAG Button OR Guest Offramp Mode Button */}
-      {!showHistoryView && (
-        publicKey && canTransact ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                const nextMode = offrampSubMode === 'standard' ? 'tag' : 'standard';
-                setOfframpSubMode(nextMode);
-                if (nextMode === 'tag') {
-                  setShowHistoryView(false);
-                  setMode('sell');
-                  if (!userTagData && sessionToken) {
-                    setShowTagModal(true);
-                  }
-                }
-              }}
-              style={{
-                background: offrampSubMode === 'tag' ? 'var(--lime)' : 'rgba(163, 230, 53, 0.12)',
-                border: '1px solid rgba(163, 230, 53, 0.4)',
-                color: offrampSubMode === 'tag' ? '#0d1f14' : 'var(--lime)',
-                fontSize: '11px',
-                fontWeight: '800',
-                letterSpacing: '0.06em',
-                padding: '4px 14px',
-                borderRadius: '20px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: offrampSubMode === 'tag' ? '0 0 12px rgba(163, 230, 53, 0.4)' : 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <span>TAG</span>
-              {userTagData && <span style={{ fontSize: '9.5px', opacity: 0.9 }}>({userTagData.tag_name})</span>}
-            </button>
+      {/* If not connected and not yet in manual offramp, show the Guest Mode entry banner */}
+      {!showHistoryView && !publicKey && !isManualOfframp && (
+        <div style={{ marginBottom: '14px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setIsManualOfframp(true);
+              setMode('sell');
+            }}
+            style={{
+              width: '100%',
+              background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.14), rgba(163, 230, 53, 0.04))',
+              border: '1px solid rgba(163, 230, 53, 0.4)',
+              color: 'var(--lime)',
+              fontSize: '12px',
+              fontWeight: '700',
+              padding: '10px 14px',
+              borderRadius: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+            }}
+          >
+            <span style={{ fontSize: '13px' }}>•</span>
+            <span>Offramp Without Connecting Wallet (Guest Mode)</span>
+            <span style={{ fontSize: '13px' }}>→</span>
+          </button>
+        </div>
+      )}
 
-            {sessionToken && mode === 'sell' && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (userTagData) {
-                    setTagModalInput(userTagData.tag_name || '');
-                    setTagModalBank(userTagData.bank_name || 'Choose Bank');
-                    setTagModalAcctNumber(userTagData.account_number || '');
-                    setTagModalAcctName(userTagData.account_name || '');
-                  }
-                  if (sessionToken) {
-                    setShowTagModal(true);
-                  }
-                }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  color: 'white',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  padding: '4px 12px',
-                  borderRadius: '14px',
-                  cursor: 'pointer'
-                }}
-              >
-                My Tag
-              </button>
-            )}
-          </div>
-        ) : !publicKey ? (
-          isManualOfframp ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '8px', flexWrap: 'wrap' }}>
+      {/* Header Row: Sell (Offramp) ↔ Buy (Onramp) segmented button replaces P2P Trades title and toggle switch */}
+      <div className="title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', position: 'relative', zIndex: 10, flexWrap: 'wrap', gap: '8px' }}>
+        {showHistoryView ? (
+          <h2 className="card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
+            Transaction History
+          </h2>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {isManualOfframp && (
               <button
                 type="button"
                 onClick={() => {
                   setIsManualOfframp(false);
-                  setOfframpSubMode('standard');
                   setMode('sell');
                   setGuestMode('sell');
                   setAmount('');
@@ -3312,201 +3265,133 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 <span>←</span>
                 <span>Exit</span>
               </button>
+            )}
 
-              {/* Guest Mode Toggle: Sell (Offramp) ↔ Buy (Onramp) */}
-              <div style={{
-                display: 'inline-flex',
-                background: 'rgba(255, 255, 255, 0.05)',
-                padding: '3px',
-                borderRadius: '24px',
-                border: '1px solid rgba(255, 255, 255, 0.12)'
-              }}>
-                <button
-                  type="button"
-                  onClick={() => handleGuestModeSwitch('sell')}
-                  style={{
-                    background: mode === 'sell' ? 'var(--lime)' : 'transparent',
-                    color: mode === 'sell' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
-                    border: 'none',
-                    borderRadius: '20px',
-                    padding: '5px 14px',
-                    fontSize: '11px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: mode === 'sell' ? '0 2px 8px rgba(163, 230, 53, 0.3)' : 'none',
-                  }}
-                >
-                  Sell (Offramp)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGuestModeSwitch('buy')}
-                  style={{
-                    background: mode === 'buy' ? 'var(--lime)' : 'transparent',
-                    color: mode === 'buy' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
-                    border: 'none',
-                    borderRadius: '20px',
-                    padding: '5px 14px',
-                    fontSize: '11px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: mode === 'buy' ? '0 2px 8px rgba(163, 230, 53, 0.3)' : 'none',
-                  }}
-                >
-                  Buy (Onramp)
-                </button>
-              </div>
-
-              {/* Right Side: My Tag button if session is active */}
-              {sessionToken && mode === 'sell' ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (userTagData) {
-                      setTagModalInput(userTagData.tag_name || '');
-                      setTagModalBank(userTagData.bank_name || 'Choose Bank');
-                      setTagModalAcctNumber(userTagData.account_number || '');
-                      setTagModalAcctName(userTagData.account_name || '');
-                      setManualTagModalWallet(userTagData.wallet_address || manualWalletAddress || '');
-                    }
-                    setShowTagModal(true);
-                  }}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: 'white',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    padding: '5px 12px',
-                    borderRadius: '14px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  My Tag
-                </button>
-              ) : (
-                <div style={{ width: '48px' }} />
-              )}
-            </div>
-          ) : (
-            <div style={{ marginBottom: '14px' }}>
+            {/* Offramp and Onramp buttons — replaces P2P Trades title and toggle switch */}
+            <div style={{
+              display: 'inline-flex',
+              background: 'rgba(255, 255, 255, 0.05)',
+              padding: '3px',
+              borderRadius: '24px',
+              border: '1px solid rgba(255, 255, 255, 0.12)'
+            }}>
               <button
                 type="button"
                 onClick={() => {
-                  setIsManualOfframp(true);
-                  setOfframpSubMode('standard');
                   setMode('sell');
+                  setGuestMode('sell');
+                  setP2pError(null);
                 }}
                 style={{
-                  width: '100%',
-                  background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.14), rgba(163, 230, 53, 0.04))',
-                  border: '1px solid rgba(163, 230, 53, 0.4)',
-                  color: 'var(--lime)',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  padding: '10px 14px',
-                  borderRadius: '14px',
+                  background: mode === 'sell' ? 'var(--lime)' : 'transparent',
+                  color: mode === 'sell' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
+                  border: 'none',
+                  borderRadius: '20px',
+                  padding: '5px 14px',
+                  fontSize: '11px',
+                  fontWeight: '800',
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
                   transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+                  boxShadow: mode === 'sell' ? '0 2px 8px rgba(163, 230, 53, 0.3)' : 'none',
                 }}
               >
-                <span style={{ fontSize: '13px' }}>•</span>
-                <span>Offramp Without Connecting Wallet (Guest Mode)</span>
-                <span style={{ fontSize: '13px' }}>→</span>
+                Sell (Offramp)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('buy');
+                  setGuestMode('buy');
+                  setOnrampError(null);
+                }}
+                style={{
+                  background: mode === 'buy' ? 'var(--lime)' : 'transparent',
+                  color: mode === 'buy' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
+                  border: 'none',
+                  borderRadius: '20px',
+                  padding: '5px 14px',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: mode === 'buy' ? '0 2px 8px rgba(163, 230, 53, 0.3)' : 'none',
+                }}
+              >
+                Buy (Onramp)
               </button>
             </div>
-          )
-        ) : null
-      )}
-
-      {/* Title Row with History Icon (or Country selector on TAG page) */}
-      <div className="title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', position: 'relative', zIndex: 10 }}>
-        <h2 className="card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
-          {showHistoryView
-            ? 'Transaction History'
-            : isManualOfframp
-              ? (mode === 'buy' ? 'Onramp' : 'Offramp')
-              : (offrampSubMode === 'tag' ? 'Fiat Tag' : (mode === 'buy' ? 'Buy Crypto' : 'P2P Trade'))}
-        </h2>
-
-        {isManualOfframp ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {!showHistoryView && (
-              <button 
-                onClick={() => {
-                  setShowHistoryView(true);
-                  loadPayoutLogs();
-                }}
-                style={{ 
-                  background: 'rgba(255,255,255,0.06)', 
-                  border: '1px solid rgba(255,255,255,0.12)', 
-                  color: 'rgba(255,255,255,0.85)', 
-                  cursor: 'pointer', 
-                  padding: '5px 10px',
-                  borderRadius: '10px',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '11px',
-                  fontWeight: '600'
-                }}
-                title="Transaction History"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                <span>History</span>
-              </button>
-            )}
-            {renderCountrySelector()}
           </div>
-        ) : offrampSubMode === 'tag' ? (
-          renderCountrySelector()
-        ) : (
-          canTransact && publicKey && !showHistoryView && (
+        )}
+
+        {/* Right side controls: My Tag, History, Country picker */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {!showHistoryView && sessionToken && mode === 'sell' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (userTagData) {
+                  setTagModalInput(userTagData.tag_name || '');
+                  setTagModalBank(userTagData.bank_name || 'Choose Bank');
+                  setTagModalAcctNumber(userTagData.account_number || '');
+                  setTagModalAcctName(userTagData.account_name || '');
+                  setManualTagModalWallet(userTagData.wallet_address || manualWalletAddress || (publicKey ? publicKey.toBase58() : ''));
+                }
+                setShowTagModal(true);
+              }}
+              style={{
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: 'white',
+                fontSize: '11px',
+                fontWeight: '600',
+                padding: '5px 12px',
+                borderRadius: '14px',
+                cursor: 'pointer'
+              }}
+            >
+              My Tag
+            </button>
+          )}
+
+          {!showHistoryView && (
             <button 
-              onClick={() => setShowHistoryView(true)}
+              onClick={() => {
+                setShowHistoryView(true);
+                loadPayoutLogs();
+              }}
               style={{ 
-                background: 'none', 
-                border: 'none', 
-                color: 'rgba(255,255,255,0.6)', 
+                background: 'rgba(255,255,255,0.06)', 
+                border: '1px solid rgba(255,255,255,0.12)', 
+                color: 'rgba(255,255,255,0.85)', 
                 cursor: 'pointer', 
-                padding: '4px 6px',
-                borderRadius: '8px',
+                padding: '5px 10px',
+                borderRadius: '10px',
                 transition: 'all 0.2s',
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '2px'
+                gap: '5px',
+                fontSize: '11px',
+                fontWeight: '600'
               }}
               title="Transaction History"
             >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <polyline points="12 6 12 12 16 14"></polyline>
               </svg>
-              <span style={{ fontSize: '9px', fontWeight: '600', letterSpacing: '0.04em', lineHeight: 1 }}>History</span>
+              <span>History</span>
             </button>
-          )
-        )}
+          )}
+
+          {!showHistoryView && renderCountrySelector()}
+        </div>
       </div>
 
       {!showHistoryView && (
         <p className="card-sub" style={{ marginBottom: '1.25rem' }}>
-          {isManualOfframp
-            ? (mode === 'buy' ? 'Receive crypto directly to your wallet.' : 'Send money to any Bank account or Fiat Tag.')
-            : offrampSubMode === 'tag'
-              ? 'Send money directly to any Fiat Tag.'
-              : (mode === 'sell' ? 'Send money to any Bank account or Fiat Tag.' : 'Receive money from any Bank account.')
+          {mode === 'buy'
+            ? 'Receive crypto directly to your wallet.'
+            : 'Send money to any Bank account or Fiat Tag.'
           }
         </p>
       )}
@@ -3725,28 +3610,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         </div>
       ) : (
         <>
-      {/* Mode switch + Country selector (only shown in standard Offramp / Onramp mode) */}
-      {!isManualOfframp && offrampSubMode !== 'tag' && (
-        <div className="p2p-header-row" style={{ marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div
-              className="bulk-pill"
-              onClick={() => setMode(mode === 'sell' ? 'buy' : 'sell')}
-              style={{ padding: '6px 12px', cursor: 'pointer' }}
-            >
-              <span className="pill-txt" style={{ fontSize: '11px', fontWeight: 700, color: 'white' }}>
-                {mode === 'sell' ? 'Sell' : 'Buy'}
-              </span>
-              <div className={`tsw ${mode === 'buy' ? 'on' : ''}`} style={{ marginLeft: '6px' }}>
-                <div className="tknob" />
-              </div>
-            </div>
-          </div>
 
-          {/* Country picker */}
-          {renderCountrySelector()}
-        </div>
-      )}
 
       {/* ── LIVE OFFRAMP ROUTE ── */}
       {isLiveRoute ? (
@@ -3947,14 +3811,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               /* ── Fiat Tag Search & Optional Standard Bank Inputs ── */
               <>
                 {/* Fiat Tag Input Field */}
-                <div className="field" style={{ position: 'relative', marginBottom: offrampSubMode === 'tag' ? '1.25rem' : '10px', zIndex: (isTagInputFocused && tagQueryText.length >= 3 && matchingPastTags.length > 0) ? 1200 : 2 }}>
+                <div className="field" style={{ position: 'relative', marginBottom: '10px', zIndex: (isTagInputFocused && tagQueryText.length >= 3 && matchingPastTags.length > 0) ? 1200 : 2 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <div className="field-label" style={{ marginBottom: 0 }}>Fiat Tag (Recipient)</div>
-                    {offrampSubMode !== 'tag' && (
-                      <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)' }}>
-                        Search tag or use bank below
-                      </span>
-                    )}
+                    <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.4)' }}>
+                      Search tag or use bank below
+                    </span>
                   </div>
 
                   <div className="input-wrap" style={{ opacity: canTransact ? 1 : 0.6, display: 'flex', alignItems: 'center' }}>
@@ -4072,10 +3934,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   </div>
                 </div>
 
-                {/* If NOT in exclusive tag mode, render the standard bank fields below */}
-                {offrampSubMode !== 'tag' && (
-                  <>
-                    {/* Divider between Tag search and Bank inputs */}
+                {/* Divider between Tag search and Bank inputs */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '6px 0 14px 0' }}>
                       <div style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
                       <span style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -4295,8 +4154,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                         </div>
                       )}
                     </div>
-                  </>
-                )}
               </>
             )}
 

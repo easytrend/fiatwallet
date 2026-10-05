@@ -1370,14 +1370,6 @@ export default function App() {
             ☰
           </button>
           <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab(isGuestMode ? 'send' : 'wallet')} style={{ cursor: 'pointer' }} />
-          <div className="nav-links">
-            {!isGuestMode && (
-              <button className={`nav-link-btn ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>Wallet</button>
-            )}
-            <button className={`nav-link-btn ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>P2P</button>
-            <button className={`nav-link-btn ${activeTab === 'send' ? 'active' : ''}`} onClick={() => setActiveTab('send')}>Send</button>
-            <button className={`nav-link-btn ${activeTab === 'swap' ? 'active' : ''}`} onClick={() => setActiveTab('swap')}>Swap</button>
-          </div>
         </div>
 
         <div className="nav-actions">
