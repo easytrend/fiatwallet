@@ -145,32 +145,24 @@ export default function NativeWalletHome({
     {
       key:     'p2p',
       label:   'P2P Trade',
-      color:   'var(--lime, #a3e635)',
-      bg:      'rgba(163,230,53,0.12)',
       icon:    <IconP2P />,
       onClick: () => onNavigateTab('p2p'),
     },
     {
       key:     'send-bulk',
       label:   'Bulk Send',
-      color:   'var(--cyan, #22d3ee)',
-      bg:      'rgba(34,211,238,0.12)',
       icon:    <IconBulkSend />,
       onClick: () => onNavigateTab('send-bulk'),
     },
     {
       key:     'claim',
       label:   'Claim SOL',
-      color:   '#fde047',
-      bg:      'rgba(253,224,71,0.12)',
       icon:    <ClaimSolLogo />,
       onClick: () => onNavigateTab('claim'),
     },
     {
       key:     'fiatpay',
       label:   'FiatPay',
-      color:   '#c084fc',
-      bg:      'rgba(192,132,252,0.12)',
       // Use the actual FiatPay logo image instead of an SVG
       icon:    (
         <img
@@ -399,39 +391,39 @@ export default function NativeWalletHome({
               key={f.key}
               onClick={f.onClick}
               style={{
-                background:     'rgba(17,30,56,0.6)',
-                border:         '1px solid var(--border, rgba(255,255,255,0.09))',
-                borderRadius:   '16px',
-                padding:        '14px 6px',
-                cursor:         'pointer',
-                transition:     'all 0.2s',
-                display:        'flex',
-                flexDirection:  'column',
-                alignItems:     'center',
-                gap:            '8px',
-                textAlign:      'center',
+                background:    'rgba(17, 30, 56, 0.55)',
+                border:        '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius:  '16px',
+                padding:       '14px 4px',
+                cursor:        'pointer',
+                display:       'flex',
+                flexDirection: 'column',
+                alignItems:    'center',
+                gap:           '8px',
+                textAlign:     'center',
               }}
             >
-              {/* Icon circle */}
+              {/* Simple uniform icon circle */}
               <div style={{
                 width:          '42px',
                 height:         '42px',
                 borderRadius:   '50%',
-                background:     f.bg,
+                background:     'rgba(255, 255, 255, 0.05)',
+                border:         '1px solid rgba(255, 255, 255, 0.08)',
                 display:        'flex',
                 alignItems:     'center',
                 justifyContent: 'center',
-                color:          f.color,
+                color:          '#ffffff',
                 flexShrink:     0,
               }}>
                 {f.icon}
               </div>
 
-              {/* Label */}
+              {/* Simple uniform label — no neon colors */}
               <span style={{
                 fontSize:   '11px',
-                fontWeight: '700',
-                color:      f.color,
+                fontWeight: '600',
+                color:      '#ffffff',
                 lineHeight: 1.2,
               }}>
                 {f.label}

@@ -1346,7 +1346,29 @@ export default function App() {
       )}
 
       <nav>
-        <div className="nav-logo-wrap">
+        <div className="nav-logo-wrap" style={{ display: 'flex', alignItems: 'center' }}>
+          <button
+            onClick={() => setShowMenuDrawer(true)}
+            aria-label="Menu"
+            title="Wallet Menu"
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
+              borderRadius: '10px',
+              color: 'white',
+              width: '38px',
+              height: '38px',
+              fontSize: '18px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginRight: '10px',
+              flexShrink: 0,
+            }}
+          >
+            ☰
+          </button>
           <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab(isGuestMode ? 'send' : 'wallet')} style={{ cursor: 'pointer' }} />
           <div className="nav-links">
             {!isGuestMode && (
@@ -1369,62 +1391,11 @@ export default function App() {
               )}
             </span>
           )}
-          {effectiveConnected ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                className="btn-connected"
-                onClick={handleDisconnect}
-                title={internalWallet.isActive ? "Lock local wallet" : "Disconnect wallet"}
-              >
-                <span className="live-dot" />
-                {internalWallet.isActive ? 'Lock' : 'Disconnect ▾'}
-              </button>
-              {internalWallet.isActive && (
-                <button
-                  onClick={handleLogoutReset}
-                  title="Logout and remove local wallet from this device"
-                  style={{
-                    background: 'rgba(248, 113, 113, 0.1)',
-                    border: '1px solid rgba(248, 113, 113, 0.25)',
-                    borderRadius: '10px',
-                    color: 'var(--red, #f87171)',
-                    padding: '7px 11px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--ff)',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  Logout
-                </button>
-              )}
-            </div>
-          ) : isGuestMode ? null : (
+          {!effectiveConnected && !isGuestMode && (
             <button className="btn-connect" onClick={() => setShowConnectModal(true)}>
               Connect Wallet
             </button>
           )}
-
-          <button
-            onClick={() => setShowMenuDrawer(true)}
-            aria-label="Menu"
-            title="Wallet Menu"
-            style={{
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              color: 'white',
-              padding: '6px 12px',
-              fontSize: '16px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            ☰
-          </button>
         </div>
       </nav>
 
