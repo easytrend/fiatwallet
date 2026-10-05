@@ -470,7 +470,7 @@ export default function WalletMenuDrawer({
                 marginBottom: '10px',
               }}
             >
-              Disconnect Wallet
+              {walletAddress ? 'Disconnect Wallet' : 'Exit Guest Mode'}
             </button>
           )}
 

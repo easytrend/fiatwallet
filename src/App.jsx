@@ -366,12 +366,14 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('wallet');
 
-  // When user connects wallet (and not in guest mode), automatically show the wallet dashboard
+  // When user connects wallet, clear guest mode and bypass, and automatically show the wallet dashboard
   useEffect(() => {
-    if (effectiveConnected && !isGuestMode) {
+    if (effectiveConnected) {
+      setIsGuestMode(false);
+      setGuestBypass(false);
       setActiveTab('wallet');
     }
-  }, [effectiveConnected, isGuestMode]);
+  }, [effectiveConnected]);
 
   const [swipeDir, setSwipeDir] = useState(null); // 'left' | 'right' | null
   const swipeTouchRef = useRef({ startX: 0, startY: 0, active: false });
@@ -1235,10 +1237,13 @@ export default function App() {
           }}
           onReset={internalWallet.reset}
           onConnectExternal={() => {
-            setGuestBypass(true);
             setVisible(true);
           }}
-          onContinueGuest={() => setGuestBypass(true)}
+          onContinueGuest={() => {
+            setIsGuestMode(true);
+            setGuestBypass(true);
+            setActiveTab('p2p');
+          }}
         />
       </div>
     );
@@ -1257,15 +1262,12 @@ export default function App() {
             setActiveTab('wallet');
           }}
           onConnectExternal={() => {
-            setIsGuestMode(false);
-            setGuestBypass(true);
-            setActiveTab('wallet');
             setVisible(true);
           }}
           onContinueGuest={() => {
             setIsGuestMode(true);
             setGuestBypass(true);
-            setActiveTab('send');
+            setActiveTab('p2p');
           }}
         />
       </div>
@@ -1386,7 +1388,7 @@ export default function App() {
           >
             ☰
           </button>
-          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab(isGuestMode ? 'send' : 'wallet')} style={{ cursor: 'pointer' }} />
+          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')} style={{ cursor: 'pointer' }} />
         </div>
 
         <div className="nav-actions">
@@ -1400,7 +1402,7 @@ export default function App() {
               )}
             </span>
           )}
-          {!effectiveConnected && !isGuestMode && (
+          {!effectiveConnected && (
             <button className="btn-connect" onClick={() => setShowConnectModal(true)}>
               Connect Wallet
             </button>
@@ -1538,10 +1540,9 @@ export default function App() {
         {/* Single Send Card */}
         <div className="app-card send-card">
           <div className="card-body">
-            {!isGuestMode && (
               <div style={{ marginBottom: '14px' }}>
                 <button
-                  onClick={() => setActiveTab('wallet')}
+                  onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
                   style={{
                     background: 'rgba(255, 255, 255, 0.06)',
                     border: '1px solid var(--border)',
@@ -1557,10 +1558,9 @@ export default function App() {
                     fontFamily: 'var(--ff)',
                   }}
                 >
-                  ← Wallet
+                  {isGuestMode ? '← Offramp' : '← Wallet'}
                 </button>
               </div>
-            )}
 
             {/* RPC warning banner — shown when no custom VITE_RPC_URL is set */}
             {isUsingPublicRpc && !rpcWarnDismissed && (
@@ -1694,10 +1694,9 @@ export default function App() {
         {/* Bulk Send Card */}
         <div className="app-card bulk-send-card">
           <div className="card-body">
-            {!isGuestMode && (
               <div style={{ marginBottom: '14px' }}>
                 <button
-                  onClick={() => setActiveTab('wallet')}
+                  onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
                   style={{
                     background: 'rgba(255, 255, 255, 0.06)',
                     border: '1px solid var(--border)',
@@ -1713,10 +1712,9 @@ export default function App() {
                     fontFamily: 'var(--ff)',
                   }}
                 >
-                  ← Wallet
+                  {isGuestMode ? '← Offramp' : '← Wallet'}
                 </button>
               </div>
-            )}
 
             {/* RPC warning banner — shown when no custom VITE_RPC_URL is set */}
             {isUsingPublicRpc && !rpcWarnDismissed && (
@@ -2053,7 +2051,12 @@ export default function App() {
                 setShowOnboardModal(null);
                 setVisible(true);
               }}
-              onContinueGuest={() => setShowOnboardModal(null)}
+              onContinueGuest={() => {
+                setShowOnboardModal(null);
+                setIsGuestMode(true);
+                setGuestBypass(true);
+                setActiveTab('p2p');
+              }}
             />
           </div>
         </div>
