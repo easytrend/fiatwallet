@@ -434,6 +434,16 @@ export default function App() {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [token, setToken] = useState('');
+
+  // Clear input fields and errors whenever navigating between tabs
+  useEffect(() => {
+    setAmount('');
+    setRecipient('');
+    setResolvedAddress(null);
+    setResolveError(null);
+    setWalletError(null);
+  }, [activeTab]);
+
   // Track when rates were last successfully fetched to detect staleness
   const [ratesTimestamp, setRatesTimestamp] = useState(null);
 
@@ -1480,6 +1490,7 @@ export default function App() {
               effectivePublicKey={effectivePublicKey}
               effectiveSignTransaction={effectiveSignTransaction}
               isGuestMode={isGuestMode}
+              activeTab={activeTab}
               onExitGuest={() => {
                 setIsGuestMode(false);
                 setGuestBypass(false);
@@ -1554,7 +1565,11 @@ export default function App() {
                 borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12,
                 color: '#fde68a', lineHeight: 1.5
               }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
                 <span style={{ flex: 1 }}>
                   <strong>Public RPC active.</strong> No <code>VITE_RPC_URL</code> is configured.
                   The default endpoint (<code>api.mainnet-beta.solana.com</code>) is rate-limited
@@ -1642,7 +1657,7 @@ export default function App() {
             {/* Display staleness warning when live rates exceed threshold */}
             {ratesAreStale && (
               <div style={{fontSize:11,color:'#f87171',padding:'6px 10px',background:'rgba(248,113,113,0.12)',borderRadius:8,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-                ⚠️ Rate data may be stale — send button disabled until rates refresh.
+                • Rate data may be stale — send button disabled until rates refresh.
               </div>
             )}
 

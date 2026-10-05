@@ -359,7 +359,7 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 // Component
 // ---------------------------------------------------------------------------
 
-export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, isGuestMode = false, onExitGuest }) {
+export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, isGuestMode = false, onExitGuest, activeTab }) {
   const { connection } = useConnection();
   const { publicKey: adapterPublicKey, sendTransaction, signTransaction: adapterSignTransaction } = useWallet();
   const publicKey = effectivePublicKey || adapterPublicKey;
@@ -559,17 +559,44 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
-  // ── Mode Switch & Field Reset Helper (Guest Mode only) ───────────────────
-  const handleGuestModeSwitch = useCallback((nextMode) => {
-    setMode(nextMode);
-    setGuestMode(nextMode);
+  // ── Field Reset Helpers ──────────────────────────────────────────────────
+  const clearAllP2PFields = useCallback(() => {
+    // Clear Offramp fields
     setAmount('');
-    setOnrampAmount('');
+    setAccountNumber('');
+    setAccountName('');
+    setSelectedBank('Choose Bank');
+    setRecipientTagInput('');
+    setResolvedTagData(null);
+    setTagLookupError(null);
+    setResolvingTag(false);
+    setResolvingName(false);
+    setIsTagInputFocused(false);
+    setIsAcctInputFocused(false);
     setP2pError(null);
+
+    // Clear Onramp fields
+    setOnrampAmount('');
     setOnrampError(null);
     setOnrampOrder(null);
     setOnrampStatus(null);
   }, []);
+
+  // ── Mode Switch & Field Reset Helper (Connected & Guest modes) ───────────
+  const handleSetMode = useCallback((nextMode) => {
+    setMode(nextMode);
+    setGuestMode(nextMode);
+    clearAllP2PFields();
+  }, [clearAllP2PFields]);
+
+  // Backward-compatible alias for any legacy call sites
+  const handleGuestModeSwitch = handleSetMode;
+
+  // Clear all fields on navigation (e.g. switching between tabs in App)
+  useEffect(() => {
+    clearAllP2PFields();
+    setShowHistoryView(false);
+  }, [activeTab, clearAllP2PFields]);
 
   // ── Computed ─────────────────────────────────────────────────────────────
   const isLiveRoute = LIVE_CURRENCIES.has(selectedCountry.currency) && mode === 'sell';
@@ -1203,15 +1230,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Reset on country / mode change ───────────────────────────────────────
   useEffect(() => {
-    setSelectedBank('Choose Bank');
-    setAccountNumber('');
-    setAccountName('');
-    setAmount('');
+    clearAllP2PFields();
     setApiBanks([]);
     if (PAJCASH_API_KEY) {
       setApiError(null);
     }
-  }, [selectedCountry, mode]);
+  }, [selectedCountry, mode, clearAllP2PFields]);
 
   // ── Clear error on input changes ─────────────────────────────────────────
   useEffect(() => {
@@ -2626,8 +2650,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // Clear input fields so UI is fresh for subsequent interactions
       setAmount('');
+      setAccountNumber('');
+      setAccountName('');
+      setSelectedBank('Choose Bank');
       setRecipientTagInput('');
       setResolvedTagData(null);
+      setTagLookupError(null);
+      setIsTagInputFocused(false);
+      setIsAcctInputFocused(false);
+      setP2pError(null);
 
       // Clean up previous socket if open
       if (manualSocketRef.current) {
@@ -2650,6 +2681,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         });
         setManualOrder(null);
         setManualOrderStatus(null);
+        clearAllP2PFields();
         if (manualSocketRef.current) {
           try { manualSocketRef.current.disconnect(); } catch {}
           manualSocketRef.current = null;
@@ -3055,12 +3087,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setTimeout(() => onRefreshBalances?.(), 3500);
 
       // Clear form fields in the UI
-      setAmount('');
-      setAccountNumber('');
-      setAccountName('');
-      setSelectedBank('Choose Bank');
-      setRecipientTagInput('');
-      setResolvedTagData(null);
+      clearAllP2PFields();
 
       // Start WebSocket observer — updates the modal status live when PajCash confirms
       if (offrampSocketRef.current) {
@@ -3242,10 +3269,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 type="button"
                 onClick={() => {
                   setIsManualOfframp(false);
-                  setMode('sell');
-                  setGuestMode('sell');
-                  setAmount('');
-                  setOnrampAmount('');
+                  handleSetMode('sell');
                   if (onExitGuest) onExitGuest();
                 }}
                 style={{
@@ -3277,11 +3301,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             }}>
               <button
                 type="button"
-                onClick={() => {
-                  setMode('sell');
-                  setGuestMode('sell');
-                  setP2pError(null);
-                }}
+                onClick={() => handleSetMode('sell')}
                 style={{
                   background: mode === 'sell' ? 'var(--lime)' : 'transparent',
                   color: mode === 'sell' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
@@ -3299,11 +3319,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setMode('buy');
-                  setGuestMode('buy');
-                  setOnrampError(null);
-                }}
+                onClick={() => handleSetMode('buy')}
                 style={{
                   background: mode === 'buy' ? 'var(--lime)' : 'transparent',
                   color: mode === 'buy' ? '#0d1f14' : 'rgba(255, 255, 255, 0.75)',
@@ -4824,6 +4840,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     setOnrampOrder(null);
                     setOnrampStatus(null);
                     setOnrampAmount('');
+                    setOnrampError(null);
                   }}
                   style={{ position: 'absolute', top: '16px', right: '18px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '50%', width: '30px', height: '30px', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
                   title="Close"
@@ -4831,7 +4848,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
                 {/* Bank icon circle */}
                 <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(234,179,8,0.1)', border: '2px solid rgba(234,179,8,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px auto', fontSize: '24px' }}>
-                  🏦
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 21h18M3 10h18M5 10v11M19 10v11M9 10v11M14 10v11M4 10l8-6 8 6" />
+                  </svg>
                 </div>
 
                 {/* Header */}
@@ -4870,7 +4889,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                             onClick={() => { navigator.clipboard?.writeText(String(val)); setCopiedOnrampAcct(label); setTimeout(() => setCopiedOnrampAcct(false), 1500); }}
                             style={{ background: 'none', border: 'none', color: copiedOnrampAcct === label ? 'var(--lime)' : '#8e9aa8', cursor: 'pointer', fontSize: '13px', padding: '2px', flexShrink: 0 }}
                           >
-                            {copiedOnrampAcct === label ? '✓' : '📋'}
+                            {copiedOnrampAcct === label ? '✓' : (
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                              </svg>
+                            )}
                           </button>
                         )}
                       </div>
@@ -4890,10 +4914,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   }}>
                     {onrampStatus === 'completed' ? '✓ Completed'
                       : onrampStatus === 'failed' ? '✕ Failed'
-                      : onrampStatus === 'forwarding' ? '🔄 Forwarding...'
-                      : onrampStatus === 'swapping' ? `🔄 Swapping to ${liveSelectedToken.symbol}...`
-                      : onrampStatus === 'paid' || onrampStatus === 'processing' ? '⏳ Confirming Payment...'
-                      : '⏳ Awaiting Payment'}
+                      : onrampStatus === 'forwarding' ? 'Forwarding...'
+                      : onrampStatus === 'swapping' ? `Swapping to ${liveSelectedToken.symbol}...`
+                      : onrampStatus === 'paid' || onrampStatus === 'processing' ? 'Confirming Payment...'
+                      : 'Awaiting Payment'}
                   </span>
                 </div>
 
@@ -4901,7 +4925,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 {onrampStatus === 'completed' ? (
                   <button
                     className="send-btn"
-                    onClick={() => { setOnrampOrder(null); setOnrampStatus(null); setOnrampAmount(''); }}
+                    onClick={() => {
+                      if (onrampSocketRef.current) {
+                        try { onrampSocketRef.current.disconnect(); } catch {}
+                        onrampSocketRef.current = null;
+                      }
+                      setOnrampOrder(null);
+                      setOnrampStatus(null);
+                      setOnrampAmount('');
+                      setOnrampError(null);
+                    }}
                   >
                     Done — Start New Order
                   </button>
@@ -5224,6 +5257,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 onClick={() => {
                   setShowSuccess(false);
                   setSuccessDetails(null);
+                  clearAllP2PFields();
                   onRefreshBalances?.();
                   if (offrampSocketRef.current) {
                     try { offrampSocketRef.current.disconnect(); } catch { /* ignore */ }
@@ -6121,7 +6155,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   }
                   setManualOrder(null);
                   setManualOrderStatus(null);
-                  setAmount('');
+                  clearAllP2PFields();
                 }}
               >
                 Done — Start New Transfer
@@ -6139,6 +6173,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   }
                   setManualOrder(null);
                   setManualOrderStatus(null);
+                  clearAllP2PFields();
                 }}
                 style={{
                   width: '100%',
@@ -6267,7 +6302,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <button
               onClick={() => {
                 setManualConfirmCard(null);
-                setAmount('');
+                clearAllP2PFields();
               }}
               style={{
                 width: '100%', padding: '14px',

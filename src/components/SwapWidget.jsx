@@ -849,6 +849,15 @@ export default function SwapWidget({
     }
   }, [swapSuccess]);
 
+  // Clear fields and error/success banners when modal closes or navigates away
+  useEffect(() => {
+    if (!isOpen) {
+      setInputAmount('');
+      setSwapError(null);
+      setSwapSuccess(null);
+    }
+  }, [isOpen]);
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
