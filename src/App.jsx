@@ -364,7 +364,6 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, []);
 
-  const [bulkMode, setBulkMode] = useState(false);
   const [activeTab, setActiveTab] = useState('wallet');
 
   // When user connects wallet (and not in guest mode), automatically show the wallet dashboard
@@ -434,6 +433,8 @@ export default function App() {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [token, setToken] = useState('');
+  const [bulkToken, setBulkToken] = useState('SOL');
+  const [tokenModalTarget, setTokenModalTarget] = useState('single'); // 'single' | 'bulk'
 
   // Clear input fields and errors whenever navigating between tabs
   useEffect(() => {
@@ -571,6 +572,12 @@ export default function App() {
   const tokAmt = inputMode === 'fiat' ? (num / currRate) / tokPrice : num;
   const dispTok = fmtTok(tokAmt);
   const tokLive = tok ? { ...tok, price: tokPrice } : null;
+
+  // Separate token resolution for Bulk Send so it never intersects with Single Send
+  const bulkTok = bulkToken ? ((walletTokenList && walletTokenList.find(t => t.symbol === bulkToken))
+    || TOKENS.find(t => t.symbol === bulkToken)) : null;
+  const bulkTokPrice = bulkTok ? (getLiveTokPrice(bulkTok.symbol) || bulkTok.price || 1) : 1;
+  const bulkTokLive = bulkTok ? { ...bulkTok, price: bulkTokPrice } : null;
 
   // Check if receiver already has the ATA for the selected SPL token.
   // AbortController cancellation flag prevents stale in-flight responses from writing back
@@ -1186,7 +1193,7 @@ export default function App() {
   }
 
   // ── Swipe gesture navigation ─────────────────────────────────────────────
-  const TAB_ORDER = isGuestMode ? ['p2p', 'send', 'swap'] : ['wallet', 'p2p', 'send', 'swap'];
+  const TAB_ORDER = isGuestMode ? ['p2p', 'send', 'send-bulk', 'swap'] : ['wallet', 'p2p', 'send', 'send-bulk', 'swap'];
 
   const handleTouchStart = useCallback((e) => {
     const t = e.touches[0];
@@ -1433,10 +1440,7 @@ export default function App() {
               onOpenMenu={() => setShowMenuDrawer(true)}
               onOpenReceive={() => setShowReceiveModal(true)}
               onNavigateTab={(tab) => {
-                if (tab === 'send-bulk') {
-                  setActiveTab('send');
-                  setBulkMode(true);
-                } else if (tab === 'claim') {
+                if (tab === 'claim') {
                   setShowClaimModal(true);
                 } else if (tab === 'swap') {
                   setShowSwapModal(true);
@@ -1531,6 +1535,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* Single Send Card */}
         <div className="app-card send-card">
           <div className="card-body">
             {!isGuestMode && (
@@ -1584,34 +1589,28 @@ export default function App() {
               </div>
             )}
             <div className="title-row">
-              <div className="card-title">{bulkMode ? 'Bulk Send' : 'Send Crypto'}</div>
-              <div className={`bulk-pill ${bulkMode ? 'on' : ''}`} onClick={() => setBulkMode(b => !b)}>
-                <span className="pill-txt">{bulkMode ? 'Bulk ON' : 'Bulk'}</span>
-                <div className={`tsw ${bulkMode ? 'on' : ''}`}><div className="tknob" /></div>
-              </div>
+              <div className="card-title">Send Crypto</div>
             </div>
-            <p className="card-sub">{bulkMode ? 'Send to up to 1,000 wallets or .sol domains at once.' : 'Send tokens easily using .sol domains.'}</p>
+            <p className="card-sub">Send tokens easily using .sol domains.</p>
 
-            {!bulkMode && (
-              <div className="field">
-                <div className="field-label">Send To</div>
-                <div className="input-wrap">
-                  <span className="sol-icon">◎</span>
-                  <input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="example.sol or address" />
-                </div>
-                {resolving && <div style={{fontSize:11, color:'var(--text3)', marginTop:6}}>Resolving domain…</div>}
-                {resolveError && <div style={{fontSize:11, color:'#f87171', marginTop:6}}>✕ {resolveError}</div>}
-                {resolvedAddress && recipient.endsWith('.sol') && (
-                  <div style={{fontSize:11, color:'var(--lime)', marginTop:6}}>
-                    ✓ Resolved: {resolvedAddress.slice(0,4)}…{resolvedAddress.slice(-4)}
-                  </div>
-                )}
+            <div className="field">
+              <div className="field-label">Send To</div>
+              <div className="input-wrap">
+                <span className="sol-icon">◎</span>
+                <input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="example.sol or address" />
               </div>
-            )}
+              {resolving && <div style={{fontSize:11, color:'var(--text3)', marginTop:6}}>Resolving domain…</div>}
+              {resolveError && <div style={{fontSize:11, color:'#f87171', marginTop:6}}>✕ {resolveError}</div>}
+              {resolvedAddress && recipient.endsWith('.sol') && (
+                <div style={{fontSize:11, color:'var(--lime)', marginTop:6}}>
+                  ✓ Resolved: {resolvedAddress.slice(0,4)}…{resolvedAddress.slice(-4)}
+                </div>
+              )}
+            </div>
 
             <div className="field">
               <div className="field-label">Select Token</div>
-              <div className="token-row" onClick={() => setShowModal(true)}>
+              <div className="token-row" onClick={() => { setTokenModalTarget('single'); setShowModal(true); }}>
                 {tokLive ? (
                   <>
                     <div className="tok-left">
@@ -1672,31 +1671,150 @@ export default function App() {
               </div>
             )}
 
-            {bulkMode ? (
-              <BulkSendPanel tok={tokLive} connected={effectiveConnected} getLiveRate={getLiveCurrRate}
-                connection={connection} publicKey={effectivePublicKey}
-                sendTransaction={effectiveSendTransaction} signAllTransactions={effectiveSignAllTransactions} />
-            ) : (
-              <>
-                <div className="field">
-                  <div className="field-label">Amount</div>
-                  <AmountInput amount={amount} setAmount={setAmount} inputMode={inputMode} setInputMode={setInputMode}
-                    currency={currency} setCurrency={setCurrency} tok={tokLive} currRate={currRate} />
-                </div>
-                {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
+            <div className="field">
+              <div className="field-label">Amount</div>
+              <AmountInput amount={amount} setAmount={setAmount} inputMode={inputMode} setInputMode={setInputMode}
+                currency={currency} setCurrency={setCurrency} tok={tokLive} currRate={currRate} />
+            </div>
+            {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
 
-                <button className="send-btn"
-                  disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
-                  onClick={handleSend}>
-                  {sending ? 'Sending…'
-                    : !effectiveConnected ? 'Connect wallet to send'
-                    : !tokLive ? 'Select a token to continue'
-                    : ratesAreStale ? 'Waiting for fresh rates…'
-                    : !resolvedAddress ? 'Enter a valid recipient'
-                    : `Send ${dispTok} ${tokLive.symbol}`}
+            <button className="send-btn"
+              disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
+              onClick={handleSend}>
+              {sending ? 'Sending…'
+                : !effectiveConnected ? 'Connect wallet to send'
+                : !tokLive ? 'Select a token to continue'
+                : ratesAreStale ? 'Waiting for fresh rates…'
+                : !resolvedAddress ? 'Enter a valid recipient'
+                : `Send ${dispTok} ${tokLive.symbol}`}
+            </button>
+          </div>
+        </div>
+
+        {/* Bulk Send Card */}
+        <div className="app-card bulk-send-card">
+          <div className="card-body">
+            {!isGuestMode && (
+              <div style={{ marginBottom: '14px' }}>
+                <button
+                  onClick={() => setActiveTab('wallet')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    color: 'white',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontFamily: 'var(--ff)',
+                  }}
+                >
+                  ← Wallet
                 </button>
-              </>
+              </div>
             )}
+
+            {/* RPC warning banner — shown when no custom VITE_RPC_URL is set */}
+            {isUsingPublicRpc && !rpcWarnDismissed && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.35)',
+                borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12,
+                color: '#fde68a', lineHeight: 1.5
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span style={{ flex: 1 }}>
+                  <strong>Public RPC active.</strong> No <code>VITE_RPC_URL</code> is configured.
+                  The default endpoint (<code>api.mainnet-beta.solana.com</code>) is rate-limited
+                  and may cause simulation failures or stale balance reads.
+                  Set a private RPC (e.g. Helius) in your <code>.env</code> file for reliable operation.
+                </span>
+                <button
+                  onClick={() => setRpcWarnDismissed(true)}
+                  style={{ background: 'none', border: 'none', color: '#fde68a', cursor: 'pointer', fontSize: 16, padding: 0, flexShrink: 0 }}
+                  aria-label="Dismiss RPC warning"
+                >✕</button>
+              </div>
+            )}
+            <div className="title-row">
+              <div className="card-title">Bulk Send</div>
+            </div>
+            <p className="card-sub">Send to up to 1,000 wallets or .sol domains at once.</p>
+
+            <div className="field">
+              <div className="field-label">Select Token</div>
+              <div className="token-row" onClick={() => { setTokenModalTarget('bulk'); setShowModal(true); }}>
+                {bulkTokLive ? (
+                  <>
+                    <div className="tok-left">
+                      <img
+                        src={bulkTokLive.logoURI || ''}
+                        alt={bulkTokLive.symbol}
+                        className="tok-icon"
+                        style={{width:32, height:32, borderRadius:'50%', display: bulkTokLive.logoURI ? 'block' : 'none'}}
+                        onError={(e) => { e.target.style.display='none'; e.target.nextElementSibling.style.display='flex'; }}
+                      />
+                      <div className="tok-icon" style={{background:bulkTokLive.bg, color:bulkTokLive.color, display: bulkTokLive.logoURI ? 'none' : 'flex'}}>{bulkTokLive.symbol.slice(0,4)}</div>
+                      <div>
+                        <span className="tok-sym">{bulkTokLive.symbol}</span>
+                        <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>${bulkTokLive.price < 0.01 ? bulkTokLive.price.toFixed(6) : bulkTokLive.price.toLocaleString()}</span>
+                        {bulkTokLive.balance != null && bulkTokLive.balance > 0 && (
+                          <div style={{fontSize:10, color:'var(--lime)', fontFamily:'var(--mono)', marginTop:2}}>
+                            {bulkTokLive.balance.toLocaleString(undefined, {maximumFractionDigits: 4})} {bulkTokLive.symbol} 
+                            {bulkTokLive.price > 0 && ` ($${(bulkTokLive.balance * bulkTokLive.price).toFixed(2)})`}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span className="tok-chevron">›</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="tok-left">
+                      <div className="tok-icon" style={{background:'rgba(255,255,255,0.05)',color:'var(--text3)'}}>?</div>
+                      <div>
+                        <span className="tok-sym" style={{color:'var(--text2)'}}>Select Token</span>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span className="tok-chevron">›</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Display staleness warning when live rates exceed threshold */}
+            {ratesAreStale && (
+              <div style={{fontSize:11,color:'#f87171',padding:'6px 10px',background:'rgba(248,113,113,0.12)',borderRadius:8,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                • Rate data may be stale — bulk send disabled until rates refresh.
+              </div>
+            )}
+
+            {bulkTokLive && (
+              <div className="rate-badge" style={{marginBottom:'0.75rem'}}>
+                <span className="rate-dot" />
+                1 {bulkTokLive.symbol} = <strong>${bulkTokLive.price < 0.0001 ? bulkTokLive.price.toFixed(8) : bulkTokLive.price < 1 ? bulkTokLive.price.toFixed(4) : bulkTokLive.price.toLocaleString()}</strong> USD
+                <span className="rate-sep">·</span>
+                1 USD = <strong>{fmtRate(currRate)}</strong> {currency}
+                {liveRates.updatedAt && !ratesAreStale && <span style={{color:'var(--text3)',fontSize:10}}> · live</span>}
+                {ratesAreStale && <span style={{color:'#f87171',fontSize:10}}> · stale</span>}
+              </div>
+            )}
+
+            <BulkSendPanel tok={bulkTokLive} connected={effectiveConnected} getLiveRate={getLiveCurrRate}
+              connection={connection} publicKey={effectivePublicKey}
+              sendTransaction={effectiveSendTransaction} signAllTransactions={effectiveSignAllTransactions} />
           </div>
         </div>
 
@@ -1749,7 +1867,14 @@ export default function App() {
           connected={connected}
           walletLoading={walletLoading}
           solBalance={solBalance}
-          onSelect={sym => { setToken(sym); setShowModal(false); }}
+          onSelect={sym => {
+            if (tokenModalTarget === 'bulk') {
+              setBulkToken(sym);
+            } else {
+              setToken(sym);
+            }
+            setShowModal(false);
+          }}
           onClose={() => setShowModal(false)}
           onRefresh={fetchBalances}
         />

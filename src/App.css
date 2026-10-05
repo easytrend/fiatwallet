@@ -1664,14 +1664,16 @@ footer a { color:var(--lime); text-decoration:none; }
   border: none !important;
   box-shadow: none !important;
 }
-.fiatpay-card {
+.fiatpay-card,
+.bulk-send-card {
   display: none;
 }
 @media (min-width: 1100px) {
   .bottom-nav {
     display: none !important;
   }
-  .fiatpay-card {
+  .fiatpay-card,
+  .bulk-send-card {
     display: none;
   }
   .main.tab-fiatpay .fiatpay-card {
@@ -1681,6 +1683,7 @@ footer a { color:var(--lime); text-decoration:none; }
     margin: 0 auto;
   }
   .main.tab-fiatpay .send-card,
+  .main.tab-fiatpay .bulk-send-card,
   .main.tab-fiatpay .p2p-card,
   .main.tab-fiatpay .wallet-card {
     display: none;
@@ -1692,11 +1695,13 @@ footer a { color:var(--lime); text-decoration:none; }
     margin: 0 auto;
   }
   .main.tab-wallet .send-card,
+  .main.tab-wallet .bulk-send-card,
   .main.tab-wallet .p2p-card,
   .main.tab-wallet .fiatpay-card {
     display: none;
   }
-  .main.tab-send .wallet-card {
+  .main.tab-send .wallet-card,
+  .main.tab-send-bulk .wallet-card {
     display: none;
   }
   .main.tab-p2p .wallet-card {
@@ -1708,16 +1713,33 @@ footer a { color:var(--lime); text-decoration:none; }
   .send-card {
     display: block;
   }
+  .bulk-send-card {
+    display: none;
+  }
+  .main.tab-send .send-card {
+    display: block;
+  }
+  .main.tab-send .bulk-send-card {
+    display: none;
+  }
+  .main.tab-send-bulk .send-card {
+    display: none;
+  }
+  .main.tab-send-bulk .bulk-send-card {
+    display: block;
+  }
   .p2p-card {
     display: none;
   }
-  .main.tab-p2p .send-card {
+  .main.tab-p2p .send-card,
+  .main.tab-p2p .bulk-send-card {
     display: none;
   }
   .main.tab-p2p .p2p-card {
     display: block;
   }
-  .main.tab-swap .send-card {
+  .main.tab-swap .send-card,
+  .main.tab-swap .bulk-send-card {
     display: none;
   }
   .main.tab-swap .swp-modal-overlay {
@@ -1766,7 +1788,7 @@ footer a { color:var(--lime); text-decoration:none; }
   .nav-links {
     display: none !important;
   }
-  .wallet-card, .send-card, .p2p-card, .fiatpay-card {
+  .wallet-card, .send-card, .bulk-send-card, .p2p-card, .fiatpay-card {
     display: none;
   }
   .main.tab-wallet .wallet-card {
@@ -1776,6 +1798,9 @@ footer a { color:var(--lime); text-decoration:none; }
     margin: 0 auto;
   }
   .main.tab-send .send-card {
+    display: block;
+  }
+  .main.tab-send-bulk .bulk-send-card {
     display: block;
   }
   .main.tab-p2p .p2p-card {
