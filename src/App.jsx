@@ -364,7 +364,15 @@ export default function App() {
   }, []);
 
   const [bulkMode, setBulkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState('p2p');
+  const [activeTab, setActiveTab] = useState('wallet');
+
+  // When user connects wallet (and not in guest mode), automatically show the wallet dashboard
+  useEffect(() => {
+    if (effectiveConnected && !isGuestMode) {
+      setActiveTab('wallet');
+    }
+  }, [effectiveConnected, isGuestMode]);
+
   const [swipeDir, setSwipeDir] = useState(null); // 'left' | 'right' | null
   const swipeTouchRef = useRef({ startX: 0, startY: 0, active: false });
   const [showModal, setShowModal] = useState(false);
@@ -1167,7 +1175,7 @@ export default function App() {
   }
 
   // ── Swipe gesture navigation ─────────────────────────────────────────────
-  const TAB_ORDER = ['wallet', 'p2p', 'send', 'swap'];
+  const TAB_ORDER = isGuestMode ? ['p2p', 'send', 'swap'] : ['wallet', 'p2p', 'send', 'swap'];
 
   const handleTouchStart = useCallback((e) => {
     const t = e.touches[0];
@@ -1228,15 +1236,18 @@ export default function App() {
             internalWallet.activate(walletData);
             setGuestBypass(false);
             setIsGuestMode(false);
+            setActiveTab('wallet');
           }}
           onConnectExternal={() => {
             setIsGuestMode(false);
             setGuestBypass(true);
+            setActiveTab('wallet');
             setVisible(true);
           }}
           onContinueGuest={() => {
             setIsGuestMode(true);
             setGuestBypass(true);
+            setActiveTab('send');
           }}
         />
       </div>
@@ -1335,8 +1346,11 @@ export default function App() {
 
       <nav>
         <div className="nav-logo-wrap">
-          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab('p2p')} style={{ cursor: 'pointer' }} />
+          <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab(isGuestMode ? 'send' : 'wallet')} style={{ cursor: 'pointer' }} />
           <div className="nav-links">
+            {!isGuestMode && (
+              <button className={`nav-link-btn ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>Wallet</button>
+            )}
             <button className={`nav-link-btn ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>P2P</button>
             <button className={`nav-link-btn ${activeTab === 'send' ? 'active' : ''}`} onClick={() => setActiveTab('send')}>Send</button>
             <button className={`nav-link-btn ${activeTab === 'swap' ? 'active' : ''}`} onClick={() => setActiveTab('swap')}>Swap</button>
@@ -1698,6 +1712,16 @@ export default function App() {
 
       {/* Bottom Navigation for mobile view */}
       <div className="bottom-nav">
+        {!isGuestMode && (
+          <button className={`bnav-item ${activeTab === 'wallet' ? 'active' : ''}`} onClick={() => setActiveTab('wallet')}>
+            <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="4" />
+              <path d="M16 12h4" />
+              <circle cx="16" cy="12" r="1" fill="currentColor" />
+            </svg>
+            <span className="bnav-label">Wallet</span>
+          </button>
+        )}
         <button className={`bnav-item ${activeTab === 'p2p' ? 'active' : ''}`} onClick={() => setActiveTab('p2p')}>
           <svg className="bnav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -1727,7 +1751,7 @@ export default function App() {
 
       {/* Swipe indicator dots — mobile only */}
       <div className="swipe-dots">
-        {['p2p', 'send', 'swap'].map(tab => (
+        {(isGuestMode ? ['p2p', 'send', 'swap'] : ['wallet', 'p2p', 'send', 'swap']).map(tab => (
           <div
             key={tab}
             className={`swipe-dot${activeTab === tab ? ' active' : ''}`}

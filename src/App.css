@@ -1672,7 +1672,18 @@ footer a { color:var(--lime); text-decoration:none; }
     display: none !important;
   }
   .fiatpay-card {
-    display: none !important;
+    display: none;
+  }
+  .main.tab-fiatpay .fiatpay-card {
+    display: block !important;
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  .main.tab-fiatpay .send-card,
+  .main.tab-fiatpay .p2p-card,
+  .main.tab-fiatpay .wallet-card {
+    display: none;
   }
   .main.tab-wallet .wallet-card {
     display: block;
@@ -1681,7 +1692,8 @@ footer a { color:var(--lime); text-decoration:none; }
     margin: 0 auto;
   }
   .main.tab-wallet .send-card,
-  .main.tab-wallet .p2p-card {
+  .main.tab-wallet .p2p-card,
+  .main.tab-wallet .fiatpay-card {
     display: none;
   }
   .main.tab-send .wallet-card {
