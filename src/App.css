@@ -1788,9 +1788,9 @@ footer a { color:var(--lime); text-decoration:none; }
     display: none !important;
   }
   
-  /* Increase padding at bottom so bottom-nav doesn't overlap cards */
+  /* Adjusted bottom padding now that bottom-nav is removed */
   .main {
-    padding-bottom: 7rem !important;
+    padding-bottom: 2rem !important;
   }
 
   /* Swap card mobile positioning when tab-swap is active */

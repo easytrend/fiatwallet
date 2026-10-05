@@ -394,6 +394,9 @@ export default function SwapWidget({
   effectivePublicKey,
   effectiveConnected,
   effectiveSendTransaction,
+  isOpen: externalIsOpen,
+  onOpen: externalOnOpen,
+  onClose: externalOnClose,
 }) {
   const { connection } = useConnection();
   const { publicKey: adapterPublicKey, connected: adapterConnected, sendTransaction: adapterSendTransaction } = useWallet();
@@ -402,7 +405,13 @@ export default function SwapWidget({
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
   const { setVisible } = useWalletModal();
 
-  const [isOpen, setIsOpen]   = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = externalIsOpen !== undefined ? (externalIsOpen || internalOpen) : internalOpen;
+  const setIsOpen = (val) => {
+    setInternalOpen(val);
+    if (!val && externalOnClose) externalOnClose();
+    if (val && externalOnOpen) externalOnOpen();
+  };
 
   // Currency configuration
   const [localCurrency, setLocalCurrency] = useState('USD');

@@ -29,12 +29,42 @@ function IconBulkSend() {
   );
 }
 
-function IconClaimSOL() {
+function ClaimSolLogo() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-      <path d="M12 6v6l4 2"/>
-    </svg>
+    <div style={{
+      position: 'relative',
+      width: '30px',
+      height: '18px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      {/* Official Solana S Logo */}
+      <svg viewBox="0 0 21 18" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '15px', height: '13px', display: 'block' }}>
+        <path d="M 3.8 1 H 20.2 L 17.4 5 H 1 Z" fill="url(#grid-solana-gradient)" />
+        <path d="M 1 7 H 17.4 L 20.2 11 H 3.8 Z" fill="url(#grid-solana-gradient)" />
+        <path d="M 3.8 13 H 20.2 L 17.4 17 H 1 Z" fill="url(#grid-solana-gradient)" />
+        <defs>
+          <linearGradient id="grid-solana-gradient" x1="0" y1="18" x2="21" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#9945FF" />
+            <stop offset="100%" stopColor="#14F195" />
+          </linearGradient>
+        </defs>
+      </svg>
+      {/* Custom Green/White Medicine Capsule */}
+      <div style={{
+        position: 'absolute',
+        right: '-1px',
+        top: '1px',
+        width: '16px',
+        height: '9px',
+        borderRadius: '9999px',
+        transform: 'rotate(-35deg)',
+        background: 'linear-gradient(90deg, #fff 50%, #14F195 50%)',
+        border: '1px solid rgba(0,0,0,0.25)',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+      }} />
+    </div>
   );
 }
 
@@ -55,7 +85,6 @@ export default function NativeWalletHome({
   onSelectToken,
 }) {
   const [showAllAssets, setShowAllAssets] = useState(false);
-  const [copied, setCopied]               = useState(false);
 
   // ── Token data ───────────────────────────────────────────────────────────
   const usdcToken = useMemo(() => {
@@ -111,17 +140,6 @@ export default function NativeWalletHome({
   // local-currency equivalent
   const fiatValue = totalPortfolioUSD * (currRate || 1);
 
-  const handleCopyAddr = () => {
-    if (!walletAddress) return;
-    navigator.clipboard.writeText(walletAddress);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const shortAddr = walletAddress
-    ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
-    : 'Connect';
-
   // ── Feature grid items ───────────────────────────────────────────────────
   const features = [
     {
@@ -145,7 +163,7 @@ export default function NativeWalletHome({
       label:   'Claim SOL',
       color:   '#fde047',
       bg:      'rgba(253,224,71,0.12)',
-      icon:    <IconClaimSOL />,
+      icon:    <ClaimSolLogo />,
       onClick: () => onNavigateTab('claim'),
     },
     {
@@ -170,95 +188,11 @@ export default function NativeWalletHome({
       width:      '100%',
       maxWidth:   '480px',
       margin:     '0 auto',
-      padding:    '16px 14px 80px 14px',
+      padding:    '8px 14px 24px 14px',
       fontFamily: 'var(--ff, sans-serif)',
       color:      'var(--text, #f0f6ff)',
       boxSizing:  'border-box',
     }}>
-
-      {/* ── TOP HEADER BAR ── */}
-      <div style={{
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'space-between',
-        marginBottom:   '20px',
-      }}>
-        {/* Menu Hamburger */}
-        <button
-          onClick={onOpenMenu}
-          aria-label="Open menu"
-          style={{
-            background:   'rgba(255,255,255,0.05)',
-            border:       '1px solid var(--border, rgba(255,255,255,0.1))',
-            borderRadius: '12px',
-            width:        '42px',
-            height:       '42px',
-            display:      'flex',
-            alignItems:   'center',
-            justifyContent: 'center',
-            color:        'white',
-            fontSize:     '18px',
-            cursor:       'pointer',
-            transition:   'background 0.2s',
-          }}
-        >
-          ☰
-        </button>
-
-        {/* Address Pill */}
-        <div
-          onClick={handleCopyAddr}
-          title="Click to copy address"
-          style={{
-            display:      'flex',
-            alignItems:   'center',
-            gap:          '6px',
-            background:   'rgba(10,22,40,0.7)',
-            border:       '1px solid var(--border, rgba(255,255,255,0.1))',
-            borderRadius: '20px',
-            padding:      '6px 14px',
-            cursor:       'pointer',
-            fontSize:     '12px',
-            fontFamily:   'var(--mono, monospace)',
-          }}
-        >
-          <span style={{
-            width:      '7px',
-            height:     '7px',
-            borderRadius: '50%',
-            background:   'var(--lime, #a3e635)',
-            boxShadow:    '0 0 6px var(--lime, #a3e635)',
-          }} />
-          <span style={{ color: 'white', fontWeight: '600' }}>{shortAddr}</span>
-          <span style={{ fontSize: '10px', color: copied ? 'var(--lime)' : 'var(--text3)' }}>
-            {copied ? '✓' : '⧉'}
-          </span>
-        </div>
-
-        {/* Receive QR */}
-        <button
-          onClick={onOpenReceive}
-          aria-label="Receive crypto"
-          title="Receive QR code"
-          style={{
-            background:   'rgba(255,255,255,0.05)',
-            border:       '1px solid var(--border, rgba(255,255,255,0.1))',
-            borderRadius: '12px',
-            width:        '42px',
-            height:       '42px',
-            display:      'flex',
-            alignItems:   'center',
-            justifyContent: 'center',
-            color:        'var(--lime, #a3e635)',
-            fontSize:     '14px',
-            fontWeight:   '700',
-            cursor:       'pointer',
-            transition:   'background 0.2s',
-          }}
-        >
-          QR
-        </button>
-      </div>
 
       {/* ── PORTFOLIO VALUE CARD ── */}
       <div style={{
