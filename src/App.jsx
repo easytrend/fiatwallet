@@ -1912,43 +1912,20 @@ export default function App() {
         </div>
       </footer>
 
-      {/* ── Fixed Bottom Navigation Bar (Centered Explorer) ── */}
-      <nav className="bottom-nav" aria-label="Bottom Navigation">
-        {!isGuestMode && (
-          <button
-            className={`bnav-item ${activeTab === 'wallet' ? 'active' : ''}`}
-            onClick={() => setActiveTab('wallet')}
-            aria-label="Wallet"
-          >
-            <div className="bnav-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
-                <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
-                <circle cx="18" cy="14" r="1" />
-              </svg>
-            </div>
-            <span className="bnav-label">Wallet</span>
-          </button>
-        )}
-
-        <button
-          className={`bnav-item ${activeTab === 'p2p' ? 'active' : ''}`}
-          onClick={() => setActiveTab('p2p')}
-          aria-label={isGuestMode ? 'Offramp' : 'P2P'}
-        >
-          <div className="bnav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4" />
-            </svg>
-          </div>
-          <span className="bnav-label">{isGuestMode ? 'Offramp' : 'P2P'}</span>
-        </button>
-
+      {/* ── Fixed Bottom Navigation Bar (Centered Explorer Only) ── */}
+      <nav className="bottom-nav bottom-nav-solo" aria-label="Bottom Navigation">
         {/* Center Explorer Button — Elevated & Highlighted */}
         <button
-          className={`bnav-item bnav-item-center ${activeTab === 'explorer' ? 'active' : ''}`}
-          onClick={() => setActiveTab('explorer')}
+          className={`bnav-item bnav-item-center bnav-item-solo ${activeTab === 'explorer' ? 'active' : ''}`}
+          onClick={() => {
+            if (activeTab === 'explorer') {
+              setActiveTab(isGuestMode ? 'p2p' : 'wallet');
+            } else {
+              setActiveTab('explorer');
+            }
+          }}
           aria-label="Explorer"
+          title={activeTab === 'explorer' ? 'Return to Wallet' : 'Open dApp Explorer'}
         >
           <div className="bnav-center-btn">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1957,40 +1934,6 @@ export default function App() {
             </svg>
           </div>
           <span className="bnav-label">Explorer</span>
-        </button>
-
-        <button
-          className={`bnav-item ${activeTab === 'send' || activeTab === 'send-bulk' ? 'active' : ''}`}
-          onClick={() => setActiveTab('send')}
-          aria-label="Send"
-        >
-          <div className="bnav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </div>
-          <span className="bnav-label">Send</span>
-        </button>
-
-        <button
-          className={`bnav-item ${activeTab === 'swap' ? 'active' : ''}`}
-          onClick={() => {
-            setActiveTab('swap');
-            setShowSwapModal(true);
-          }}
-          aria-label="Swap"
-        >
-          <div className="bnav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 3 21 3 21 8" />
-              <line x1="4" y1="20" x2="21" y2="3" />
-              <polyline points="21 16 21 21 16 21" />
-              <line x1="15" y1="15" x2="21" y2="21" />
-              <line x1="4" y1="4" x2="9" y2="9" />
-            </svg>
-          </div>
-          <span className="bnav-label">Swap</span>
         </button>
       </nav>
 
