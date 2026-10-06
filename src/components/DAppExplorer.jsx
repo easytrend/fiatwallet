@@ -188,9 +188,7 @@ export default function DAppExplorer({
 }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeDApp, setActiveDApp] = useState(null); // null or dApp object
   const [copiedAddr, setCopiedAddr] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   // Transaction Bridge states
   const [bridgePayload, setBridgePayload] = useState('');
@@ -228,7 +226,7 @@ export default function DAppExplorer({
       d => d.name.toLowerCase() === q.toLowerCase() || d.url.toLowerCase().includes(q.toLowerCase())
     );
     if (found) {
-      setActiveDApp(found);
+      window.open(found.url, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -239,18 +237,8 @@ export default function DAppExplorer({
     }
 
     try {
-      const parsed = new URL(fullUrl);
-      const customDApp = {
-        id: parsed.hostname,
-        name: parsed.hostname.replace(/^www\./, ''),
-        url: fullUrl,
-        icon: `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`,
-        category: 'custom',
-        categoryLabel: 'Web3 dApp',
-        color: 'var(--cyan)',
-        bg: 'rgba(34, 211, 238, 0.12)',
-      };
-      setActiveDApp(customDApp);
+      new URL(fullUrl);
+      window.open(fullUrl, '_blank', 'noopener,noreferrer');
     } catch {
       // Invalid URL, leave search query as filter
     }
@@ -338,274 +326,66 @@ export default function DAppExplorer({
 
   return (
     <div style={{ width: '100%', maxWidth: '640px', margin: '0 auto', fontFamily: 'var(--ff, sans-serif)', color: 'var(--text)' }}>
-      {/* ── Active dApp Browser View ── */}
-      {activeDApp ? (
-        <div style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
-          {/* Top Browser Bar */}
+      {/* Header row */}
+      <div style={{ marginBottom: '14px', textAlign: 'center' }}>
+        <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+          dApp Explorer
+        </h2>
+        <p style={{ fontSize: '13px', color: 'var(--text2)', margin: 0 }}>
+          Solana dApps &amp; Web3 tools
+        </p>
+      </div>
+
+      {/* Connection Status Banner */}
+      <div style={{
+        background: 'rgba(17, 30, 56, 0.65)',
+        border: '1px solid var(--border2)',
+        borderRadius: '14px',
+        padding: '12px 16px',
+        marginBottom: '16px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px',
-            marginBottom: '14px',
-            background: 'rgba(10, 22, 40, 0.75)',
-            border: '1px solid var(--border)',
-            borderRadius: '14px',
-            padding: '8px 12px'
-          }}>
-            <button
-              onClick={() => setActiveDApp(null)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                color: 'white',
-                padding: '6px 12px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontFamily: 'var(--ff)',
-              }}
-            >
-              ← Hub
-            </button>
-
-            {/* URL Display */}
-            <div style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              background: 'rgba(0, 0, 0, 0.3)',
-              borderRadius: '8px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              color: 'var(--text2)',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis'
-            }}>
-              <span style={{ color: 'var(--lime)', fontSize: '11px', fontWeight: 'bold' }}>✓ SSL</span>
-              <span style={{ color: 'white', fontWeight: '600' }}>{activeDApp.name}</span>
-              <span style={{ color: 'var(--text3)', fontSize: '11px' }}>({activeDApp.url.replace(/^https?:\/\//, '')})</span>
+            width: '10px',
+            height: '10px',
+            borderRadius: '50%',
+            background: effectiveConnected ? 'var(--lime)' : '#eab308',
+            boxShadow: effectiveConnected ? '0 0 8px var(--lime)' : 'none'
+          }} />
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {effectiveConnected ? (isInternal ? 'Self-Custodial Vault Connected' : 'Solana Wallet Connected') : 'Guest Mode (Read-Only)'}
             </div>
-
-            {/* Actions: Copy Link & Open External */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                onClick={() => handleCopyLink(activeDApp.url)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  color: copiedLink ? 'var(--lime)' : 'var(--text2)',
-                  padding: '6px 10px',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  fontFamily: 'var(--ff)'
-                }}
-                title="Copy Link"
-              >
-                {copiedLink ? '✓ Copied' : 'Copy'}
-              </button>
-              <a
-                href={activeDApp.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  background: 'linear-gradient(135deg, var(--lime), #65a30d)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#090d16',
-                  padding: '6px 12px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--ff)'
-                }}
-              >
-                Launch ↗
-              </a>
-            </div>
-          </div>
-
-          {/* Connection Status Banner */}
-          <div style={{
-            background: 'rgba(17, 30, 56, 0.65)',
-            border: '1px solid var(--border2)',
-            borderRadius: '14px',
-            padding: '12px 16px',
-            marginBottom: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                background: effectiveConnected ? 'var(--lime)' : '#eab308',
-                boxShadow: effectiveConnected ? '0 0 8px var(--lime)' : 'none'
-              }} />
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {effectiveConnected ? (isInternal ? 'Self-Custodial Vault Connected' : 'Solana Wallet Connected') : 'Guest Mode (Read-Only)'}
-                </div>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {effectivePublicKey ? (
-                    <>
-                      <span>{effectivePublicKey.toBase58().slice(0, 6)}...{effectivePublicKey.toBase58().slice(-6)}</span>
-                      <button
-                        onClick={handleCopyAddress}
-                        style={{ background: 'none', border: 'none', color: 'var(--cyan)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
-                      >
-                        {copiedAddr ? '✓' : 'Copy'}
-                      </button>
-                    </>
-                  ) : (
-                    <span>No wallet connected</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Balance</div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
-                {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
-              </div>
-            </div>
-          </div>
-
-          {/* dApp Frame / Direct Launch View */}
-          <div style={{
-            background: 'rgba(10, 22, 40, 0.85)',
-            border: '1px solid var(--border)',
-            borderRadius: '18px',
-            overflow: 'hidden',
-            marginBottom: '16px',
-            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.4)'
-          }}>
-            {/* Embedded frame or Security Fallback Card */}
-            <div style={{ padding: '24px 20px', textAlign: 'center' }}>
-              <div style={{
-                width: '68px',
-                height: '68px',
-                borderRadius: '20px',
-                background: activeDApp.bg || 'rgba(163, 230, 53, 0.15)',
-                border: `1px solid ${activeDApp.color || 'var(--lime)'}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px auto',
-                overflow: 'hidden',
-                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
-              }}>
-                {activeDApp.icon ? (
-                  <img
-                    src={activeDApp.icon}
-                    alt={activeDApp.name}
-                    style={{ width: '44px', height: '44px', objectFit: 'contain' }}
-                    onError={e => {
-                      e.currentTarget.style.display = 'none';
-                      const fb = e.currentTarget.parentElement.querySelector('.active-fallback');
-                      if (fb) fb.style.display = 'flex';
-                    }}
-                  />
-                ) : null}
-                <div
-                  className="active-fallback"
-                  style={{
-                    display: activeDApp.icon ? 'none' : 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '22px',
-                    fontWeight: '800',
-                    color: activeDApp.color || 'var(--lime)',
-                  }}
-                >
-                  {activeDApp.name.slice(0, 2).toUpperCase()}
-                </div>
-              </div>
-
-              <h3 style={{ fontSize: '20px', fontWeight: '800', color: 'white', marginBottom: '8px' }}>
-                {activeDApp.name}
-              </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '420px', margin: '0 auto 20px auto', lineHeight: '1.5' }}>
-                Connect and process transactions on {activeDApp.name}
-              </p>
-
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <a
-                  href={activeDApp.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    background: 'linear-gradient(135deg, var(--lime), #65a30d)',
-                    color: '#090d16',
-                    padding: '12px 24px',
-                    borderRadius: '12px',
-                    fontWeight: '800',
-                    fontSize: '14px',
-                    textDecoration: 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 14px rgba(163, 230, 53, 0.35)',
-                    transition: 'all 0.2s',
-                    fontFamily: 'var(--ff)'
-                  }}
-                >
-                  Launch {activeDApp.name} in Window ↗
-                </a>
-
-                <button
-                  onClick={() => {
-                    setActiveCategory('bridge');
-                    setActiveDApp(null);
-                  }}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    color: 'white',
-                    padding: '12px 20px',
-                    fontWeight: '700',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--ff)'
-                  }}
-                >
-                  Tx Bridge Inspector
-                </button>
-              </div>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {effectivePublicKey ? (
+                <>
+                  <span>{effectivePublicKey.toBase58().slice(0, 6)}...{effectivePublicKey.toBase58().slice(-6)}</span>
+                  <button
+                    onClick={handleCopyAddress}
+                    style={{ background: 'none', border: 'none', color: 'var(--cyan)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                  >
+                    {copiedAddr ? '✓' : 'Copy'}
+                  </button>
+                </>
+              ) : (
+                <span>No wallet connected</span>
+              )}
             </div>
           </div>
         </div>
-      ) : (
-        /* ── Directory & Discovery Hub ── */
-        <div>
-          {/* Header row */}
-          <div style={{ marginBottom: '14px', textAlign: 'center' }}>
-            <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
-              dApp Explorer
-            </h2>
-            <p style={{ fontSize: '13px', color: 'var(--text2)', margin: 0 }}>
-              Solana dApps &amp; Web3 tools
-            </p>
+
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Balance</div>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
+            {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
           </div>
+        </div>
+      </div>
 
           {/* Search & URL Input Bar */}
           <form onSubmit={handleUrlSubmit} style={{ marginBottom: '16px' }}>
@@ -879,7 +659,7 @@ export default function DAppExplorer({
               {filteredDApps.map(dapp => (
                 <div
                   key={dapp.id}
-                  onClick={() => setActiveDApp(dapp)}
+                  onClick={() => window.open(dapp.url, '_blank', 'noopener,noreferrer')}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -988,8 +768,6 @@ export default function DAppExplorer({
               </button>
             </div>
           )}
-        </div>
-      )}
-    </div>
+      </div>
   );
 }
