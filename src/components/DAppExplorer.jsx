@@ -7,181 +7,161 @@ const CURATED_DAPPS = [
     id: 'jupiter',
     name: 'Jupiter',
     url: 'https://jup.ag',
+    icon: 'https://www.google.com/s2/favicons?domain=jup.ag&sz=128',
     category: 'dex',
     categoryLabel: 'DEX & Swaps',
-    tagline: 'Best swap aggregation on Solana',
-    description: 'Trade tokens with optimal routing, ultra-low slippage, limit orders, and DCA.',
     color: '#a3e635',
     bg: 'rgba(163, 230, 53, 0.12)',
-    verified: true,
-    featured: true,
-    volume24h: '$1.4B+',
-    tags: ['Aggregator', 'Swaps', 'Perps', 'Limit Order'],
   },
   {
     id: 'raydium',
     name: 'Raydium',
     url: 'https://raydium.io',
+    icon: 'https://www.google.com/s2/favicons?domain=raydium.io&sz=128',
     category: 'dex',
     categoryLabel: 'DEX & Swaps',
-    tagline: 'High-speed on-chain AMM',
-    description: 'Leading decentralized liquidity provider with concentrated liquidity and launch pools.',
     color: '#38bdf8',
     bg: 'rgba(56, 189, 248, 0.12)',
-    verified: true,
-    featured: true,
-    volume24h: '$600M+',
-    tags: ['AMM', 'Liquidity Pools', 'Yield', 'CLMM'],
   },
   {
     id: 'pumpfun',
     name: 'Pump.fun',
     url: 'https://pump.fun',
+    icon: 'https://www.google.com/s2/favicons?domain=pump.fun&sz=128',
     category: 'meme',
     categoryLabel: 'Meme & Launchpads',
-    tagline: 'Instant Solana token launchpad',
-    description: 'Fair launch meme tokens with automated bonding curves. No presale, zero rug-pull risk.',
     color: '#22c55e',
     bg: 'rgba(34, 197, 94, 0.12)',
-    verified: true,
-    featured: true,
-    volume24h: '$250M+',
-    tags: ['Launchpad', 'Bonding Curve', 'Meme Coins'],
   },
   {
     id: 'magiceden',
     name: 'Magic Eden',
     url: 'https://magiceden.io',
+    icon: 'https://www.google.com/s2/favicons?domain=magiceden.io&sz=128',
     category: 'nft',
     categoryLabel: 'NFTs & Gaming',
-    tagline: 'Premier Solana NFT marketplace',
-    description: 'Trade digital collectibles, gaming assets, mint new drops, and manage your portfolio.',
     color: '#ec4899',
     bg: 'rgba(236, 72, 153, 0.12)',
-    verified: true,
-    featured: true,
-    volume24h: '$45M+',
-    tags: ['NFTs', 'Marketplace', 'Launchpad', 'Gaming'],
   },
   {
     id: 'kamino',
-    name: 'Kamino Finance',
+    name: 'Kamino',
     url: 'https://app.kamino.finance',
+    icon: 'https://www.google.com/s2/favicons?domain=kamino.finance&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
-    tagline: 'Lending, borrowing & automated yield',
-    description: 'High-yield vaults, borrow against crypto, and manage liquidity positions automatically.',
     color: '#818cf8',
     bg: 'rgba(129, 140, 248, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: 'TVL $1.8B',
-    tags: ['Lending', 'Borrowing', 'Vaults', 'Yield'],
   },
   {
     id: 'orca',
     name: 'Orca',
     url: 'https://www.orca.so',
+    icon: 'https://www.google.com/s2/favicons?domain=orca.so&sz=128',
     category: 'dex',
     categoryLabel: 'DEX & Swaps',
-    tagline: 'Fast, user-friendly DEX',
-    description: 'Concentrated liquidity Whirlpools with lower gas and optimized swap prices.',
     color: '#f59e0b',
     bg: 'rgba(245, 158, 11, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: '$120M+',
-    tags: ['Whirlpools', 'DEX', 'AMM'],
   },
   {
     id: 'tensor',
     name: 'Tensor',
     url: 'https://www.tensor.trade',
+    icon: 'https://www.google.com/s2/favicons?domain=tensor.trade&sz=128',
     category: 'nft',
     categoryLabel: 'NFTs & Gaming',
-    tagline: 'Pro trading terminal for Solana NFTs',
-    description: 'Real-time order books, collection sweeps, automated bids, and AMM pools.',
     color: '#06b6d4',
     bg: 'rgba(6, 182, 212, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: '$30M+',
-    tags: ['NFTs', 'Pro Trading', 'AMM'],
   },
   {
     id: 'dexscreener',
     name: 'DexScreener',
     url: 'https://dexscreener.com/solana',
+    icon: 'https://www.google.com/s2/favicons?domain=dexscreener.com&sz=128',
     category: 'meme',
     categoryLabel: 'Meme & Launchpads',
-    tagline: 'Live Solana DEX charts and screener',
-    description: 'Track pair prices, liquidity changes, volume spikes, and trending Solana pairs in real-time.',
     color: '#10b981',
     bg: 'rgba(16, 185, 129, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: 'Real-Time',
-    tags: ['Analytics', 'Charts', 'Trending'],
   },
   {
     id: 'birdeye',
     name: 'Birdeye',
     url: 'https://birdeye.so',
+    icon: 'https://www.google.com/s2/favicons?domain=birdeye.so&sz=128',
     category: 'meme',
     categoryLabel: 'Meme & Launchpads',
-    tagline: 'Crypto market intelligence',
-    description: 'Professional charting, trader profiling, new token radar, and security scoring.',
     color: '#6366f1',
     bg: 'rgba(99, 102, 241, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: 'Real-Time',
-    tags: ['Intelligence', 'Audits', 'Charts'],
   },
   {
     id: 'marginfi',
     name: 'MarginFi',
     url: 'https://app.marginfi.com',
+    icon: 'https://www.google.com/s2/favicons?domain=marginfi.com&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
-    tagline: 'Decentralized liquidity and lending',
-    description: 'Lend assets for passive yield and borrow against collateral on Solana.',
     color: '#a855f7',
     bg: 'rgba(168, 85, 247, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: 'TVL $400M',
-    tags: ['Lending', 'Margin', 'DeFi'],
   },
   {
     id: 'jito',
     name: 'Jito',
     url: 'https://www.jito.network',
+    icon: 'https://www.google.com/s2/favicons?domain=jito.network&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
-    tagline: 'MEV-boosted liquid staking',
-    description: 'Stake SOL with Jito to earn staking rewards plus MEV tips via JitoSOL.',
     color: '#14b8a6',
     bg: 'rgba(20, 184, 166, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: 'TVL $2.2B',
-    tags: ['Liquid Staking', 'MEV', 'JitoSOL'],
   },
   {
     id: 'marinade',
-    name: 'Marinade Finance',
+    name: 'Marinade',
     url: 'https://marinade.finance',
+    icon: 'https://www.google.com/s2/favicons?domain=marinade.finance&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
-    tagline: 'Leading Solana staking protocol',
-    description: 'Non-custodial liquid staking protocol delegating to 100+ high-performing validators.',
     color: '#f97316',
     bg: 'rgba(249, 115, 22, 0.12)',
-    verified: true,
-    featured: false,
-    volume24h: 'TVL $1.1B',
-    tags: ['Staking', 'mSOL', 'Validators'],
+  },
+  {
+    id: 'meteora',
+    name: 'Meteora',
+    url: 'https://app.meteora.ag',
+    icon: 'https://www.google.com/s2/favicons?domain=meteora.ag&sz=128',
+    category: 'dex',
+    categoryLabel: 'DEX & Swaps',
+    color: '#ff4d4d',
+    bg: 'rgba(255, 77, 77, 0.12)',
+  },
+  {
+    id: 'drift',
+    name: 'Drift',
+    url: 'https://app.drift.trade',
+    icon: 'https://www.google.com/s2/favicons?domain=drift.trade&sz=128',
+    category: 'dex',
+    categoryLabel: 'DEX & Swaps',
+    color: '#8b5cf6',
+    bg: 'rgba(139, 92, 246, 0.12)',
+  },
+  {
+    id: 'sanctum',
+    name: 'Sanctum',
+    url: 'https://app.sanctum.so',
+    icon: 'https://www.google.com/s2/favicons?domain=sanctum.so&sz=128',
+    category: 'defi',
+    categoryLabel: 'DeFi & Lending',
+    color: '#ec4899',
+    bg: 'rgba(236, 72, 153, 0.12)',
+  },
+  {
+    id: 'solend',
+    name: 'Save',
+    url: 'https://save.finance',
+    icon: 'https://www.google.com/s2/favicons?domain=save.finance&sz=128',
+    category: 'defi',
+    categoryLabel: 'DeFi & Lending',
+    color: '#ffaa00',
+    bg: 'rgba(255, 170, 0, 0.12)',
   },
 ];
 
@@ -230,9 +210,8 @@ export default function DAppExplorer({
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(d =>
         d.name.toLowerCase().includes(q) ||
-        d.description.toLowerCase().includes(q) ||
-        d.url.toLowerCase().includes(q) ||
-        d.tags.some(t => t.toLowerCase().includes(q))
+        (d.categoryLabel && d.categoryLabel.toLowerCase().includes(q)) ||
+        d.url.toLowerCase().includes(q)
       );
     }
     return list;
@@ -265,15 +244,11 @@ export default function DAppExplorer({
         id: parsed.hostname,
         name: parsed.hostname.replace(/^www\./, ''),
         url: fullUrl,
+        icon: `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`,
         category: 'custom',
         categoryLabel: 'Web3 dApp',
-        tagline: fullUrl,
-        description: 'Custom Solana Web3 application loaded via direct URL.',
         color: 'var(--cyan)',
         bg: 'rgba(34, 211, 238, 0.12)',
-        verified: false,
-        featured: false,
-        tags: ['Custom URL', 'Solana'],
       };
       setActiveDApp(customDApp);
     } catch {
@@ -526,48 +501,51 @@ export default function DAppExplorer({
             {/* Embedded frame or Security Fallback Card */}
             <div style={{ padding: '24px 20px', textAlign: 'center' }}>
               <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '18px',
+                width: '68px',
+                height: '68px',
+                borderRadius: '20px',
                 background: activeDApp.bg || 'rgba(163, 230, 53, 0.15)',
                 border: `1px solid ${activeDApp.color || 'var(--lime)'}`,
-                color: activeDApp.color || 'var(--lime)',
-                fontSize: '24px',
-                fontWeight: '800',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 16px auto',
+                overflow: 'hidden',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)'
               }}>
-                {activeDApp.name.slice(0, 2).toUpperCase()}
+                {activeDApp.icon ? (
+                  <img
+                    src={activeDApp.icon}
+                    alt={activeDApp.name}
+                    style={{ width: '44px', height: '44px', objectFit: 'contain' }}
+                    onError={e => {
+                      e.currentTarget.style.display = 'none';
+                      const fb = e.currentTarget.parentElement.querySelector('.active-fallback');
+                      if (fb) fb.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="active-fallback"
+                  style={{
+                    display: activeDApp.icon ? 'none' : 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '22px',
+                    fontWeight: '800',
+                    color: activeDApp.color || 'var(--lime)',
+                  }}
+                >
+                  {activeDApp.name.slice(0, 2).toUpperCase()}
+                </div>
               </div>
 
               <h3 style={{ fontSize: '20px', fontWeight: '800', color: 'white', marginBottom: '8px' }}>
                 {activeDApp.name}
               </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '420px', margin: '0 auto 18px auto', lineHeight: '1.5' }}>
-                {activeDApp.description}
+              <p style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '420px', margin: '0 auto 20px auto', lineHeight: '1.5' }}>
+                Connect and process transactions on {activeDApp.name}
               </p>
-
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '12px',
-                padding: '14px',
-                maxWidth: '440px',
-                margin: '0 auto 20px auto',
-                textAlign: 'left',
-                fontSize: '12px',
-                color: 'var(--text2)',
-                lineHeight: '1.6'
-              }}>
-                <div style={{ fontWeight: '700', color: 'white', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: 'var(--lime)' }}>✓</span> Web3 Direct Connection:
-                </div>
-                <div>1. Click <strong style={{ color: 'white' }}>Launch in Window</strong> below.</div>
-                <div>2. In {activeDApp.name}, select <strong style={{ color: 'white' }}>Connect Wallet</strong>.</div>
-                <div>3. Execute swaps, mints, and transactions with real-time settlement on Solana.</div>
-              </div>
 
               <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <a
@@ -620,15 +598,12 @@ export default function DAppExplorer({
         /* ── Directory & Discovery Hub ── */
         <div>
           {/* Header row */}
-          <div style={{ marginBottom: '16px', textAlign: 'center' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(163, 230, 53, 0.1)', border: '1px solid rgba(163, 230, 53, 0.3)', borderRadius: '20px', padding: '4px 12px', marginBottom: '8px' }}>
-              <span style={{ color: 'var(--lime)', fontSize: '11px', fontWeight: '700' }}>✓ Solana Mainnet Verified</span>
-            </div>
-            <h2 style={{ fontSize: '24px', fontWeight: '800', color: 'white', margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>
+          <div style={{ marginBottom: '14px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
               dApp Explorer
             </h2>
             <p style={{ fontSize: '13px', color: 'var(--text2)', margin: 0 }}>
-              Discover, connect, and process transactions with Solana applications
+              Solana dApps &amp; Web3 tools
             </p>
           </div>
 
@@ -893,99 +868,96 @@ export default function DAppExplorer({
               </div>
             </div>
           ) : (
-            /* ── Curated dApps Grid ── */
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+            /* ── Quick dApps 4-Column Grid ── */
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '18px 12px',
+              marginBottom: '24px',
+              padding: '8px 2px',
+            }}>
               {filteredDApps.map(dapp => (
                 <div
                   key={dapp.id}
                   onClick={() => setActiveDApp(dapp)}
                   style={{
-                    background: 'rgba(10, 22, 40, 0.75)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '16px',
-                    padding: '16px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    position: 'relative',
-                    overflow: 'hidden'
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    transition: 'transform 0.18s ease',
                   }}
                   onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = dapp.color || 'var(--lime)';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.transform = 'translateY(-3px)';
                   }}
                   onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = 'var(--border)';
                     e.currentTarget.style.transform = 'none';
                   }}
                 >
-                  <div>
-                    {/* Top Row: Icon + Name + Badge */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '12px',
-                          background: dapp.bg,
-                          border: `1px solid ${dapp.color}`,
-                          color: dapp.color,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '14px',
-                          fontWeight: '800'
-                        }}>
-                          {dapp.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '15px', fontWeight: '800', color: 'white', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {dapp.name}
-                            {dapp.verified && <span style={{ color: 'var(--lime)', fontSize: '11px' }}>✓</span>}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
-                            {dapp.categoryLabel}
-                          </div>
-                        </div>
-                      </div>
-
-                      {dapp.volume24h && (
-                        <span style={{
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid rgba(255, 255, 255, 0.08)',
-                          borderRadius: '6px',
-                          padding: '2px 8px',
-                          fontSize: '10px',
-                          fontWeight: '600',
-                          color: 'var(--text2)'
-                        }}>
-                          {dapp.volume24h}
-                        </span>
-                      )}
+                  {/* App Logo / Icon */}
+                  <div style={{
+                    width: '58px',
+                    height: '58px',
+                    borderRadius: '16px',
+                    background: dapp.bg || 'rgba(255, 255, 255, 0.05)',
+                    border: `1px solid ${dapp.color || 'rgba(255, 255, 255, 0.12)'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '8px',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.3)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}>
+                    {dapp.icon ? (
+                      <img
+                        src={dapp.icon}
+                        alt={dapp.name}
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '8px',
+                          objectFit: 'contain',
+                        }}
+                        onError={e => {
+                          e.currentTarget.style.display = 'none';
+                          const fb = e.currentTarget.parentElement.querySelector('.dapp-fallback');
+                          if (fb) fb.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className="dapp-fallback"
+                      style={{
+                        display: dapp.icon ? 'none' : 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '100%',
+                        height: '100%',
+                        fontSize: '15px',
+                        fontWeight: '800',
+                        color: dapp.color || 'var(--lime)',
+                      }}
+                    >
+                      {dapp.name.slice(0, 2).toUpperCase()}
                     </div>
-
-                    {/* Tagline & Description */}
-                    <p style={{ fontSize: '12px', color: 'var(--text2)', margin: '0 0 12px 0', lineHeight: '1.45' }}>
-                      {dapp.tagline}
-                    </p>
                   </div>
 
-                  {/* Bottom: Tags + Action */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '10px' }}>
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {dapp.tags.slice(0, 2).map(tag => (
-                        <span key={tag} style={{ fontSize: '10px', color: 'var(--text3)', background: 'rgba(255, 255, 255, 0.03)', padding: '2px 6px', borderRadius: '4px' }}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--lime)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                      Open →
-                    </span>
-                  </div>
+                  {/* App Title */}
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#ffffff',
+                    textAlign: 'center',
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.01em',
+                  }}>
+                    {dapp.name}
+                  </span>
                 </div>
               ))}
             </div>
