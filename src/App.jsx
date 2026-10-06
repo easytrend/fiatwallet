@@ -319,9 +319,11 @@ export default function App() {
   }, [publicKey, internalWallet.publicKey]);
   const effectiveSignTransaction = internalWallet.isActive ? internalWallet.signTransaction : signTransaction;
   const effectiveSignAllTransactions = internalWallet.isActive ? internalWallet.signAllTransactions : signAllTransactions;
-  const effectiveSendTransaction = internalWallet.isActive ? async (tx) => {
+  const effectiveSendTransaction = internalWallet.isActive ? async (tx, conn, opts) => {
+    const targetConn = (conn && typeof conn.sendRawTransaction === 'function') ? conn : connection;
+    const sendOpts = (opts && typeof opts === 'object') ? opts : ((conn && typeof conn === 'object' && !conn.sendRawTransaction) ? conn : undefined);
     const signed = await internalWallet.signTransaction(tx);
-    return connection.sendRawTransaction(signed.serialize());
+    return targetConn.sendRawTransaction(signed.serialize(), sendOpts);
   } : sendTransaction;
 
   // Sync Injected Web3 Provider State (window.solana, window.fiatwallet, Solana Wallet Standard)
@@ -1473,6 +1475,7 @@ export default function App() {
               onRefreshBalances={fetchBalances}
               effectivePublicKey={effectivePublicKey}
               effectiveSignTransaction={effectiveSignTransaction}
+              effectiveSendTransaction={effectiveSendTransaction}
               isGuestMode={isGuestMode}
               activeTab={activeTab}
               onExitGuest={() => {

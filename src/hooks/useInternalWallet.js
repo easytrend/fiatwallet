@@ -61,10 +61,10 @@ export function useInternalWallet() {
   // Mirrors the signTransaction function from useWallet().
   const signTransaction = useCallback(async (transaction) => {
     if (!internalKeypair) throw new Error('Wallet is locked. Please unlock first.');
-    if (typeof transaction.sign === 'function') {
-      transaction.sign([internalKeypair]);
-    } else if (typeof transaction.partialSign === 'function') {
+    if (typeof transaction.partialSign === 'function') {
       transaction.partialSign(internalKeypair);
+    } else if (typeof transaction.sign === 'function') {
+      transaction.sign([internalKeypair]);
     }
     return transaction;
   }, [internalKeypair]);
@@ -73,10 +73,10 @@ export function useInternalWallet() {
   const signAllTransactions = useCallback(async (transactions) => {
     if (!internalKeypair) throw new Error('Wallet is locked. Please unlock first.');
     return transactions.map(tx => {
-      if (typeof tx.sign === 'function') {
-        tx.sign([internalKeypair]);
-      } else if (typeof tx.partialSign === 'function') {
+      if (typeof tx.partialSign === 'function') {
         tx.partialSign(internalKeypair);
+      } else if (typeof tx.sign === 'function') {
+        tx.sign([internalKeypair]);
       }
       return tx;
     });

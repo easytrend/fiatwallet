@@ -359,11 +359,12 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 // Component
 // ---------------------------------------------------------------------------
 
-export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, isGuestMode = false, onExitGuest, activeTab }) {
+export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, effectiveSendTransaction, isGuestMode = false, onExitGuest, activeTab }) {
   const { connection } = useConnection();
-  const { publicKey: adapterPublicKey, sendTransaction, signTransaction: adapterSignTransaction } = useWallet();
+  const { publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction } = useWallet();
   const publicKey = effectivePublicKey || adapterPublicKey;
   const signTransaction = effectiveSignTransaction || adapterSignTransaction;
+  const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
 
   // ── Env config ──────────────────────────────────────────────────────────
   const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;
@@ -2888,8 +2889,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // 5. Pre-flight simulation (only if user is feePayer; relayer server simulates after adding relayer signature)
       if (!usingRelayer) {
+        const solBalance = await connection.getBalance(publicKey, 'confirmed').catch(() => 0);
+        if (solBalance < 5000) {
+          throw new Error('Insufficient SOL for transaction fee. Please ensure your wallet has at least 0.005 SOL to pay for Solana network gas.');
+        }
         const sim = await connection.simulateTransaction(transaction);
-        if (sim.value.err) throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`);
+        if (sim.value.err) {
+          const simErrStr = JSON.stringify(sim.value.err);
+          if (simErrStr.includes('Custom":1') || simErrStr.includes('InsufficientFunds') || simErrStr.includes('insufficient lamports')) {
+            throw new Error('Insufficient SOL for transaction fee or token account rent. Please fund your wallet with at least 0.005 SOL.');
+          }
+          throw new Error(`Simulation failed: ${simErrStr}`);
+        }
       }
 
       // 6. Sign & send (with automatic fallback to user fee-payer if relayer is unfunded/0 SOL)
