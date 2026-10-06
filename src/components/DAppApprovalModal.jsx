@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 
-export default function DAppApprovalModal({ effectivePublicKey, solBalance }) {
+export default function DAppApprovalModal({ effectivePublicKey, solBalance, effectiveSignTransaction }) {
   const [activeRequest, setActiveRequest] = useState(null);
 
   useEffect(() => {
+    // Standard Injected Provider Approval Request
     const handleRequest = (e) => {
       if (e.detail) {
         setActiveRequest(e.detail);
@@ -16,14 +17,82 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance }) {
       }
     };
 
+    // Native Android Bridge Requests (from MainActivity.java)
+    const handleNativeConnect = (e) => {
+      if (e.detail) {
+        setActiveRequest({
+          reqId: e.detail.reqId,
+          type: 'connect',
+          data: {
+            origin: e.detail.origin || 'Solana dApp',
+            title: e.detail.title || 'dApp Connection',
+          },
+          isNative: true,
+          resolve: () => {
+            const pubKey = effectivePublicKey ? effectivePublicKey.toBase58() : '';
+            if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveConnect === 'function') {
+              try { window.FiatWalletBridge.approveConnect(e.detail.reqId, pubKey); } catch {}
+            }
+            if (window.fiatwallet?._onConnectApproved) {
+              window.fiatwallet._onConnectApproved(e.detail.reqId, pubKey);
+            }
+          },
+          reject: () => {
+            if (window.FiatWalletBridge && typeof window.FiatWalletBridge.rejectConnect === 'function') {
+              try { window.FiatWalletBridge.rejectConnect(e.detail.reqId); } catch {}
+            }
+            if (window.fiatwallet?._onConnectRejected) {
+              window.fiatwallet._onConnectRejected(e.detail.reqId);
+            }
+          }
+        });
+      }
+    };
+
+    const handleNativeSign = async (e) => {
+      if (e.detail) {
+        setActiveRequest({
+          reqId: e.detail.reqId,
+          type: e.detail.type || 'signTransaction',
+          data: {
+            origin: 'Solana dApp (In-App)',
+            title: 'Sign Transaction Request',
+            txData: e.detail.txData,
+          },
+          isNative: true,
+          resolve: async () => {
+            const txDataStr = JSON.stringify(e.detail.txData || {});
+            if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveSign === 'function') {
+              try { window.FiatWalletBridge.approveSign(e.detail.reqId, txDataStr); } catch {}
+            }
+            if (window.fiatwallet?._onSignApproved) {
+              window.fiatwallet._onSignApproved(e.detail.reqId, e.detail.txData);
+            }
+          },
+          reject: () => {
+            if (window.FiatWalletBridge && typeof window.FiatWalletBridge.rejectSign === 'function') {
+              try { window.FiatWalletBridge.rejectSign(e.detail.reqId); } catch {}
+            }
+            if (window.fiatwallet?._onSignRejected) {
+              window.fiatwallet._onSignRejected(e.detail.reqId);
+            }
+          }
+        });
+      }
+    };
+
     window.addEventListener('fiatwallet:approval-request', handleRequest);
     window.addEventListener('fiatwallet:approval-done', handleDone);
+    window.addEventListener('fiatwallet:native-connect-request', handleNativeConnect);
+    window.addEventListener('fiatwallet:native-sign-request', handleNativeSign);
 
     return () => {
       window.removeEventListener('fiatwallet:approval-request', handleRequest);
       window.removeEventListener('fiatwallet:approval-done', handleDone);
+      window.removeEventListener('fiatwallet:native-connect-request', handleNativeConnect);
+      window.removeEventListener('fiatwallet:native-sign-request', handleNativeSign);
     };
-  }, [activeRequest]);
+  }, [activeRequest, effectivePublicKey, effectiveSignTransaction]);
 
   if (!activeRequest) return null;
 
@@ -47,12 +116,12 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance }) {
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'rgba(5, 11, 24, 0.85)',
-      backdropFilter: 'blur(8px)',
+      background: 'rgba(5, 11, 24, 0.88)',
+      backdropFilter: 'blur(10px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 999999,
+      zIndex: 2147483647, // Maximum z-index so it always appears above full-screen dApp view
       padding: '16px',
       fontFamily: 'var(--ff, sans-serif)',
       color: 'var(--text, #f1f5f9)'

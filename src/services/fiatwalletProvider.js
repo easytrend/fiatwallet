@@ -125,15 +125,15 @@ class FiatWalletInjectedProvider extends EventEmitter {
    * Connect to dApp
    */
   async connect(options = {}) {
-    if (this._walletState.isActive && this._walletState.publicKey) {
-      // If already unlocked and trusted, return public key
+    // Only bypass if explicitly requested as onlyIfTrusted and already active
+    if (options.onlyIfTrusted && this._walletState.isActive && this._walletState.publicKey) {
       this.publicKey = new WalletPublicKey(this._walletState.publicKey);
       this.isConnected = true;
       this.emit('connect', this.publicKey);
       return { publicKey: this.publicKey };
     }
 
-    // Prompt user approval
+    // Prompt user approval popup card so FiatWallet appears when dApp requests connection
     const approved = await this._requestApproval('connect', {
       origin: window.location.origin,
       title: document.title || 'Solana dApp',
@@ -351,34 +351,58 @@ export function initFiatWalletProvider() {
     console.warn('Solana Wallet Standard registration skipped:', e);
   }
 
-  // Cross-frame PostMessage bridge for iframes and child windows
+  // Cross-frame PostMessage bridge for iframes, popups, and child windows
   window.addEventListener('message', async (event) => {
-    if (!event.data || event.data.target !== 'fiatwallet-inpage-request') return;
-    const { id, action, payload } = event.data;
+    if (!event.data || typeof event.data !== 'object') return;
+    const data = event.data;
+
+    const isMatch =
+      data.target === 'fiatwallet-inpage-request' ||
+      data.type === 'solana:connect' ||
+      data.type === 'solana-wallet-adapter-connect' ||
+      data.type === 'phantom:connect' ||
+      data.type === 'solflare:connect' ||
+      data.method === 'connect' ||
+      data.action === 'connect' ||
+      (data.jsonrpc === '2.0' && data.method?.includes('connect'));
+
+    if (!isMatch) return;
+
+    const action = data.action || data.method || 'connect';
+    const id = data.id || ('req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+    const payload = {
+      ...(data.payload || data.params || {}),
+      origin: data.origin || event.origin || 'Solana dApp',
+      title: data.title || 'In-App dApp',
+    };
 
     try {
       let result;
-      if (action === 'connect') {
+      if (action.includes('connect')) {
         result = await fiatwalletProvider.connect(payload);
-      } else if (action === 'signTransaction') {
-        result = await fiatwalletProvider.signTransaction(payload.transaction);
-      } else if (action === 'signAllTransactions') {
-        result = await fiatwalletProvider.signAllTransactions(payload.transactions);
-      } else if (action === 'disconnect') {
+      } else if (action.includes('signTransaction')) {
+        result = await fiatwalletProvider.signTransaction(payload.transaction || payload);
+      } else if (action.includes('signAllTransactions')) {
+        result = await fiatwalletProvider.signAllTransactions(payload.transactions || payload);
+      } else if (action.includes('disconnect')) {
         result = await fiatwalletProvider.disconnect();
       }
 
-      event.source.postMessage({
-        target: 'fiatwallet-inpage-response',
-        id,
-        result,
-      }, '*');
+      if (event.source && typeof event.source.postMessage === 'function') {
+        event.source.postMessage({
+          target: 'fiatwallet-inpage-response',
+          id,
+          result,
+        }, '*');
+      }
     } catch (err) {
-      event.source.postMessage({
-        target: 'fiatwallet-inpage-response',
-        id,
-        error: err.message || 'Action failed',
-      }, '*');
+      if (event.source && typeof event.source.postMessage === 'function') {
+        event.source.postMessage({
+          target: 'fiatwallet-inpage-response',
+          id,
+          error: err.message || 'Action failed',
+        }, '*');
+      }
     }
   });
 }

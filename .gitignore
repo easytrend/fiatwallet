@@ -32,3 +32,6 @@ dist-ssr
 
 # Generated build version file
 public/build-version.txt
+
+# Scratch work
+scratch/

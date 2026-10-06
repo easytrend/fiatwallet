@@ -30,6 +30,7 @@ import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
+import TransactionConfirmModal from './TransactionConfirmModal';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -408,6 +409,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [p2pError, setP2pError] = useState(null);
 
   // ── UI State ─────────────────────────────────────────────────────────────
+  const [showOfframpConfirm, setShowOfframpConfirm] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
@@ -4506,7 +4508,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             {/* Submit button */}
             <button
               className="send-btn"
-              onClick={isManualOfframp ? handleManualOfframpSubmit : handleSubmit}
+              onClick={() => setShowOfframpConfirm(true)}
               disabled={submitting || !isFormValid}
               style={{ opacity: (submitting || !isFormValid) ? 0.6 : 1, cursor: (submitting || !isFormValid) ? 'not-allowed' : 'pointer' }}
             >
@@ -6332,6 +6334,53 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           </div>
         </div>
       )}
+
+      {/* ── Offramp Transaction Broadcast Confirmation Modal ── */}
+      <TransactionConfirmModal
+        isOpen={showOfframpConfirm}
+        onClose={() => setShowOfframpConfirm(false)}
+        onConfirm={async () => {
+          setShowOfframpConfirm(false);
+          if (isManualOfframp) {
+            await handleManualOfframpSubmit();
+          } else {
+            await handleSubmit();
+          }
+        }}
+        title="Confirm Offramp Payout"
+        recipient={
+          resolvedTagData
+            ? `${resolvedTagData.bank_name || 'Bank'} • ${resolvedTagData.account_name || 'Account'}`
+            : `${selectedBank} • ${accountNumber}`
+        }
+        recipientLabel="Bank Deposit"
+        amount={baseCryptoAmount ? baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : '0'}
+        symbol={liveSelectedToken?.symbol || 'USDC'}
+        fiatAmount={parsedAmt ? parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
+        fiatSymbol={selectedCountry?.symbol || '₦'}
+        networkFee="~0.000005 SOL"
+        details={[
+          {
+            label: 'Beneficiary Name',
+            value: resolvedTagData ? (resolvedTagData.account_name || 'Resolved') : (accountName || 'Bank Account'),
+          },
+          {
+            label: 'Account Number / Tag',
+            value: resolvedTagData ? (recipientTagInput || `$${resolvedTagData.tag_name}`) : (accountNumber || '—'),
+          },
+          {
+            label: 'Bank Name',
+            value: resolvedTagData ? (resolvedTagData.bank_name || '—') : (selectedBank || '—'),
+          },
+          {
+            label: 'Payout Currency',
+            value: `${selectedCountry?.currency || 'NGN'} (${selectedCountry?.name || 'Local Bank'})`,
+            color: 'var(--lime, #a3e635)',
+          },
+        ]}
+        confirmButtonText="Approve & Payout"
+        isSubmitting={submitting}
+      />
 
     </div>
   );

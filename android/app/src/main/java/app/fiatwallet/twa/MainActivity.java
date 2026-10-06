@@ -289,6 +289,42 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
+        @JavascriptInterface
+        public void approveConnect(String reqId, String pubKey) {
+            runOnUiThread(() -> {
+                String js = "if (window.fiatwallet && window.fiatwallet._onConnectApproved) { " +
+                            "window.fiatwallet._onConnectApproved('" + reqId + "', '" + escapeJs(pubKey) + "'); }";
+                getBridge().getWebView().evaluateJavascript(js, null);
+            });
+        }
+
+        @JavascriptInterface
+        public void rejectConnect(String reqId) {
+            runOnUiThread(() -> {
+                String js = "if (window.fiatwallet && window.fiatwallet._onConnectRejected) { " +
+                            "window.fiatwallet._onConnectRejected('" + reqId + "'); }";
+                getBridge().getWebView().evaluateJavascript(js, null);
+            });
+        }
+
+        @JavascriptInterface
+        public void approveSign(String reqId, String resultData) {
+            runOnUiThread(() -> {
+                String js = "if (window.fiatwallet && window.fiatwallet._onSignApproved) { " +
+                            "window.fiatwallet._onSignApproved('" + reqId + "', " + resultData + "); }";
+                getBridge().getWebView().evaluateJavascript(js, null);
+            });
+        }
+
+        @JavascriptInterface
+        public void rejectSign(String reqId) {
+            runOnUiThread(() -> {
+                String js = "if (window.fiatwallet && window.fiatwallet._onSignRejected) { " +
+                            "window.fiatwallet._onSignRejected('" + reqId + "'); }";
+                getBridge().getWebView().evaluateJavascript(js, null);
+            });
+        }
+
         private String escapeJs(String s) {
             if (s == null) return "";
             return s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");

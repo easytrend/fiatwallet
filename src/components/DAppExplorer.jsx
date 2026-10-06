@@ -452,8 +452,37 @@ export default function DAppExplorer({
               </button>
             </div>
 
-            {/* Right: WC + Reload */}
+            {/* Right: Connect + WC + Reload */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* Connect Wallet Trigger */}
+              <button
+                type="button"
+                onClick={() => {
+                  fiatwalletProvider.connect({
+                    origin: selectedDApp.url,
+                    title: selectedDApp.name,
+                  });
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.22), rgba(163, 230, 53, 0.08))',
+                  border: '1px solid var(--lime, #a3e635)',
+                  borderRadius: '8px',
+                  color: 'var(--lime, #a3e635)',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  padding: '6px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Connect FiatWallet to this dApp"
+              >
+                <span>✓</span>
+                <span>Connect</span>
+              </button>
+
               {/* WalletConnect button */}
               <button
                 type="button"

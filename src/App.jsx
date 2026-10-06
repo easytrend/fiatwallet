@@ -32,6 +32,8 @@ import WalletMenuDrawer from './components/WalletMenuDrawer';
 import DAppExplorer from './components/DAppExplorer';
 import { fiatwalletProvider } from './services/fiatwalletProvider';
 import DAppApprovalModal from './components/DAppApprovalModal';
+import LogoutConfirmModal from './components/LogoutConfirmModal';
+import TransactionConfirmModal from './components/TransactionConfirmModal';
 
 
 
@@ -302,6 +304,8 @@ export default function App() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showSendConfirmModal, setShowSendConfirmModal] = useState(false);
 
   // Unified wallet connection state
   const effectiveConnected = connected || internalWallet.isActive;
@@ -420,7 +424,7 @@ export default function App() {
       }
     }
     const a = document.createElement('a');
-    a.href = '/fiatwallet.apk';
+    a.href = `/fiatwallet.apk?v=${Date.now()}`;
     a.download = 'fiatwallet.apk';
     document.body.appendChild(a);
     a.click();
@@ -888,6 +892,14 @@ export default function App() {
     internalWallet.reset();
     setGuestBypass(false);
     setIsGuestMode(false);
+  }
+
+  function handlePromptLogout() {
+    if (internalWallet.isActive || internalWallet.hasVault) {
+      setShowLogoutModal(true);
+    } else {
+      handleLogoutReset();
+    }
   }
 
   async function handleSend() {
@@ -1714,7 +1726,7 @@ export default function App() {
 
             <button className="send-btn"
               disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
-              onClick={handleSend}>
+              onClick={() => setShowSendConfirmModal(true)}>
               {sending ? 'Sending…'
                 : !effectiveConnected ? 'Connect wallet to send'
                 : !tokLive ? 'Select a token to continue'
@@ -2135,7 +2147,7 @@ export default function App() {
           if (chatBtn) chatBtn.click();
         }}
         onLock={handleDisconnect}
-        onLogout={handleLogoutReset}
+        onLogout={handlePromptLogout}
       />
 
       {/* ── Receive Assets QR Modal ── */}
@@ -2162,7 +2174,7 @@ export default function App() {
           isInternal={internalWallet.isActive}
           onClose={() => setShowSecurityModal(false)}
           onLock={handleDisconnect}
-          onLogout={handleLogoutReset}
+          onLogout={handlePromptLogout}
         />
       )}
 
@@ -2171,6 +2183,40 @@ export default function App() {
         <TermsPrivacyModal onClose={() => setShowTermsModal(false)} />
       )}
 
+      {/* ── Logout & Reset Confirmation Modal with Seed Phrase Backup Warning ── */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirmLogout={() => {
+          setShowLogoutModal(false);
+          handleLogoutReset();
+        }}
+        onOpenBackup={() => {
+          setShowLogoutModal(false);
+          setShowSecurityModal(true);
+        }}
+      />
+
+      {/* ── Transaction Broadcast Confirmation Modal (Single Send) ── */}
+      <TransactionConfirmModal
+        isOpen={showSendConfirmModal}
+        onClose={() => setShowSendConfirmModal(false)}
+        onConfirm={async () => {
+          setShowSendConfirmModal(false);
+          await handleSend();
+        }}
+        title="Confirm Send"
+        recipient={resolvedAddress || recipient}
+        recipientLabel={recipient.endsWith('.sol') ? `Recipient (${recipient})` : 'Recipient'}
+        amount={dispTok}
+        symbol={tokLive?.symbol || 'SOL'}
+        fiatAmount={curr && (num > 0) ? (inputMode === 'fiat' ? fmtFiat(num) : fmtFiat(num * tokPrice * currRate)) : null}
+        fiatSymbol={curr?.symbol || '$'}
+        networkFee="~0.000005 SOL"
+        confirmButtonText="Approve & Send"
+        isSubmitting={sending}
+      />
+
       {/* Floating Support Chat */}
       <SupportChat />
 
@@ -2178,6 +2224,7 @@ export default function App() {
       <DAppApprovalModal
         effectivePublicKey={effectivePublicKey}
         solBalance={solBalance}
+        effectiveSignTransaction={effectiveSignTransaction}
       />
     </div>
   );

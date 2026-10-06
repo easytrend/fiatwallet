@@ -434,28 +434,82 @@ export default function WalletMenuDrawer({
           </div>
         </div>
 
+        {/* Download Latest APK Button */}
+        <div style={{ marginTop: '16px' }}>
+          <a
+            href={`/fiatwallet.apk?v=${Date.now()}`}
+            download="fiatwallet.apk"
+            style={{
+              width: '100%',
+              padding: '11px 14px',
+              background: 'rgba(34, 211, 238, 0.08)',
+              border: '1px solid rgba(34, 211, 238, 0.3)',
+              borderRadius: '12px',
+              color: 'var(--cyan, #22d3ee)',
+              fontSize: '12px',
+              fontWeight: '700',
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Download Android APK (Latest)</span>
+            </div>
+            <span style={{ fontSize: '11px', color: 'rgba(34, 211, 238, 0.7)' }}>↓</span>
+          </a>
+        </div>
+
         {/* Footer Actions */}
-        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
           {isInternal ? (
-            <button
-              onClick={() => { onClose(); onLock(); }}
-              style={{
-                width: '100%',
-                padding: '12px',
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid var(--border2)',
-                borderRadius: '12px',
-                color: 'white',
-                fontSize: '13px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                marginBottom: '10px',
-              }}
-            >
-              Lock Wallet
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+              <button
+                type="button"
+                onClick={() => { onClose(); onLock(); }}
+                style={{
+                  width: '100%',
+                  padding: '11px',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid var(--border2)',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                }}
+              >
+                Lock Wallet
+              </button>
+              <button
+                type="button"
+                onClick={() => { onClose(); onLogout(); }}
+                style={{
+                  width: '100%',
+                  padding: '11px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '12px',
+                  color: 'var(--red, #f87171)',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                }}
+              >
+                Log Out / Reset Wallet
+              </button>
+            </div>
           ) : (
             <button
+              type="button"
               onClick={() => { onClose(); onLogout(); }}
               style={{
                 width: '100%',
