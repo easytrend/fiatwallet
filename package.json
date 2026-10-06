@@ -19,6 +19,7 @@
     "@solana/wallet-adapter-wallets": "^0.19.38",
     "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.108.2",
+    "@walletconnect/web3wallet": "^1.16.1",
     "bip39": "^3.1.0",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",

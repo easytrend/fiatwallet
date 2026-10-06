@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 import { fiatwalletProvider } from '../services/fiatwalletProvider';
+import WalletConnectModal from './WalletConnectModal';
 
 // Curated list of 16 verified Solana Web3 dApps
 const CURATED_DAPPS = [
@@ -190,6 +191,7 @@ export default function DAppExplorer({
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedAddr, setCopiedAddr] = useState(false);
+  const [wcOpen, setWcOpen] = useState(false);
 
   // Selected dApp for Full-Screen In-App Web View
   const [selectedDApp, setSelectedDApp] = useState(null);
@@ -450,24 +452,54 @@ export default function DAppExplorer({
               </button>
             </div>
 
-            {/* Right: Reload button */}
-            <button
-              type="button"
-              onClick={() => setIframeKey(k => k + 1)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '8px',
-                color: 'var(--cyan, #22d3ee)',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '700',
-                padding: '6px 10px'
-              }}
-              title="Reload dApp"
-            >
-              ↻ Reload
-            </button>
+            {/* Right: WC + Reload */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {/* WalletConnect button */}
+              <button
+                type="button"
+                onClick={() => setWcOpen(true)}
+                title="Connect via WalletConnect"
+                style={{
+                  background: 'rgba(59, 153, 252, 0.15)',
+                  border: '1px solid rgba(59, 153, 252, 0.4)',
+                  borderRadius: '8px',
+                  color: '#3b99fc',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  padding: '6px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                {/* WC icon */}
+                <svg width="14" height="14" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="16" cy="16" r="16" fill="#3B99FC" />
+                  <path d="M9.58 12.74c3.54-3.45 9.28-3.45 12.82 0l.43.42a.44.44 0 0 1 0 .62l-1.47 1.44a.23.23 0 0 1-.32 0l-.59-.57c-2.47-2.41-6.47-2.41-8.94 0l-.63.62a.23.23 0 0 1-.32 0L9.08 13.8a.44.44 0 0 1 0-.62l.5-.44Zm15.84 2.94 1.31 1.28a.44.44 0 0 1 0 .62l-5.9 5.75a.45.45 0 0 1-.64 0l-4.18-4.08a.12.12 0 0 0-.16 0l-4.18 4.08a.45.45 0 0 1-.64 0L5.25 17.58a.44.44 0 0 1 0-.62l1.31-1.28a.45.45 0 0 1 .64 0l4.18 4.08a.12.12 0 0 0 .16 0l4.18-4.08a.45.45 0 0 1 .64 0l4.18 4.08a.12.12 0 0 0 .16 0l4.18-4.08a.45.45 0 0 1 .64 0Z" fill="white" />
+                </svg>
+                WC
+              </button>
+
+              {/* Reload button */}
+              <button
+                type="button"
+                onClick={() => setIframeKey(k => k + 1)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  color: 'var(--cyan, #22d3ee)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  padding: '6px 10px'
+                }}
+                title="Reload dApp"
+              >
+                ↻ Reload
+              </button>
+            </div>
           </div>
 
           {/* Full Screen Web View Iframe */}
@@ -490,6 +522,16 @@ export default function DAppExplorer({
           />
         </div>
       ) : null}
+
+      {/* WalletConnect Modal — available both inside and outside dApp view */}
+      <WalletConnectModal
+        open={wcOpen}
+        onClose={() => setWcOpen(false)}
+        publicKey={effectivePublicKey}
+        signTransaction={effectiveSignTransaction}
+        connection={connection}
+      />
+
 
       {/* ══════════════════════════════════════════════════════
          MAIN EXPLORER GRID & SEARCH VIEW
@@ -549,11 +591,38 @@ export default function DAppExplorer({
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Balance</div>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: (solBalance || 0) < 0.005 ? '#f87171' : 'var(--lime)', fontFamily: 'var(--mono)' }}>
-              {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Balance</div>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: (solBalance || 0) < 0.005 ? '#f87171' : 'var(--lime)', fontFamily: 'var(--mono)' }}>
+                {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
+              </div>
             </div>
+            {/* WalletConnect button */}
+            <button
+              type="button"
+              onClick={() => setWcOpen(true)}
+              style={{
+                background: 'rgba(59, 153, 252, 0.12)',
+                border: '1px solid rgba(59, 153, 252, 0.35)',
+                borderRadius: '8px',
+                color: '#3b99fc',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: '700',
+                padding: '5px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              title="Connect to dApps via WalletConnect"
+            >
+              <svg width="12" height="12" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
+                <circle cx="16" cy="16" r="16" fill="#3B99FC" />
+                <path d="M9.58 12.74c3.54-3.45 9.28-3.45 12.82 0l.43.42a.44.44 0 0 1 0 .62l-1.47 1.44a.23.23 0 0 1-.32 0l-.59-.57c-2.47-2.41-6.47-2.41-8.94 0l-.63.62a.23.23 0 0 1-.32 0L9.08 13.8a.44.44 0 0 1 0-.62l.5-.44Zm15.84 2.94 1.31 1.28a.44.44 0 0 1 0 .62l-5.9 5.75a.45.45 0 0 1-.64 0l-4.18-4.08a.12.12 0 0 0-.16 0l-4.18 4.08a.45.45 0 0 1-.64 0L5.25 17.58a.44.44 0 0 1 0-.62l1.31-1.28a.45.45 0 0 1 .64 0l4.18 4.08a.12.12 0 0 0 .16 0l4.18-4.08a.45.45 0 0 1 .64 0l4.18 4.08a.12.12 0 0 0 .16 0l4.18-4.08a.45.45 0 0 1 .64 0Z" fill="white" />
+              </svg>
+              WalletConnect
+            </button>
           </div>
         </div>
 
