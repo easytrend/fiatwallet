@@ -30,6 +30,8 @@ import SecurityModal from './components/SecurityModal';
 import TermsPrivacyModal from './components/TermsPrivacyModal';
 import WalletMenuDrawer from './components/WalletMenuDrawer';
 import DAppExplorer from './components/DAppExplorer';
+import { fiatwalletProvider } from './services/fiatwalletProvider';
+import DAppApprovalModal from './components/DAppApprovalModal';
 
 
 
@@ -321,6 +323,17 @@ export default function App() {
     const signed = await internalWallet.signTransaction(tx);
     return connection.sendRawTransaction(signed.serialize());
   } : sendTransaction;
+
+  // Sync Injected Web3 Provider State (window.solana, window.fiatwallet, Solana Wallet Standard)
+  useEffect(() => {
+    fiatwalletProvider.updateWalletState({
+      publicKey: effectivePublicKey ? effectivePublicKey.toBase58() : null,
+      isActive: effectiveConnected,
+      signTransaction: effectiveSignTransaction,
+      signAllTransactions: effectiveSignAllTransactions,
+      sendTransaction: effectiveSendTransaction,
+    });
+  }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);
 
   // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
   // Only show full-screen unlock if the user already has a saved encrypted vault on this device and hasn't bypassed.
@@ -2157,6 +2170,12 @@ export default function App() {
 
       {/* Floating Support Chat */}
       <SupportChat />
+
+      {/* Injected Web3 dApp Approval Modal (Connect & Sign Requests) */}
+      <DAppApprovalModal
+        effectivePublicKey={effectivePublicKey}
+        solBalance={solBalance}
+      />
     </div>
   );
 }

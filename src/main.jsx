@@ -9,6 +9,9 @@ if (typeof window !== 'undefined') {
 globalThis.global = globalThis;
 globalThis.process = globalThis.process || { env: {}, browser: true, version: '' };
 
+import { initFiatWalletProvider } from './services/fiatwalletProvider';
+initFiatWalletProvider();
+
 import React, { useMemo, Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
