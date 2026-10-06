@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FiatWallet Request</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a1628;
+      color: #f0f6ff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      justify-content: space-between;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      margin-bottom: 10px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+    .origin {
+      font-size: 12px;
+      color: #a3e635;
+      font-family: monospace;
+      word-break: break-all;
+    }
+    .card {
+      background: #111e38;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .label {
+      font-size: 11px;
+      color: rgba(240, 246, 255, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .value {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+    .pin-input {
+      width: 100%;
+      padding: 12px;
+      background: rgba(10, 22, 40, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      color: white;
+      font-size: 16px;
+      text-align: center;
+      letter-spacing: 0.2em;
+      outline: none;
+      margin-top: 10px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .btn-reject {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .btn-approve {
+      background: #a3e635;
+      color: #0a1628;
+    }
+    .btn-approve:hover {
+      background: #84cc16;
+    }
+    .btn-reject:hover {
+      background: rgba(239, 68, 68, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="header">
+      <img src="icon128.png" class="logo" alt="FiatWallet">
+      <div class="title" id="request-title">Connection Request</div>
+      <div class="origin" id="request-origin">https://...</div>
+    </div>
+
+    <div class="card" id="request-content">
+      <div class="label">Requested Permission</div>
+      <div class="value" id="request-permission">View your wallet balance and activity</div>
+
+      <div class="label">Connected Account</div>
+      <div class="value" id="wallet-address" style="font-family: monospace;">Loading...</div>
+
+      <div id="pin-section" style="display: none; margin-top: 12px;">
+        <div class="label">Enter Wallet Security PIN</div>
+        <input type="password" id="pin-field" class="pin-input" placeholder="••••••" maxlength="10">
+      </div>
+      <div id="error-box" style="color: #f87171; font-size: 12px; margin-top: 8px; display: none;"></div>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <button class="btn-reject" id="btn-reject">Cancel</button>
+    <button class="btn-approve" id="btn-approve">Approve</button>
+  </div>
+
+  <script src="approval.js"></script>
+</body>
+</html>

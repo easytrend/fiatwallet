@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FiatWallet</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 340px;
+      background: #0a1628;
+      color: #f0f6ff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+    }
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .logo-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-img {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+    }
+    .brand {
+      font-weight: 800;
+      font-size: 15px;
+      color: white;
+    }
+    .network-badge {
+      font-size: 10px;
+      color: #a3e635;
+      background: rgba(163, 230, 53, 0.1);
+      border: 1px solid rgba(163, 230, 53, 0.3);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 700;
+    }
+    .card {
+      background: #111e38;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 16px;
+      text-align: center;
+      margin-bottom: 14px;
+    }
+    .balance-label {
+      font-size: 11px;
+      color: rgba(240, 246, 255, 0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .balance-val {
+      font-size: 26px;
+      font-weight: 800;
+      color: white;
+      margin-bottom: 6px;
+    }
+    .address-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 4px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      color: rgba(240, 246, 255, 0.7);
+      cursor: pointer;
+      font-family: monospace;
+    }
+    .btn-main {
+      width: 100%;
+      padding: 12px;
+      background: #a3e635;
+      color: #0a1628;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 13px;
+      margin-bottom: 8px;
+      display: block;
+      text-decoration: none;
+      text-align: center;
+    }
+    .btn-secondary {
+      width: 100%;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      color: white;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .input-field {
+      width: 100%;
+      padding: 10px;
+      background: rgba(10, 22, 40, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      color: white;
+      font-size: 12px;
+      margin-bottom: 10px;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <div class="logo-box">
+      <img src="icon48.png" class="logo-img" alt="FiatWallet">
+      <span class="brand">FiatWallet</span>
+    </div>
+    <span class="network-badge">Solana Mainnet</span>
+  </div>
+
+  <!-- View 1: Active Wallet -->
+  <div id="wallet-view" style="display: none;">
+    <div class="card">
+      <div class="balance-label">Total Balance</div>
+      <div class="balance-val" id="sol-balance">0.00 SOL</div>
+      <div class="address-pill" id="btn-copy-address" title="Click to Copy">
+        <span id="display-address">Loading...</span>
+        <span id="copy-status" style="color: #a3e635;">Copy</span>
+      </div>
+    </div>
+
+    <a href="https://fiatwallet.pages.dev" target="_blank" class="btn-main">
+      Open Full Web App →
+    </a>
+    <button class="btn-secondary" id="btn-reimport">
+      Import / Change Wallet
+    </button>
+  </div>
+
+  <!-- View 2: Setup / Import Wallet -->
+  <div id="setup-view">
+    <div class="card">
+      <div style="font-size: 15px; font-weight: 700; color: white; margin-bottom: 6px;">
+        Connect to dApps
+      </div>
+      <p style="font-size: 11px; color: rgba(240, 246, 255, 0.6); margin-bottom: 14px; line-height: 1.5;">
+        Enter your Solana wallet address or import your seed phrase to enable Meteora, Jupiter, and other dApps to connect directly.
+      </p>
+
+      <input type="text" id="import-address" class="input-field" placeholder="Wallet Address (Base58)">
+      <button class="btn-main" id="btn-save-wallet">
+        Set Active Wallet
+      </button>
+
+      <a href="https://fiatwallet.pages.dev" target="_blank" style="color: #a3e635; font-size: 11px; text-decoration: none; display: block; margin-top: 8px;">
+        Or open FiatWallet Web App →
+      </a>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
