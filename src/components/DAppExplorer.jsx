@@ -265,8 +265,12 @@ export default function DAppExplorer({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedAddr, setCopiedAddr] = useState(false);
 
-  // Selected dApp for In-App Execution
+  // Selected dApp for In-App Interface
   const [selectedDApp, setSelectedDApp] = useState(null);
+
+  // Interface view mode: 'web' (real app interface) or 'terminal' (direct on-chain terminal)
+  const [dappViewMode, setDappViewMode] = useState('web');
+  const [iframeKey, setIframeKey] = useState(0);
 
   // In-App Terminal Trading State
   const [fromMint, setFromMint] = useState(SOL_MINT);
@@ -290,17 +294,19 @@ export default function DAppExplorer({
   const [bridgeTxSignature, setBridgeTxSignature] = useState(null);
   const [bridgeError, setBridgeError] = useState(null);
 
-  // When a dApp is selected, initialize the default target token
+  // When a dApp is selected, initialize the default target token and view mode
   useEffect(() => {
     if (selectedDApp?.defaultOutputMint) {
       setToMint(selectedDApp.defaultOutputMint);
       setFromMint(SOL_MINT);
     }
+    setDappViewMode('web');
     setTradeAmount('');
     setQuote(null);
     setQuoteError(null);
     setTxSignature(null);
     setTxError(null);
+    setIframeKey(k => k + 1);
   }, [selectedDApp]);
 
   // Token helper
@@ -341,30 +347,53 @@ export default function DAppExplorer({
     return list;
   }, [activeCategory, searchQuery]);
 
-  // Handle URL submit
+  // Handle URL or Search submit -> Takes user straight to the app interface
   const handleUrlSubmit = (e) => {
     e?.preventDefault();
     const q = searchQuery.trim();
     if (!q) return;
 
+    // Check if query matches a curated dApp
     const found = CURATED_DAPPS.find(
       d => d.name.toLowerCase() === q.toLowerCase() || d.url.toLowerCase().includes(q.toLowerCase())
     );
     if (found) {
       setSelectedDApp(found);
+      setDappViewMode('web');
       return;
     }
 
+    // Direct URL or custom query
     let fullUrl = q;
     if (!/^https?:\/\//i.test(fullUrl)) {
       fullUrl = 'https://' + fullUrl;
     }
 
     try {
-      new URL(fullUrl);
-      window.open(fullUrl, '_blank', 'noopener,noreferrer');
+      const parsedUrl = new URL(fullUrl);
+      const domain = parsedUrl.hostname.replace(/^www\./i, '');
+      const name = domain.split('.')[0];
+      const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+      setSelectedDApp({
+        id: 'custom-' + domain,
+        name: capitalized,
+        url: fullUrl,
+        icon: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+        category: 'web3',
+        categoryLabel: 'Web3 dApp',
+        color: 'var(--cyan)',
+        bg: 'rgba(34, 211, 238, 0.12)',
+        description: `Browsing ${fullUrl} directly inside FiatWallet.`,
+        isTradable: true,
+        defaultOutputMint: USDC_MINT,
+      });
+      setDappViewMode('web');
     } catch {
-      // Invalid URL, leave search query as filter
+      // If not a full URL, open first filtered match if available
+      if (filteredDApps.length > 0) {
+        setSelectedDApp(filteredDApps[0]);
+        setDappViewMode('web');
+      }
     }
   };
 
@@ -438,7 +467,6 @@ export default function DAppExplorer({
     setExecStep('Verifying SOL gas reserves...');
 
     try {
-      // 1. Fresh balance check
       const lamports = await connection.getBalance(effectivePublicKey, 'confirmed');
       const freshSol = lamports / LAMPORTS_PER_SOL;
 
@@ -478,7 +506,6 @@ export default function DAppExplorer({
       }
 
       setExecStep('Confirming on Solana network...');
-      // Poll confirmation
       let confirmed = false;
       const deadline = Date.now() + 45000;
       while (Date.now() < deadline) {
@@ -682,397 +709,107 @@ export default function DAppExplorer({
         </div>
       )}
 
-      {/* ── CONDITIONAL RENDERING: SELECTED DAPP TERMINAL vs MAIN EXPLORER GRID ── */}
+      {/* ── CONDITIONAL RENDERING: SELECTED DAPP INTERFACE vs MAIN EXPLORER GRID ── */}
       {selectedDApp ? (
         /* ══════════════════════════════════════════════════════
-           IN-APP DAPP WEB3 TERMINAL VIEW
+           IN-APP DAPP INTERFACE VIEW (WEB INTERFACE + TERMINAL)
            ══════════════════════════════════════════════════════ */
         <div style={{
           background: 'rgba(10, 22, 40, 0.88)',
           border: '1px solid var(--border2)',
           borderRadius: '18px',
-          padding: '18px',
+          padding: '16px',
           marginBottom: '20px',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
         }}>
-          {/* Top Nav: Back button + Title + External link */}
+          {/* Top Nav: Back button + Title + Mode Switcher + External Link */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '16px',
+            marginBottom: '14px',
             borderBottom: '1px solid var(--border)',
-            paddingBottom: '12px'
+            paddingBottom: '12px',
+            gap: '8px',
+            flexWrap: 'wrap'
           }}>
-            <button
-              onClick={() => setSelectedDApp(null)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                color: 'white',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              ← Back
-            </button>
-
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img
-                src={selectedDApp.icon}
-                alt={selectedDApp.name}
-                style={{ width: '22px', height: '22px', borderRadius: '6px' }}
-                onError={e => { e.currentTarget.style.display = 'none'; }}
-              />
-              <span style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>
-                {selectedDApp.name}
-              </span>
-              <span style={{
-                fontSize: '10px',
-                background: selectedDApp.bg || 'rgba(163, 230, 53, 0.15)',
-                color: selectedDApp.color || 'var(--lime)',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                fontWeight: '700'
-              }}>
-                {selectedDApp.categoryLabel}
-              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDApp(null)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                ← Back
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <img
+                  src={selectedDApp.icon}
+                  alt={selectedDApp.name}
+                  style={{ width: '22px', height: '22px', borderRadius: '6px' }}
+                  onError={e => { e.currentTarget.style.display = 'none'; }}
+                />
+                <span style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>
+                  {selectedDApp.name}
+                </span>
+              </div>
             </div>
 
-            <a
-              href={selectedDApp.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontSize: '11px',
-                color: 'var(--cyan)',
-                textDecoration: 'none',
-                background: 'rgba(34, 211, 238, 0.08)',
-                padding: '6px 10px',
+            {/* Mode Switcher: Web View vs Web3 Terminal */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{
+                display: 'flex',
+                background: 'rgba(255, 255, 255, 0.06)',
                 borderRadius: '8px',
-                fontWeight: '600',
-                border: '1px solid rgba(34, 211, 238, 0.25)'
-              }}
-            >
-              Web ↗
-            </a>
-          </div>
-
-          {/* Description & Protocol Info */}
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.02)',
-            borderRadius: '12px',
-            padding: '12px 14px',
-            marginBottom: '16px',
-            border: '1px solid var(--border)'
-          }}>
-            <p style={{ fontSize: '12px', color: 'var(--text2)', margin: '0 0 6px 0', lineHeight: '1.4' }}>
-              {selectedDApp.description}
-            </p>
-            <div style={{ fontSize: '11px', color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>Engine: Direct On-Chain Execution</span>
-              <span>•</span>
-              <span style={{ color: 'var(--lime)' }}>✓ Self-Custodial Vault Compatible</span>
-            </div>
-          </div>
-
-          {/* Interactive In-App Trading Execution Terminal for Tradable dApps */}
-          {selectedDApp.isTradable ? (
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: '800', color: 'white', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>In-App Trading Terminal</span>
-                <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Slippage: {slippageBps / 100}%</span>
-              </div>
-
-              {/* Pay Input Card */}
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid var(--border)',
-                borderRadius: '14px',
-                padding: '12px 14px',
-                marginBottom: '8px'
+                padding: '2px',
+                border: '1px solid var(--border)'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11px', color: 'var(--text3)' }}>
-                  <span>You Pay</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <span>Balance: {fromToken.symbol === 'SOL' ? Number(solBalance || 0).toFixed(4) : '--'} {fromToken.symbol}</span>
-                    <button
-                      type="button"
-                      onClick={handleSetMax}
-                      style={{
-                        background: 'rgba(163, 230, 53, 0.15)',
-                        border: 'none',
-                        color: 'var(--lime)',
-                        borderRadius: '4px',
-                        padding: '1px 6px',
-                        fontSize: '10px',
-                        fontWeight: '700',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      MAX
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <input
-                    type="number"
-                    value={tradeAmount}
-                    onChange={e => setTradeAmount(e.target.value)}
-                    placeholder="0.00"
-                    step="any"
-                    style={{
-                      flex: 1,
-                      background: 'none',
-                      border: 'none',
-                      outline: 'none',
-                      color: 'white',
-                      fontSize: '18px',
-                      fontWeight: '700',
-                      fontFamily: 'var(--mono)'
-                    }}
-                  />
-                  <select
-                    value={fromMint}
-                    onChange={e => setFromMint(e.target.value)}
-                    style={{
-                      background: 'rgba(17, 30, 56, 0.9)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      padding: '6px 10px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {SUPPORTED_TOKENS.map(t => (
-                      <option key={t.mint} value={t.mint}>
-                        {t.symbol}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Flip Button */}
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '-4px 0' }}>
                 <button
                   type="button"
-                  onClick={handleFlipTokens}
+                  onClick={() => setDappViewMode('web')}
                   style={{
-                    background: 'rgba(17, 30, 56, 0.95)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '50%',
-                    width: '30px',
-                    height: '30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--lime)',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    zIndex: 2
-                  }}
-                >
-                  ↓
-                </button>
-              </div>
-
-              {/* Receive Output Card */}
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid var(--border)',
-                borderRadius: '14px',
-                padding: '12px 14px',
-                marginBottom: '14px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11px', color: 'var(--text3)' }}>
-                  <span>You Receive (Estimated)</span>
-                  {quote?.priceImpactPct && (
-                    <span style={{ color: Number(quote.priceImpactPct) > 1 ? '#f87171' : 'var(--text3)' }}>
-                      Impact: {formatPriceImpact(quote.priceImpactPct).label}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{
-                    flex: 1,
-                    color: outputAmountFormatted ? 'var(--lime)' : 'var(--text3)',
-                    fontSize: '18px',
-                    fontWeight: '700',
-                    fontFamily: 'var(--mono)'
-                  }}>
-                    {loadingQuote ? 'Fetching quote...' : (outputAmountFormatted || '0.00')}
-                  </div>
-                  <select
-                    value={toMint}
-                    onChange={e => setToMint(e.target.value)}
-                    style={{
-                      background: 'rgba(17, 30, 56, 0.9)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      padding: '6px 10px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {SUPPORTED_TOKENS.map(t => (
-                      <option key={t.mint} value={t.mint}>
-                        {t.symbol}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Quote Error Banner */}
-              {quoteError && (
-                <div style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  padding: '8px 12px',
-                  color: '#f87171',
-                  fontSize: '11px',
-                  marginBottom: '12px'
-                }}>
-                  ✕ {quoteError}
-                </div>
-              )}
-
-              {/* Execution Steps */}
-              {execStep && (
-                <div style={{
-                  background: 'rgba(34, 211, 238, 0.08)',
-                  border: '1px solid rgba(34, 211, 238, 0.25)',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  color: 'var(--cyan)',
-                  fontSize: '12px',
-                  marginBottom: '12px',
-                  fontWeight: '600'
-                }}>
-                  • {execStep}
-                </div>
-              )}
-
-              {/* Tx Success */}
-              {txSignature && (
-                <div style={{
-                  background: 'rgba(34, 197, 94, 0.1)',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  marginBottom: '12px',
-                  fontSize: '12px'
-                }}>
-                  <div style={{ color: 'var(--lime)', fontWeight: '700', marginBottom: '4px' }}>
-                    ✓ Swap Confirmed on Solana!
-                  </div>
-                  <a
-                    href={`https://solscan.io/tx/${txSignature}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: 'var(--cyan)', textDecoration: 'underline', fontSize: '11px', wordBreak: 'break-all' }}
-                  >
-                    View on Solscan: {txSignature.slice(0, 18)}...
-                  </a>
-                </div>
-              )}
-
-              {/* Tx Error */}
-              {txError && (
-                <div style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  color: '#f87171',
-                  fontSize: '12px',
-                  marginBottom: '12px',
-                  lineHeight: '1.4'
-                }}>
-                  ✕ {txError}
-                </div>
-              )}
-
-              {/* Action Button */}
-              {effectiveConnected ? (
-                <button
-                  type="button"
-                  onClick={handleExecuteTerminalSwap}
-                  disabled={executing || !quote || loadingQuote || !tradeAmount}
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(135deg, var(--lime), #65a30d)',
+                    background: dappViewMode === 'web' ? 'var(--lime)' : 'transparent',
+                    color: dappViewMode === 'web' ? '#090d16' : 'var(--text2)',
                     border: 'none',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    color: '#090d16',
-                    fontSize: '14px',
-                    fontWeight: '800',
-                    cursor: executing || !quote || loadingQuote || !tradeAmount ? 'not-allowed' : 'pointer',
-                    opacity: executing || !quote || loadingQuote || !tradeAmount ? 0.5 : 1,
-                    fontFamily: 'var(--ff)',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
                     transition: 'all 0.15s ease'
                   }}
                 >
-                  {executing ? 'Processing On-Chain...' : `Approve & Execute on ${selectedDApp.name}`}
+                  Web View
                 </button>
-              ) : (
                 <button
                   type="button"
-                  onClick={onOpenConnect}
+                  onClick={() => setDappViewMode('terminal')}
                   style={{
-                    width: '100%',
-                    background: 'linear-gradient(135deg, var(--lime), #65a30d)',
+                    background: dappViewMode === 'terminal' ? 'var(--lime)' : 'transparent',
+                    color: dappViewMode === 'terminal' ? '#090d16' : 'var(--text2)',
                     border: 'none',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    color: '#090d16',
-                    fontSize: '14px',
-                    fontWeight: '800',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: '700',
                     cursor: 'pointer',
-                    fontFamily: 'var(--ff)'
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  Connect Wallet to Trade
+                  Web3 Terminal
                 </button>
-              )}
-            </div>
-          ) : (
-            /* Information & Fast Launch Card for Non-Swap dApps (NFTs / Analytics / Lending) */
-            <div style={{ textAlign: 'center', padding: '16px 8px' }}>
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--border)',
-                borderRadius: '14px',
-                padding: '16px',
-                marginBottom: '16px',
-                textAlign: 'left'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: 'white', marginBottom: '8px' }}>
-                  Web3 Interaction Notice
-                </div>
-                <p style={{ fontSize: '12px', color: 'var(--text2)', lineHeight: '1.5', margin: '0 0 10px 0' }}>
-                  {selectedDApp.name} is an external Solana Web3 portal. On desktop, connect instantly via the FiatWallet Browser Extension. On mobile, launch the official web application below:
-                </p>
-                <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
-                  Wallet Address: <span style={{ fontFamily: 'var(--mono)', color: 'white' }}>{effectivePublicKey ? `${effectivePublicKey.toBase58().slice(0, 8)}...${effectivePublicKey.toBase58().slice(-8)}` : 'Not Connected'}</span>
-                </div>
               </div>
 
               <a
@@ -1080,20 +817,459 @@ export default function DAppExplorer({
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  display: 'inline-block',
-                  width: '100%',
-                  background: 'linear-gradient(135deg, var(--cyan), #0284c7)',
-                  color: '#090d16',
+                  fontSize: '11px',
+                  color: 'var(--cyan)',
                   textDecoration: 'none',
-                  borderRadius: '12px',
-                  padding: '14px',
-                  fontSize: '14px',
-                  fontWeight: '800',
-                  boxSizing: 'border-box'
+                  background: 'rgba(34, 211, 238, 0.08)',
+                  padding: '5px 9px',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  border: '1px solid rgba(34, 211, 238, 0.25)'
                 }}
+                title="Open in external browser"
               >
-                Launch {selectedDApp.name} Portal ↗
+                External ↗
               </a>
+            </div>
+          </div>
+
+          {/* ── SUB-VIEW: REAL EMBEDDED DAPP WEB INTERFACE ── */}
+          {dappViewMode === 'web' ? (
+            <div style={{ position: 'relative', width: '100%', borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+              {/* Web Header bar */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(15, 23, 42, 0.95)',
+                padding: '8px 12px',
+                fontSize: '11px',
+                borderBottom: '1px solid var(--border)',
+                color: 'var(--text2)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--lime)', flexShrink: 0 }} />
+                  <span style={{ fontFamily: 'var(--mono)', color: 'white' }}>{selectedDApp.url}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIframeKey(k => k + 1)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--cyan)',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '2px 6px'
+                  }}
+                  title="Reload dApp interface"
+                >
+                  ↻ Reload
+                </button>
+              </div>
+
+              {/* Embedded dApp Iframe */}
+              <iframe
+                key={iframeKey}
+                src={selectedDApp.url}
+                title={selectedDApp.name}
+                style={{
+                  width: '100%',
+                  height: '600px',
+                  border: 'none',
+                  background: '#0a1628',
+                  display: 'block'
+                }}
+                allow="clipboard-write; camera; microphone; payment; geolocation"
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+              />
+
+              {/* In-App Helper Bar for iframe security restrictions */}
+              <div style={{
+                background: 'rgba(17, 30, 56, 0.92)',
+                padding: '8px 12px',
+                borderTop: '1px solid var(--border)',
+                fontSize: '11px',
+                color: 'var(--text3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}>
+                <span>If {selectedDApp.name} blocks iframe loading on mobile browsers:</span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setDappViewMode('terminal')}
+                    style={{
+                      background: 'rgba(163, 230, 53, 0.15)',
+                      border: '1px solid var(--lime)',
+                      color: 'var(--lime)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Open Web3 Terminal →
+                  </button>
+                  <a
+                    href={selectedDApp.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      background: 'rgba(34, 211, 238, 0.15)',
+                      border: '1px solid var(--cyan)',
+                      color: 'var(--cyan)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    Launch Web ↗
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ── SUB-VIEW: DIRECT ON-CHAIN WEB3 TERMINAL ── */
+            <div>
+              {/* Description & Protocol Info */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                border: '1px solid var(--border)'
+              }}>
+                <p style={{ fontSize: '12px', color: 'var(--text2)', margin: '0 0 6px 0', lineHeight: '1.4' }}>
+                  {selectedDApp.description}
+                </p>
+                <div style={{ fontSize: '11px', color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>Engine: Direct On-Chain Execution</span>
+                  <span>•</span>
+                  <span style={{ color: 'var(--lime)' }}>✓ Self-Custodial Vault Compatible</span>
+                </div>
+              </div>
+
+              {selectedDApp.isTradable ? (
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: 'white', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>In-App Trading Terminal</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text3)' }}>Slippage: {slippageBps / 100}%</span>
+                  </div>
+
+                  {/* Pay Input Card */}
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '14px',
+                    padding: '12px 14px',
+                    marginBottom: '8px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11px', color: 'var(--text3)' }}>
+                      <span>You Pay</span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span>Balance: {fromToken.symbol === 'SOL' ? Number(solBalance || 0).toFixed(4) : '--'} {fromToken.symbol}</span>
+                        <button
+                          type="button"
+                          onClick={handleSetMax}
+                          style={{
+                            background: 'rgba(163, 230, 53, 0.15)',
+                            border: 'none',
+                            color: 'var(--lime)',
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          MAX
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <input
+                        type="number"
+                        value={tradeAmount}
+                        onChange={e => setTradeAmount(e.target.value)}
+                        placeholder="0.00"
+                        step="any"
+                        style={{
+                          flex: 1,
+                          background: 'none',
+                          border: 'none',
+                          outline: 'none',
+                          color: 'white',
+                          fontSize: '18px',
+                          fontWeight: '700',
+                          fontFamily: 'var(--mono)'
+                        }}
+                      />
+                      <select
+                        value={fromMint}
+                        onChange={e => setFromMint(e.target.value)}
+                        style={{
+                          background: 'rgba(17, 30, 56, 0.9)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'white',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {SUPPORTED_TOKENS.map(t => (
+                          <option key={t.mint} value={t.mint}>
+                            {t.symbol}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Flip Button */}
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '-4px 0' }}>
+                    <button
+                      type="button"
+                      onClick={handleFlipTokens}
+                      style={{
+                        background: 'rgba(17, 30, 56, 0.95)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '50%',
+                        width: '30px',
+                        height: '30px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--lime)',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        zIndex: 2
+                      }}
+                    >
+                      ↓
+                    </button>
+                  </div>
+
+                  {/* Receive Output Card */}
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '14px',
+                    padding: '12px 14px',
+                    marginBottom: '14px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11px', color: 'var(--text3)' }}>
+                      <span>You Receive (Estimated)</span>
+                      {quote?.priceImpactPct && (
+                        <span style={{ color: Number(quote.priceImpactPct) > 1 ? '#f87171' : 'var(--text3)' }}>
+                          Impact: {formatPriceImpact(quote.priceImpactPct).label}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        flex: 1,
+                        color: outputAmountFormatted ? 'var(--lime)' : 'var(--text3)',
+                        fontSize: '18px',
+                        fontWeight: '700',
+                        fontFamily: 'var(--mono)'
+                      }}>
+                        {loadingQuote ? 'Fetching quote...' : (outputAmountFormatted || '0.00')}
+                      </div>
+                      <select
+                        value={toMint}
+                        onChange={e => setToMint(e.target.value)}
+                        style={{
+                          background: 'rgba(17, 30, 56, 0.9)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: 'white',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {SUPPORTED_TOKENS.map(t => (
+                          <option key={t.mint} value={t.mint}>
+                            {t.symbol}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Quote Error Banner */}
+                  {quoteError && (
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      color: '#f87171',
+                      fontSize: '11px',
+                      marginBottom: '12px'
+                    }}>
+                      ✕ {quoteError}
+                    </div>
+                  )}
+
+                  {/* Execution Steps */}
+                  {execStep && (
+                    <div style={{
+                      background: 'rgba(34, 211, 238, 0.08)',
+                      border: '1px solid rgba(34, 211, 238, 0.25)',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      color: 'var(--cyan)',
+                      fontSize: '12px',
+                      marginBottom: '12px',
+                      fontWeight: '600'
+                    }}>
+                      • {execStep}
+                    </div>
+                  )}
+
+                  {/* Tx Success */}
+                  {txSignature && (
+                    <div style={{
+                      background: 'rgba(34, 197, 94, 0.1)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      marginBottom: '12px',
+                      fontSize: '12px'
+                    }}>
+                      <div style={{ color: 'var(--lime)', fontWeight: '700', marginBottom: '4px' }}>
+                        ✓ Swap Confirmed on Solana!
+                      </div>
+                      <a
+                        href={`https://solscan.io/tx/${txSignature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--cyan)', textDecoration: 'underline', fontSize: '11px', wordBreak: 'break-all' }}
+                      >
+                        View on Solscan: {txSignature.slice(0, 18)}...
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Tx Error */}
+                  {txError && (
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      color: '#f87171',
+                      fontSize: '12px',
+                      marginBottom: '12px',
+                      lineHeight: '1.4'
+                    }}>
+                      ✕ {txError}
+                    </div>
+                  )}
+
+                  {/* Action Button */}
+                  {effectiveConnected ? (
+                    <button
+                      type="button"
+                      onClick={handleExecuteTerminalSwap}
+                      disabled={executing || !quote || loadingQuote || !tradeAmount}
+                      style={{
+                        width: '100%',
+                        background: 'linear-gradient(135deg, var(--lime), #65a30d)',
+                        border: 'none',
+                        borderRadius: '12px',
+                        padding: '14px',
+                        color: '#090d16',
+                        fontSize: '14px',
+                        fontWeight: '800',
+                        cursor: executing || !quote || loadingQuote || !tradeAmount ? 'not-allowed' : 'pointer',
+                        opacity: executing || !quote || loadingQuote || !tradeAmount ? 0.5 : 1,
+                        fontFamily: 'var(--ff)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {executing ? 'Processing On-Chain...' : `Approve & Execute on ${selectedDApp.name}`}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onOpenConnect}
+                      style={{
+                        width: '100%',
+                        background: 'linear-gradient(135deg, var(--lime), #65a30d)',
+                        border: 'none',
+                        borderRadius: '12px',
+                        padding: '14px',
+                        color: '#090d16',
+                        fontSize: '14px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--ff)'
+                      }}
+                    >
+                      Connect Wallet to Trade
+                    </button>
+                  )}
+                </div>
+              ) : (
+                /* Information & Fast Launch Card for Non-Swap dApps */
+                <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '14px',
+                    padding: '16px',
+                    marginBottom: '16px',
+                    textAlign: 'left'
+                  }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: 'white', marginBottom: '8px' }}>
+                      Web3 Interaction Notice
+                    </div>
+                    <p style={{ fontSize: '12px', color: 'var(--text2)', lineHeight: '1.5', margin: '0 0 10px 0' }}>
+                      {selectedDApp.name} is an external Solana Web3 portal. On desktop, connect instantly via the FiatWallet Browser Extension. On mobile, launch the official web application below:
+                    </p>
+                    <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
+                      Wallet Address: <span style={{ fontFamily: 'var(--mono)', color: 'white' }}>{effectivePublicKey ? `${effectivePublicKey.toBase58().slice(0, 8)}...${effectivePublicKey.toBase58().slice(-8)}` : 'Not Connected'}</span>
+                    </div>
+                  </div>
+
+                  <a
+                    href={selectedDApp.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block',
+                      width: '100%',
+                      background: 'linear-gradient(135deg, var(--cyan), #0284c7)',
+                      color: '#090d16',
+                      textDecoration: 'none',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      fontSize: '14px',
+                      fontWeight: '800',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    Launch {selectedDApp.name} Portal ↗
+                  </a>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1374,7 +1550,10 @@ export default function DAppExplorer({
               {filteredDApps.map(dapp => (
                 <div
                   key={dapp.id}
-                  onClick={() => setSelectedDApp(dapp)}
+                  onClick={() => {
+                    setSelectedDApp(dapp);
+                    setDappViewMode('web');
+                  }}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
