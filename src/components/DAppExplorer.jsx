@@ -424,17 +424,30 @@ export default function DAppExplorer({
               <span style={{ fontSize: '14px', fontWeight: '800', color: 'white', whiteSpace: 'nowrap' }}>
                 {selectedDApp.name}
               </span>
-              <span style={{
-                fontSize: '10px',
-                color: 'var(--lime, #a3e635)',
-                background: 'rgba(163, 230, 53, 0.12)',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                fontWeight: '700',
-                whiteSpace: 'nowrap'
-              }}>
-                ✓ Connected
-              </span>
+              <button
+                type="button"
+                onClick={handleCopyAddress}
+                style={{
+                  background: 'rgba(163, 230, 53, 0.12)',
+                  border: '1px solid rgba(163, 230, 53, 0.3)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  color: 'var(--lime, #a3e635)',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  fontFamily: 'var(--mono, monospace)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+                title="Tap to copy wallet address"
+              >
+                <span>{effectivePublicKey ? `${effectivePublicKey.toBase58().slice(0, 4)}...${effectivePublicKey.toBase58().slice(-4)}` : 'Vault'}</span>
+                <span>•</span>
+                <span>{solBalance != null ? Number(solBalance).toFixed(3) : '0.000'} SOL</span>
+                {copiedAddr && <span style={{ color: 'var(--cyan, #22d3ee)' }}>✓</span>}
+              </button>
             </div>
 
             {/* Right: Reload button */}
