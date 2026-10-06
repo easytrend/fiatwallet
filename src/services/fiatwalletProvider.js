@@ -287,6 +287,14 @@ export function initFiatWalletProvider() {
     window.fiatwallet_solana = fiatwalletProvider;
   }
 
+  // Also expose window.phantom and window.solflare so hardcoded adapters on dApps connect to FiatWallet
+  try {
+    if (!window.phantom) window.phantom = { solana: fiatwalletProvider };
+    if (!window.solflare) window.solflare = fiatwalletProvider;
+  } catch (e) {
+    // Ignore
+  }
+
   // Register with official Solana Wallet Standard (Wallet Standard Specification)
   try {
     const registerWallet = (register) => {
