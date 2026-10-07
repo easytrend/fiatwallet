@@ -6394,7 +6394,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         title="Confirm Crypto Purchase"
         recipient="PajCash Payout Gateway"
         recipientLabel="Gateway"
-        amount={onrampCryptoAmount ? onrampCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '0'}
+        amount={displayOnrampAmount ? displayOnrampAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '0'}
         symbol={liveSelectedToken?.symbol || 'USDC'}
         fiatAmount={parsedOnrampAmt ? parsedOnrampAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
         fiatSymbol={selectedCountry?.symbol || '₦'}
