@@ -28,6 +28,7 @@ import {
 import { logTransaction } from '../services/supabase';
 import { fmtTok, fmtFiat } from '../utils';
 import CurrDrop from './CurrDrop';
+import TransactionConfirmModal from './TransactionConfirmModal';
 
 const TITAN_REFERRAL = 'https://titan.exchange/@easytrend';
 
@@ -429,6 +430,7 @@ export default function SwapWidget({
   const [customSlip, setCustomSlip]     = useState('');
   const [showSlippage, setShowSlippage] = useState(false);
   const [swapping, setSwapping]         = useState(false);
+  const [showSwapConfirm, setShowSwapConfirm] = useState(false);
   const [swapError, setSwapError]       = useState(null);
   const [swapSuccess, setSwapSuccess]   = useState(null);
 
@@ -1084,7 +1086,7 @@ export default function SwapWidget({
                 id="swap-submit-btn"
                 className="swp-submit-btn"
                 disabled={!canSwap}
-                onClick={handleSwap}
+                onClick={() => setShowSwapConfirm(true)}
                 type="button"
               >
                 {swapping
@@ -1107,6 +1109,51 @@ export default function SwapWidget({
 
           </div>
         </div>
+
+      {/* ── Swap Transaction Broadcast Confirmation Modal ── */}
+      <TransactionConfirmModal
+        isOpen={showSwapConfirm}
+        onClose={() => setShowSwapConfirm(false)}
+        onConfirm={async () => {
+          setShowSwapConfirm(false);
+          await handleSwap();
+        }}
+        title="Confirm Token Swap"
+        recipient="Jupiter DEX / Titan Aggregator"
+        recipientLabel="DEX Aggregator"
+        amount={inputAmount}
+        symbol={inputToken?.symbol || 'SOL'}
+        fiatAmount={
+          inputToken?.price && parseFloat(inputAmount) > 0
+            ? (parseFloat(inputAmount) * inputToken.price).toFixed(2)
+            : null
+        }
+        fiatSymbol="$"
+        networkFee="~0.000005 SOL"
+        details={[
+          {
+            label: 'Estimated Received',
+            value: `${outputAmount ? fmtTok(parseFloat(outputAmount)) : '0'} ${outputToken?.symbol || ''}`,
+            color: 'var(--lime, #a3e635)',
+          },
+          {
+            label: 'Swap Rate',
+            value: outputAmount && parseFloat(inputAmount) > 0
+              ? `1 ${inputToken?.symbol} ≈ ${(parseFloat(outputAmount) / parseFloat(inputAmount)).toFixed(4)} ${outputToken?.symbol}`
+              : 'Market Rate',
+          },
+          {
+            label: 'Slippage Tolerance',
+            value: `${(slippageBps / 100)}%`,
+          },
+          {
+            label: 'Best Route',
+            value: 'Jupiter V6 Direct Swap',
+          },
+        ]}
+        confirmButtonText="Approve & Swap"
+        isSubmitting={swapping}
+      />
     </>
   );
 }

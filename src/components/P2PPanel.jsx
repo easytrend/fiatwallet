@@ -410,6 +410,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── UI State ─────────────────────────────────────────────────────────────
   const [showOfframpConfirm, setShowOfframpConfirm] = useState(false);
+  const [showOnrampConfirm, setShowOnrampConfirm] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
@@ -5022,7 +5023,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           {!onrampOrder && (
             <button
               className="send-btn"
-              onClick={handleOnrampSubmit}
+              onClick={() => setShowOnrampConfirm(true)}
               disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
               style={{ opacity: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
@@ -6380,6 +6381,41 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         ]}
         confirmButtonText="Approve & Payout"
         isSubmitting={submitting}
+      />
+
+      {/* ── Onramp Transaction Broadcast Confirmation Modal ── */}
+      <TransactionConfirmModal
+        isOpen={showOnrampConfirm}
+        onClose={() => setShowOnrampConfirm(false)}
+        onConfirm={async () => {
+          setShowOnrampConfirm(false);
+          await handleOnrampSubmit();
+        }}
+        title="Confirm Crypto Purchase"
+        recipient="PajCash Payout Gateway"
+        recipientLabel="Gateway"
+        amount={onrampCryptoAmount ? onrampCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '0'}
+        symbol={liveSelectedToken?.symbol || 'USDC'}
+        fiatAmount={parsedOnrampAmt ? parsedOnrampAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
+        fiatSymbol={selectedCountry?.symbol || '₦'}
+        networkFee="Free (No network gas)"
+        details={[
+          {
+            label: 'Receiving Asset',
+            value: `${liveSelectedToken?.name || liveSelectedToken?.symbol || 'Token'} (${liveSelectedToken?.symbol || ''})`,
+          },
+          {
+            label: 'Total Fiat Due',
+            value: `${selectedCountry?.symbol || '₦'}${parsedOnrampAmt ? parsedOnrampAmt.toLocaleString() : '0'}`,
+            color: 'var(--lime, #a3e635)',
+          },
+          {
+            label: 'Destination Wallet',
+            value: publicKey ? `${publicKey.toBase58().slice(0, 6)}...${publicKey.toBase58().slice(-6)}` : (guestOnrampWallet || 'Local Wallet'),
+          },
+        ]}
+        confirmButtonText="Approve & Get Bank Details"
+        isSubmitting={onrampLoading}
       />
 
     </div>

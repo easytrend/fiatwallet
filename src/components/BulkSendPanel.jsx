@@ -7,6 +7,7 @@ import { fmtTok, fmtFiat, fmtRate, parseCSV, dlTemplate, isValidEntry, robustRes
 import CurrDrop from './CurrDrop';
 import Toast from './Toast';
 import { logTransaction } from '../services/supabase';
+import TransactionConfirmModal from './TransactionConfirmModal';
 
 
 // Frozen constants prevent re-instantiation per render
@@ -137,6 +138,7 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
   const [globalAmt, setGlobalAmt] = useState('');
   const [bulkCurr, setBulkCurr] = useState('USD');
   const [bulkMode, setBulkMode] = useState('fiat');
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [sendingState, setSendingState] = useState(null); // null | 'resolving' | 'signing' | 'sending' | 'done' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
@@ -754,7 +756,7 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
 
       <button className="send-btn"
         disabled={!connected || !tok || validRows.length === 0 || hasDuplicates || ['resolving','signing','sending'].includes(sendingState)}
-        onClick={handleBulkSend}>
+        onClick={() => setShowBulkConfirm(true)}>
         {!connected ? 'Connect wallet to send'
           : !tok ? 'Select a token to continue'
           : hasDuplicates ? 'Fix duplicate recipients to continue'
@@ -762,6 +764,40 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
           : ['resolving','signing','sending'].includes(sendingState) ? 'Processing...'
           : `Send ${tokSymbol} to ${validRows.length} recipient${validRows.length!==1?'s':''}`}
       </button>
+
+      {/* ── Bulk Send Broadcast Confirmation Modal ── */}
+      <TransactionConfirmModal
+        isOpen={showBulkConfirm}
+        onClose={() => setShowBulkConfirm(false)}
+        onConfirm={async () => {
+          setShowBulkConfirm(false);
+          await handleBulkSend();
+        }}
+        title={`Confirm Bulk Send (${validRows.length} Recipients)`}
+        recipient={`${validRows.length} Recipients`}
+        recipientLabel="Recipients"
+        amount={fmtTok(totalTok)}
+        symbol={tokSymbol}
+        fiatAmount={fmtFiat(totalUSD * getLiveRate(bulkCurr))}
+        fiatSymbol={bulkCurr === 'USD' ? '$' : bulkCurr}
+        networkFee={`~${(0.000005 * Math.ceil(validRows.length / 5)).toFixed(6)} SOL`}
+        details={[
+          {
+            label: 'Total Recipients',
+            value: `${validRows.length} destinations`,
+          },
+          {
+            label: 'On-Chain Batches',
+            value: `${Math.ceil(validRows.length / 5)} transaction batch(es)`,
+          },
+          {
+            label: 'Token',
+            value: tokSymbol,
+          },
+        ]}
+        confirmButtonText="Approve & Send All"
+        isSubmitting={['resolving', 'signing', 'sending'].includes(sendingState)}
+      />
 
       {/* Toast popup */}
       {toast && (
