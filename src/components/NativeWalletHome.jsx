@@ -258,12 +258,13 @@ export default function NativeWalletHome({
           </div>
         )}
 
-        {/* ── ACTION BUTTONS ROW ── */}
+        {/* ── ACTION BUTTONS ROW (Send, Receive, Swap, History) ── */}
         <div style={{
           display:       'flex',
-          justifyContent:'center',
-          gap:           '28px',
-          marginTop:     '22px',
+          justifyContent:'space-around',
+          alignItems:    'center',
+          maxWidth:      '380px',
+          margin:        '22px auto 0 auto',
           paddingTop:    '18px',
           borderTop:     '1px solid rgba(255,255,255,0.06)',
         }}>
@@ -364,6 +365,43 @@ export default function NativeWalletHome({
               ⇄
             </div>
             <span style={{ fontSize: '12px', fontWeight: '700' }}>Swap</span>
+          </button>
+
+          {/* History */}
+          <button
+            onClick={() => onNavigateTab('history')}
+            style={{
+              display:       'flex',
+              flexDirection: 'column',
+              alignItems:    'center',
+              gap:           '6px',
+              background:    'none',
+              border:        'none',
+              cursor:        'pointer',
+              color:         'white',
+            }}
+          >
+            <div style={{
+              width:          '48px',
+              height:         '48px',
+              borderRadius:   '50%',
+              background:     'rgba(255,255,255,0.06)',
+              border:         '1px solid var(--border2, rgba(255,255,255,0.15))',
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              fontSize:       '18px',
+              color:          '#a78bfa',
+              fontWeight:     '800',
+              transition:     'transform 0.15s',
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <polyline points="12 7 12 12 15 15"/>
+              </svg>
+            </div>
+            <span style={{ fontSize: '12px', fontWeight: '700' }}>History</span>
           </button>
         </div>
       </div>

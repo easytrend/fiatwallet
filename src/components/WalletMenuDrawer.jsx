@@ -7,6 +7,7 @@ export default function WalletMenuDrawer({
   onClose,
   walletAddress,
   isInternal,
+  onOpenHistory,
   onOpenBankDetails,
   onOpenSecurity,
   onOpenTerms,
@@ -203,7 +204,43 @@ export default function WalletMenuDrawer({
             <span style={{ color: 'var(--text3)' }}>→</span>
           </button>
 
-          {/* 2. Security & Settings */}
+          {/* 2. Transaction History */}
+          <button
+            onClick={() => { onClose(); if (onOpenHistory) onOpenHistory(); }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '14px 16px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
+              borderRadius: '14px',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'background 0.2s',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                  <polyline points="12 7 12 12 15 15"/>
+                </svg>
+                <span>Transaction History</span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px', fontWeight: '400' }}>
+                View Solana on-chain activity &amp; transfers
+              </div>
+            </div>
+            <span style={{ color: 'var(--text3)' }}>→</span>
+          </button>
+
+          {/* 3. Security & Settings */}
           <button
             onClick={() => { onClose(); onOpenSecurity(); }}
             style={{

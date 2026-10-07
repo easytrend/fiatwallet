@@ -34,6 +34,7 @@ import { fiatwalletProvider } from './services/fiatwalletProvider';
 import DAppApprovalModal from './components/DAppApprovalModal';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
 import TransactionConfirmModal from './components/TransactionConfirmModal';
+import HistoryPanel from './components/HistoryPanel';
 
 
 
@@ -1862,6 +1863,19 @@ export default function App() {
           </div>
         </div>
 
+        {/* ── Transaction History (Activity) Card ── */}
+        <div className="app-card history-card" style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+          <div className="card-body">
+            <HistoryPanel
+              connection={connection}
+              effectivePublicKey={effectivePublicKey}
+              onBack={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
+              currency={currency?.code || currency || 'USD'}
+              currRate={currRate}
+            />
+          </div>
+        </div>
+
         <SwapWidget
           walletTokenList={walletTokenList}
           onSwapSuccess={fetchBalances}
@@ -2139,6 +2153,7 @@ export default function App() {
         onClose={() => setShowMenuDrawer(false)}
         walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : (localStorage.getItem('paj_manual_wallet') || '')}
         isInternal={internalWallet.isActive}
+        onOpenHistory={() => setActiveTab('history')}
         onOpenBankDetails={() => setShowBankDetailsModal(true)}
         onOpenSecurity={() => setShowSecurityModal(true)}
         onOpenTerms={() => setShowTermsModal(true)}
