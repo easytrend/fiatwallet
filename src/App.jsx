@@ -33,7 +33,8 @@ import DAppExplorer from './components/DAppExplorer';
 import { fiatwalletProvider } from './services/fiatwalletProvider';
 import DAppApprovalModal from './components/DAppApprovalModal';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
-import TransactionConfirmModal from './components/TransactionConfirmModal';
+import NativeWalletApprovalModal from './components/NativeWalletApprovalModal';
+import { parseTransactionBreakdown } from './utils/txParser';
 import HistoryPanel from './components/HistoryPanel';
 
 
@@ -306,7 +307,7 @@ export default function App() {
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [showSendConfirmModal, setShowSendConfirmModal] = useState(false);
+  const [walletApprovalRequest, setWalletApprovalRequest] = useState(null);
 
   // Unified wallet connection state
   const effectiveConnected = connected || internalWallet.isActive;
@@ -322,11 +323,48 @@ export default function App() {
     }
     return null;
   }, [publicKey, internalWallet.publicKey]);
-  const effectiveSignTransaction = internalWallet.isActive ? internalWallet.signTransaction : signTransaction;
-  const effectiveSignAllTransactions = internalWallet.isActive ? internalWallet.signAllTransactions : signAllTransactions;
+
+  // Self-Custodial Wallet Approval Request Hook
+  const requestInternalWalletSign = useCallback((transaction, meta = {}) => {
+    if (!internalWallet.isActive) {
+      throw new Error('Wallet is locked or not active.');
+    }
+    const breakdown = parseTransactionBreakdown(transaction, effectivePublicKey?.toBase58());
+    return new Promise((resolve, reject) => {
+      setWalletApprovalRequest({
+        transaction,
+        meta,
+        breakdown,
+        resolve: () => {
+          setWalletApprovalRequest(null);
+          resolve(transaction);
+        },
+        reject: (err) => {
+          setWalletApprovalRequest(null);
+          reject(err || new Error('User rejected the transaction.'));
+        },
+      });
+    });
+  }, [internalWallet.isActive, effectivePublicKey]);
+
+  const effectiveSignTransaction = internalWallet.isActive ? async (tx, meta) => {
+    await requestInternalWalletSign(tx, meta);
+    return internalWallet.signTransaction(tx);
+  } : signTransaction;
+
+  const effectiveSignAllTransactions = internalWallet.isActive ? async (txs, meta) => {
+    await requestInternalWalletSign(txs[0], { ...(meta || {}), recipientsCount: txs.length });
+    return internalWallet.signAllTransactions(txs);
+  } : signAllTransactions;
+
   const effectiveSendTransaction = internalWallet.isActive ? async (tx, conn, opts) => {
     const targetConn = (conn && typeof conn.sendRawTransaction === 'function') ? conn : connection;
     const sendOpts = (opts && typeof opts === 'object') ? opts : ((conn && typeof conn === 'object' && !conn.sendRawTransaction) ? conn : undefined);
+    
+    // Prompt Native Wallet Approval Popup
+    await requestInternalWalletSign(tx, sendOpts?.meta || sendOpts);
+
+    // Sign and broadcast on-chain
     const signed = await internalWallet.signTransaction(tx);
     return targetConn.sendRawTransaction(signed.serialize(), sendOpts);
   } : sendTransaction;
@@ -1152,7 +1190,16 @@ export default function App() {
       }
 
       // All checks passed — submit to wallet for signing and broadcast.
-      const signature = await effectiveSendTransaction(transaction, connection);
+      const signature = await effectiveSendTransaction(transaction, connection, {
+        meta: {
+          action: 'Send',
+          amount: dispTok,
+          symbol: tokLive?.symbol || 'SOL',
+          recipient: resolvedAddress || recipient,
+          fiatAmount: curr && (num > 0) ? (inputMode === 'fiat' ? fmtFiat(num) : fmtFiat(num * tokPrice * currRate)) : null,
+          fiatSymbol: curr?.symbol || '$',
+        }
+      });
       
 
       // Poll for confirmation instead of relying on the WS subscription.
@@ -1727,7 +1774,7 @@ export default function App() {
 
             <button className="send-btn"
               disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
-              onClick={() => setShowSendConfirmModal(true)}>
+              onClick={handleSend}>
               {sending ? 'Sending…'
                 : !effectiveConnected ? 'Connect wallet to send'
                 : !tokLive ? 'Select a token to continue'
@@ -2212,24 +2259,22 @@ export default function App() {
         }}
       />
 
-      {/* ── Transaction Broadcast Confirmation Modal (Single Send) ── */}
-      <TransactionConfirmModal
-        isOpen={showSendConfirmModal}
-        onClose={() => setShowSendConfirmModal(false)}
-        onConfirm={async () => {
-          setShowSendConfirmModal(false);
-          await handleSend();
+      {/* ── Native Self-Custodial Wallet Approval Modal (Imported Wallets) ── */}
+      <NativeWalletApprovalModal
+        isOpen={Boolean(walletApprovalRequest)}
+        request={walletApprovalRequest}
+        walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : ''}
+        solBalance={solBalance}
+        onApprove={() => {
+          if (walletApprovalRequest?.resolve) {
+            walletApprovalRequest.resolve(walletApprovalRequest.transaction);
+          }
         }}
-        title="Confirm Send"
-        recipient={resolvedAddress || recipient}
-        recipientLabel={recipient.endsWith('.sol') ? `Recipient (${recipient})` : 'Recipient'}
-        amount={dispTok}
-        symbol={tokLive?.symbol || 'SOL'}
-        fiatAmount={curr && (num > 0) ? (inputMode === 'fiat' ? fmtFiat(num) : fmtFiat(num * tokPrice * currRate)) : null}
-        fiatSymbol={curr?.symbol || '$'}
-        networkFee="~0.000005 SOL"
-        confirmButtonText="Approve & Send"
-        isSubmitting={sending}
+        onReject={() => {
+          if (walletApprovalRequest?.reject) {
+            walletApprovalRequest.reject(new Error('User rejected the transaction.'));
+          }
+        }}
       />
 
       {/* Floating Support Chat */}

@@ -30,7 +30,6 @@ import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
-import TransactionConfirmModal from './TransactionConfirmModal';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -409,8 +408,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [p2pError, setP2pError] = useState(null);
 
   // ── UI State ─────────────────────────────────────────────────────────────
-  const [showOfframpConfirm, setShowOfframpConfirm] = useState(false);
-  const [showOnrampConfirm, setShowOnrampConfirm] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
@@ -2278,7 +2275,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const rawTx = Uint8Array.from(atob(base64Tx), c => c.charCodeAt(0));
       const transaction = VersionedTransaction.deserialize(rawTx);
 
-      const signedTx = await signTransaction(transaction);
+      const signedTx = await signTransaction(transaction, {
+        action: 'Swap',
+        inputSymbol: liveSelectedToken?.symbol,
+        outputSymbol: 'USDC',
+      });
 
       if (relayerPayer) {
         // User has signed — send to relay which adds its signature and broadcasts
@@ -2374,8 +2375,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       }
 
       const rawTx = Uint8Array.from(atob(base64Tx), c => c.charCodeAt(0));
-      const transaction = VersionedTransaction.deserialize(rawTx);
-      const signedTx = await signTransaction(transaction);
+      const signedTx = await signTransaction(transaction, {
+        action: 'Swap',
+        inputSymbol: liveSelectedToken?.symbol,
+        outputSymbol: 'USDC',
+      });
 
       if (relayerPayer) {
         const serialized = Buffer.from(
@@ -2908,11 +2912,22 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // 6. Sign & send (with automatic fallback to user fee-payer if relayer is unfunded/0 SOL)
       let sig;
+      const offrampMeta = {
+        action: 'Offramp Payout',
+        amount: (order.amount || estCryptoAmount).toString(),
+        symbol: liveSelectedToken?.symbol || 'USDC',
+        recipient: resolvedTagData
+          ? `${resolvedTagData.bank_name || 'Bank'} • ${resolvedTagData.account_name || 'Account'}`
+          : `${selectedBank} • ${accountNumber}`,
+        fiatAmount: parsedAmt ? parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined,
+        fiatSymbol: selectedCountry?.symbol || '₦',
+      };
+
       if (usingRelayer && signTransaction) {
         try {
           // User signs the transaction — since feePayer = relayerPublicKey (not user),
           // the wallet shows ZERO fees to the user.
-          const signedTx = await signTransaction(transaction);
+          const signedTx = await signTransaction(transaction, offrampMeta);
 
           // Serialize the user-signed tx and POST it to the secure server-side relay endpoint.
           const serialized = Buffer.from(
@@ -2982,12 +2997,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           );
 
           // Prompt user wallet to sign & pay network gas fee
-          sig = await sendTransaction(fallbackTx, connection);
+          sig = await sendTransaction(fallbackTx, connection, { meta: offrampMeta });
           setRelayerActive(false);
         }
       } else {
         // No relayer — user pays gas normally
-        sig = await sendTransaction(transaction, connection);
+        sig = await sendTransaction(transaction, connection, { meta: offrampMeta });
         setRelayerActive(false);
       }
 
@@ -4509,7 +4524,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             {/* Submit button */}
             <button
               className="send-btn"
-              onClick={() => setShowOfframpConfirm(true)}
+              onClick={() => {
+                if (isManualOfframp) {
+                  handleManualOfframpSubmit();
+                } else {
+                  handleSubmit();
+                }
+              }}
               disabled={submitting || !isFormValid}
               style={{ opacity: (submitting || !isFormValid) ? 0.6 : 1, cursor: (submitting || !isFormValid) ? 'not-allowed' : 'pointer' }}
             >
@@ -5023,7 +5044,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           {!onrampOrder && (
             <button
               className="send-btn"
-              onClick={() => setShowOnrampConfirm(true)}
+              onClick={handleOnrampSubmit}
               disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
               style={{ opacity: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !sessionToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
@@ -6335,88 +6356,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           </div>
         </div>
       )}
-
-      {/* ── Offramp Transaction Broadcast Confirmation Modal ── */}
-      <TransactionConfirmModal
-        isOpen={showOfframpConfirm}
-        onClose={() => setShowOfframpConfirm(false)}
-        onConfirm={async () => {
-          setShowOfframpConfirm(false);
-          if (isManualOfframp) {
-            await handleManualOfframpSubmit();
-          } else {
-            await handleSubmit();
-          }
-        }}
-        title="Confirm Offramp Payout"
-        recipient={
-          resolvedTagData
-            ? `${resolvedTagData.bank_name || 'Bank'} • ${resolvedTagData.account_name || 'Account'}`
-            : `${selectedBank} • ${accountNumber}`
-        }
-        recipientLabel="Bank Deposit"
-        amount={baseCryptoAmount ? baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 }) : '0'}
-        symbol={liveSelectedToken?.symbol || 'USDC'}
-        fiatAmount={parsedAmt ? parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
-        fiatSymbol={selectedCountry?.symbol || '₦'}
-        networkFee="~0.000005 SOL"
-        details={[
-          {
-            label: 'Beneficiary Name',
-            value: resolvedTagData ? (resolvedTagData.account_name || 'Resolved') : (accountName || 'Bank Account'),
-          },
-          {
-            label: 'Account Number / Tag',
-            value: resolvedTagData ? (recipientTagInput || `$${resolvedTagData.tag_name}`) : (accountNumber || '—'),
-          },
-          {
-            label: 'Bank Name',
-            value: resolvedTagData ? (resolvedTagData.bank_name || '—') : (selectedBank || '—'),
-          },
-          {
-            label: 'Payout Currency',
-            value: `${selectedCountry?.currency || 'NGN'} (${selectedCountry?.name || 'Local Bank'})`,
-            color: 'var(--lime, #a3e635)',
-          },
-        ]}
-        confirmButtonText="Approve & Payout"
-        isSubmitting={submitting}
-      />
-
-      {/* ── Onramp Transaction Broadcast Confirmation Modal ── */}
-      <TransactionConfirmModal
-        isOpen={showOnrampConfirm}
-        onClose={() => setShowOnrampConfirm(false)}
-        onConfirm={async () => {
-          setShowOnrampConfirm(false);
-          await handleOnrampSubmit();
-        }}
-        title="Confirm Crypto Purchase"
-        recipient="PajCash Payout Gateway"
-        recipientLabel="Gateway"
-        amount={displayOnrampAmount ? displayOnrampAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '0'}
-        symbol={liveSelectedToken?.symbol || 'USDC'}
-        fiatAmount={parsedOnrampAmt ? parsedOnrampAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
-        fiatSymbol={selectedCountry?.symbol || '₦'}
-        networkFee="Free (No network gas)"
-        details={[
-          {
-            label: 'Receiving Asset',
-            value: `${liveSelectedToken?.name || liveSelectedToken?.symbol || 'Token'} (${liveSelectedToken?.symbol || ''})`,
-          },
-          {
-            label: 'Total Fiat Due',
-            value: `${selectedCountry?.symbol || '₦'}${parsedOnrampAmt ? parsedOnrampAmt.toLocaleString() : '0'}`,
-            color: 'var(--lime, #a3e635)',
-          },
-          {
-            label: 'Destination Wallet',
-            value: publicKey ? `${publicKey.toBase58().slice(0, 6)}...${publicKey.toBase58().slice(-6)}` : (guestOnrampWallet || 'Local Wallet'),
-          },
-        ]}
-        confirmButtonText="Approve & Get Bank Details"
-        isSubmitting={onrampLoading}
-      />
 
     </div>
   );
