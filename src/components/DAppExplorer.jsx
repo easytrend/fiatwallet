@@ -192,6 +192,7 @@ export default function DAppExplorer({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedAddr, setCopiedAddr] = useState(false);
   const [wcOpen, setWcOpen] = useState(false);
+  const [showConnectHub, setShowConnectHub] = useState(false);
 
   // Selected dApp for Full-Screen In-App Web View
   const [selectedDApp, setSelectedDApp] = useState(null);
@@ -217,10 +218,16 @@ export default function DAppExplorer({
     try {
       const cw = iframeRef.current?.contentWindow;
       if (cw) {
-        cw.solana = window.solana || fiatwalletProvider;
-        cw.fiatwallet = window.fiatwallet || fiatwalletProvider;
-        cw.phantom = { solana: window.solana || fiatwalletProvider };
-        cw.solflare = window.solana || fiatwalletProvider;
+        try {
+          cw.solana = window.solana || fiatwalletProvider;
+          cw.fiatwallet = window.fiatwallet || fiatwalletProvider;
+          cw.phantom = { solana: window.solana || fiatwalletProvider };
+          cw.solflare = window.solana || fiatwalletProvider;
+        } catch {}
+        cw.postMessage({
+          type: 'fiatwallet:wallet-ready',
+          publicKey: effectivePublicKey ? effectivePublicKey.toBase58() : null,
+        }, '*');
       }
     } catch (err) {
       // Cross-origin SOP may restrict direct assignment; postMessage bridge handles message requests
@@ -452,17 +459,12 @@ export default function DAppExplorer({
               </button>
             </div>
 
-            {/* Right: Connect + WC + Reload */}
+            {/* Right: Connect + WC + External + Reload */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               {/* Connect Wallet Trigger */}
               <button
                 type="button"
-                onClick={() => {
-                  fiatwalletProvider.connect({
-                    origin: selectedDApp.url,
-                    title: selectedDApp.name,
-                  });
-                }}
+                onClick={() => setShowConnectHub(true)}
                 style={{
                   background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.22), rgba(163, 230, 53, 0.08))',
                   border: '1px solid var(--lime, #a3e635)',
@@ -510,6 +512,30 @@ export default function DAppExplorer({
                 WC
               </button>
 
+              {/* Open in external browser / Chrome button (MWA) */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(selectedDApp.url, '_system');
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  color: 'var(--text, #f0f6ff)',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  padding: '6px 9px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                }}
+                title="Open in External Browser / Chrome (MWA Direct)"
+              >
+                <span>↗</span>
+              </button>
+
               {/* Reload button */}
               <button
                 type="button"
@@ -547,10 +573,214 @@ export default function DAppExplorer({
               display: 'block'
             }}
             allow="clipboard-write; clipboard-read; camera; microphone; payment; geolocation"
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads allow-top-navigation allow-top-navigation-by-user-activation"
           />
         </div>
       ) : null}
+
+      {/* Smart dApp Connection Hub Modal */}
+      {showConnectHub && selectedDApp && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1050,
+            background: 'rgba(5, 11, 20, 0.85)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setShowConnectHub(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--card, #111e38)',
+              border: '1px solid var(--border, rgba(255,255,255,0.09))',
+              borderRadius: '20px',
+              padding: '24px 20px',
+              maxWidth: '420px',
+              width: '100%',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.6)',
+              fontFamily: 'var(--ff, sans-serif)',
+              color: 'var(--text, #f0f6ff)',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img
+                  src={selectedDApp.icon}
+                  alt={selectedDApp.name}
+                  style={{ width: '32px', height: '32px', borderRadius: '8px' }}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+                <div>
+                  <div style={{ fontSize: '16px', fontWeight: '800' }}>Connect to {selectedDApp.name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.5))' }}>Choose connection method</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConnectHub(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '28px',
+                  height: '28px',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Wallet Address Status Badge */}
+            <div style={{
+              background: 'rgba(0,0,0,0.35)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--text3, rgba(240,246,255,0.5))', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active Wallet</div>
+                <div style={{ fontSize: '12px', fontFamily: 'monospace', color: 'var(--lime, #a3e635)', fontWeight: '700' }}>
+                  {effectivePublicKey ? `${effectivePublicKey.toBase58().slice(0, 6)}...${effectivePublicKey.toBase58().slice(-6)}` : 'Not connected'}
+                </div>
+              </div>
+              {effectivePublicKey && (
+                <button
+                  type="button"
+                  onClick={handleCopyAddress}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '6px 10px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copiedAddr ? '✓ Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
+
+            {/* Methods List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
+              {/* Method 1: WalletConnect */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConnectHub(false);
+                  setWcOpen(true);
+                }}
+                style={{
+                  background: 'rgba(59, 153, 252, 0.1)',
+                  border: '1px solid rgba(59, 153, 252, 0.35)',
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#3b99fc', marginBottom: '2px' }}>
+                    WalletConnect (Recommended)
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text2, rgba(240,246,255,0.7))', lineHeight: '1.4' }}>
+                    Select WalletConnect in {selectedDApp.name} and pair here. Auto-detects copied code.
+                  </div>
+                </div>
+                <span style={{ color: '#3b99fc', fontSize: '16px', fontWeight: '800' }}>→</span>
+              </button>
+
+              {/* Method 2: Open in External Browser for MWA */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConnectHub(false);
+                  window.open(selectedDApp.url, '_system');
+                }}
+                style={{
+                  background: 'rgba(163, 230, 53, 0.08)',
+                  border: '1px solid rgba(163, 230, 53, 0.3)',
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: 'var(--lime, #a3e635)', marginBottom: '2px' }}>
+                    Open in Chrome / Browser (MWA)
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text2, rgba(240,246,255,0.7))', lineHeight: '1.4' }}>
+                    Opens {selectedDApp.name} in external browser where Mobile Wallet Adapter (MWA) connects directly to FiatWallet.
+                  </div>
+                </div>
+                <span style={{ color: 'var(--lime, #a3e635)', fontSize: '16px', fontWeight: '800' }}>↗</span>
+              </button>
+
+              {/* Method 3: In-App Injected Provider */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConnectHub(false);
+                  fiatwalletProvider.connect({
+                    origin: selectedDApp.url,
+                    title: selectedDApp.name,
+                  });
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '14px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: 'white', marginBottom: '2px' }}>
+                    In-App Injected Provider
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text3, rgba(240,246,255,0.5))', lineHeight: '1.4' }}>
+                    Approve window.solana session inside FiatWallet.
+                  </div>
+                </div>
+                <span style={{ color: 'white', fontSize: '16px', fontWeight: '800' }}>✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* WalletConnect Modal — available both inside and outside dApp view */}
       <WalletConnectModal

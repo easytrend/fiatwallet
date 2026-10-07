@@ -94,17 +94,36 @@ export default function WalletConnectModal({
     window.addEventListener('fiatwallet:wc-session-request', onRequest);
     window.addEventListener('fiatwallet:wc-session-delete', onDelete);
 
+    const onDeepLinkWc = (e) => {
+      if (e.detail?.uri) {
+        const uri = e.detail.uri.trim();
+        setWcUri(uri);
+        doPair(uri);
+      }
+    };
+    window.addEventListener('fiatwallet:deep-link-wc', onDeepLinkWc);
+
     return () => {
       window.removeEventListener('fiatwallet:wc-session-proposal', onProposal);
       window.removeEventListener('fiatwallet:wc-session-request', onRequest);
       window.removeEventListener('fiatwallet:wc-session-delete', onDelete);
+      window.removeEventListener('fiatwallet:deep-link-wc', onDeepLinkWc);
     };
   }, [open, refreshSessions]);
 
-  // Auto-focus input on open
+  // Auto-focus input and auto-detect clipboard on open
   useEffect(() => {
     if (open && screen === 'pair') {
       setTimeout(() => inputRef.current?.focus(), 250);
+      try {
+        navigator.clipboard?.readText?.().then(text => {
+          if (text && typeof text === 'string' && text.trim().startsWith('wc:')) {
+            const trimmed = text.trim();
+            setWcUri(trimmed);
+            doPair(trimmed);
+          }
+        }).catch(() => {});
+      } catch {}
     }
   }, [open, screen]);
 

@@ -3,7 +3,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, Transaction, SystemProgram, Connection, Keypair, SystemInstruction, TransactionInstruction } from '@solana/web3.js';
 import { getDomainKeySync, NameRegistryState, performReverseLookup, getPrimaryDomain, getFavoriteDomain, resolve } from '@bonfida/spl-name-service';
-import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction, AccountLayout } from '@solana/spl-token';
 import logoImg from './assets/logo.png';
 import fiatpayLogo from './assets/fiatpay.png';
 import { TOKENS, KNOWN_MINTS } from './data/tokens';
@@ -681,35 +681,91 @@ export default function App() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [resolvedAddress, recipient, tokLive, connection, effectivePublicKey]);
 
-  // Fetch real on-chain balances using the wallet-adapter connection object
+  // Fetch real on-chain balances with multi-RPC fallback & per-asset fault tolerance
   const fetchBalances = useCallback(async () => {
     const activeKey = effectivePublicKey;
     if (!activeKey || !effectiveConnected) return;
     setWalletLoading(true);
     setWalletError(null);
+
+    const rpcEndpoints = [
+      connection?.rpcEndpoint,
+      'https://api.mainnet-beta.solana.com',
+      'https://solana-rpc.publicnode.com',
+    ].filter(Boolean);
+    const uniqueRpcs = [...new Set(rpcEndpoints)];
+
     try {
-      // 1. Fetch SOL balance and Token accounts in PARALLEL directly from RPC
-      const [lamports, resp1, resp2] = await Promise.all([
-        connection.getBalance(activeKey, 'confirmed'),
-        connection.getParsedTokenAccountsByOwner(activeKey, { programId: TOKEN_PROGRAM_ID }),
-        connection.getParsedTokenAccountsByOwner(activeKey, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => ({ value: [] })),
-      ]);
+      // 1. Fetch SOL balance with fallback
+      let solAmount = null;
+      for (const rpc of uniqueRpcs) {
+        try {
+          const conn = (rpc === connection?.rpcEndpoint) ? connection : new Connection(rpc, 'confirmed');
+          const lamports = await conn.getBalance(activeKey, 'confirmed');
+          if (typeof lamports === 'number') {
+            solAmount = lamports / 1e9;
+            setSolBalance(solAmount);
+            break;
+          }
+        } catch (e) {
+          console.warn(`getBalance failed on ${rpc}:`, e?.message);
+        }
+      }
 
-      const solAmount = lamports / 1e9;
-      setSolBalance(solAmount);
-
-      const results = [...(resp1.value || []), ...(resp2.value || [])];
+      // 2. Fetch SPL token accounts
       const mintMap = {};
-      results.forEach(account => {
-        const parsed = account.account.data.parsed.info;
-        const mint = parsed.mint;
-        const amt = parsed.tokenAmount.uiAmount || 0;
-        if (amt > 0) mintMap[mint] = (mintMap[mint] || 0) + amt;
-      });
+
+      for (const rpc of uniqueRpcs) {
+        try {
+          const conn = (rpc === connection?.rpcEndpoint) ? connection : new Connection(rpc, 'confirmed');
+          const [resp1, resp2] = await Promise.all([
+            conn.getParsedTokenAccountsByOwner(activeKey, { programId: TOKEN_PROGRAM_ID }).catch(() => null),
+            conn.getParsedTokenAccountsByOwner(activeKey, { programId: TOKEN_2022_PROGRAM_ID }).catch(() => null),
+          ]);
+
+          if (resp1?.value || resp2?.value) {
+            const results = [...(resp1?.value || []), ...(resp2?.value || [])];
+            results.forEach(account => {
+              const parsed = account?.account?.data?.parsed?.info;
+              if (!parsed) return;
+              const mint = parsed.mint;
+              const amt = parsed.tokenAmount?.uiAmount || 0;
+              if (amt > 0) mintMap[mint] = (mintMap[mint] || 0) + amt;
+            });
+            break;
+          }
+        } catch (e) {
+          console.warn(`getParsedTokenAccountsByOwner failed on ${rpc}:`, e?.message);
+        }
+      }
+
+      // 3. Fallback: Query primary tokens (USDC, USDT) ATAs directly via getAccountInfo
+      const criticalMints = [
+        { symbol: 'USDC', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
+        { symbol: 'USDT', mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
+      ];
+      for (const cm of criticalMints) {
+        if (mintMap[cm.mint] !== undefined) continue;
+        try {
+          const ata = getAssociatedTokenAddressSync(new PublicKey(cm.mint), activeKey, false, TOKEN_PROGRAM_ID);
+          for (const rpc of uniqueRpcs) {
+            try {
+              const conn = (rpc === connection?.rpcEndpoint) ? connection : new Connection(rpc, 'confirmed');
+              const info = await conn.getAccountInfo(ata);
+              if (info?.data) {
+                const decoded = AccountLayout.decode(info.data);
+                const amount = Number(decoded.amount) / Math.pow(10, cm.decimals);
+                if (amount > 0) mintMap[cm.mint] = amount;
+              }
+              break;
+            } catch {}
+          }
+        } catch {}
+      }
 
       const allMints = Object.keys(mintMap);
 
-      // 2. Immediately build portfolio tokens from static KNOWN_MINTS + TOKENS (fast 0ms UI update)
+      // 4. Immediately build portfolio tokens from static KNOWN_MINTS + TOKENS
       const initialToks = allMints.map(mint => {
         const balance = mintMap[mint];
         const staticMeta = KNOWN_MINTS[mint] || {};
@@ -730,7 +786,6 @@ export default function App() {
 
       initialToks.sort((a, b) => (b.uiAmount * b.price) - (a.uiAmount * a.price));
 
-      // Update state IMMEDIATELY (no waiting for external APIs)
       setSplTokens(initialToks);
       setWalletLoading(false);
 
@@ -738,13 +793,13 @@ export default function App() {
       const walletKey = activeKey.toBase58();
       try {
         localStorage.setItem(`fiat_cached_balance_${walletKey}`, JSON.stringify({
-          sol: solAmount,
+          sol: typeof solAmount === 'number' ? solAmount : 0,
           spl: initialToks,
           ts: Date.now()
         }));
       } catch {}
 
-      // 3. Asynchronously fetch live prices from Jupiter in background (non-blocking)
+      // 5. Asynchronously fetch live prices from Jupiter in background (non-blocking)
       if (allMints.length > 0) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -762,7 +817,7 @@ export default function App() {
               updated.sort((a, b) => (b.uiAmount * b.price) - (a.uiAmount * a.price));
               try {
                 localStorage.setItem(`fiat_cached_balance_${walletKey}`, JSON.stringify({
-                  sol: solAmount,
+                  sol: typeof solAmount === 'number' ? solAmount : 0,
                   spl: updated,
                   ts: Date.now()
                 }));
@@ -2178,6 +2233,8 @@ export default function App() {
                 internalWallet.activate(walletData);
                 setShowOnboardModal(null);
                 setGuestBypass(false);
+                setIsGuestMode(false);
+                setActiveTab('wallet');
               }}
               onConnectExternal={() => {
                 setShowOnboardModal(null);

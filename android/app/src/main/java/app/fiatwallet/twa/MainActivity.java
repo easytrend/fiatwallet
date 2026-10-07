@@ -26,12 +26,45 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        handleDeepLinkIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDeepLinkIntent(intent);
+    }
+
+    private void handleDeepLinkIntent(android.content.Intent intent) {
+        if (intent == null) return;
+        Uri uri = intent.getData();
+        if (uri == null) return;
+
+        String uriString = uri.toString();
+        runOnUiThread(() -> {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            WebView webView = getBridge().getWebView();
+            if (uriString.startsWith("wc:")) {
+                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-wc', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
+                webView.evaluateJavascript(js, null);
+            } else if (uriString.startsWith("solana-wallet:") || uriString.startsWith("fiatwallet:")) {
+                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-mwa', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
+                webView.evaluateJavascript(js, null);
+            }
+        });
+    }
+
+    private static String escapeJs(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r");
     }
 
     @Override
     public void onStart() {
         super.onStart();
         setupWebView();
+        handleDeepLinkIntent(getIntent());
     }
 
     /**

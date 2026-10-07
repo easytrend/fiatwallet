@@ -364,8 +364,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
   // 6. Handle inline email OTP verification
   const handleVerifyEmail = async () => {
-    if (!otpInput.trim()) {
-      setAuthError('Please enter the 6-digit OTP code.');
+    if (!otpInput.trim() || otpInput.trim().length < 4) {
+      setAuthError('Please enter the 4-digit OTP code.');
       return;
     }
     if (!PAJCASH_API_KEY) {
@@ -635,7 +635,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                     maxLength={6}
                     value={otpInput}
                     onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter 6-digit OTP"
+                    placeholder="Enter 4-digit OTP"
                     disabled={authLoading}
                     style={{
                       flex: 1,
@@ -652,7 +652,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                   <button
                     type="button"
                     onClick={handleVerifyEmail}
-                    disabled={authLoading || otpInput.trim().length !== 6}
+                    disabled={authLoading || otpInput.trim().length < 4}
                     style={{
                       padding: '8px 12px',
                       background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.25), rgba(163, 230, 53, 0.1))',
@@ -661,7 +661,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                       color: 'var(--lime, #a3e635)',
                       fontSize: '11.5px',
                       fontWeight: '700',
-                      cursor: (authLoading || otpInput.trim().length !== 6) ? 'not-allowed' : 'pointer',
+                      cursor: (authLoading || otpInput.trim().length < 4) ? 'not-allowed' : 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >
