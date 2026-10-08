@@ -31,17 +31,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- ── Mobile Wallet Adapter (MWA) ─────────────────────────
-                 Registers FiatWallet to handle solana-wallet:// deep links.
-                 When any dApp fires the MWA association intent, Android shows
-                 FiatWallet in the chooser — same as Phantom and Solflare.
-            ────────────────────────────────────────────────────────── -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="solana-wallet" />
-            </intent-filter>
 
             <!-- ── WalletConnect Deep Link ─────────────────────────────
                  Handles wc: URIs redirected back to FiatWallet after

@@ -9,6 +9,21 @@ if (typeof window !== 'undefined') {
 globalThis.global = globalThis;
 globalThis.process = globalThis.process || { env: {}, browser: true, version: '' };
 
+if (typeof navigator !== 'undefined') {
+  try {
+    const originalUa = navigator.userAgent || '';
+    if (!originalUa.includes('Solana Mobile Web Shell')) {
+      const cleanUa = originalUa.replace(/;\s*wv/gi, '') + ' Solana Mobile Web Shell';
+      try {
+        Object.defineProperty(navigator, 'userAgent', {
+          get: () => cleanUa,
+          configurable: true,
+        });
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+
 import { initFiatWalletProvider } from './services/fiatwalletProvider';
 initFiatWalletProvider();
 
@@ -169,7 +184,9 @@ function Root() {
       },
       authorizationResultCache: createDefaultAuthorizationResultCache(),
       cluster: 'mainnet-beta',
-      onWalletNotFound: createDefaultWalletNotFoundHandler(),
+      onWalletNotFound: async () => {
+        console.warn('Solana Mobile Wallet Adapter: No external mobile wallet or Seed Vault responded.');
+      },
     }),
     new PhantomWalletAdapter(),
     new SolflareWalletAdapter(),

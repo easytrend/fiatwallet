@@ -48,7 +48,7 @@ public class MainActivity extends BridgeActivity {
             if (uriString.startsWith("wc:")) {
                 String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-wc', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
                 webView.evaluateJavascript(js, null);
-            } else if (uriString.startsWith("solana-wallet:") || uriString.startsWith("fiatwallet:")) {
+            } else if (uriString.startsWith("fiatwallet:")) {
                 String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-mwa', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
                 webView.evaluateJavascript(js, null);
             }
@@ -77,9 +77,21 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         if (webView == null) return;
 
+        // Configure User-Agent: remove '; wv' and append 'Solana Mobile Web Shell'
+        // This enables MWA loopback WebSocket access for Seed Vault on Seeker and external wallets
+        String defaultUa = webView.getSettings().getUserAgentString();
+        String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "");
+        if (!cleanUa.contains("Solana Mobile Web Shell")) {
+            cleanUa = cleanUa + " Solana Mobile Web Shell";
+        }
+        webView.getSettings().setUserAgentString(cleanUa);
+
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setDatabaseEnabled(true);
+        webView.getSettings().setAllowFileAccess(true);
+        webView.getSettings().setAllowContentAccess(true);
+        webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
 
         // Add the Java bridge object accessible as window.FiatWalletBridge in JS
         webView.addJavascriptInterface(new FiatWalletBridge(), "FiatWalletBridge");

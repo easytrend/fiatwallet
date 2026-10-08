@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { getBanks, resolveBankAccount, initiateSession, verifySession } from '../services/pajcashService';
+import { getBanks, resolveBankAccount, initiateSession, verifySession, getEffectiveApiKey } from '../services/pajcashService';
 import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession } from '../services/supabase';
 
 const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;
@@ -237,7 +237,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
   // 3. Fetch supported banks
   useEffect(() => {
     let isMounted = true;
-    getBanks(sessionToken || PAJCASH_API_KEY || undefined)
+    const auth = sessionToken || PAJCASH_API_KEY || getEffectiveApiKey() || undefined;
+    getBanks(auth)
       .then(list => {
         const arr = Array.isArray(list) ? list : (list?.data || []);
         if (arr.length > 0 && isMounted) {
@@ -293,11 +294,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
     if (sessionLoading) return;
 
-    if (!sessionToken) {
-      setTagModalAcctName('');
-      setTagModalError('PajCash verification required. Please link your email below.');
-      return;
-    }
+    const effectiveAuth = sessionToken || PAJCASH_API_KEY || getEffectiveApiKey();
 
     setTagModalResolving(true);
     setTagModalError('');
@@ -306,7 +303,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : tagModalBank;
 
     const timer = setTimeout(() => {
-      resolveBankAccount(sessionToken, bankId, cleanNum)
+      resolveBankAccount(effectiveAuth, bankId, cleanNum)
         .then(res => {
           const name = res?.accountName || res?.name || res?.account_name || res?.data?.account_name || res?.data?.accountName || '';
           setTagModalAcctName(name || 'No Bank Match');
@@ -411,10 +408,6 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     }
     if (effectiveWallet.length < 32 || effectiveWallet.length > 44) {
       setTagModalError('Please enter a valid Solana wallet address (32-44 characters).');
-      return;
-    }
-    if (!sessionToken) {
-      setTagModalError('Please verify your email first before creating a Fiat Tag.');
       return;
     }
     const cleanTag = tagModalInput.trim().replace(/^@/, '').replace(/^\$/, '');
@@ -566,8 +559,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           </div>
         )}
 
-        {/* ── Inline PajCash Email Verification (Shown only when session is missing) ── */}
-        {!sessionLoading && !sessionToken && (
+        {/* ── Inline PajCash Email Verification (Shown only when both session and merchant key are missing) ── */}
+        {!sessionLoading && !sessionToken && !PAJCASH_API_KEY && !getEffectiveApiKey() && (
           <div style={{
             background: 'rgba(34, 211, 238, 0.06)',
             border: '1px solid rgba(34, 211, 238, 0.25)',

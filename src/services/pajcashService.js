@@ -47,6 +47,55 @@ function getDeviceUUID() {
 // Base URL resolved from env var; defaults to production
 let BASE_URL = 'https://api.paj.cash';
 
+let remoteApiKey = null;
+
+/**
+ * Fetch PajCash merchant API key from the Vercel serverless config endpoint.
+ */
+export async function fetchRemotePajConfig() {
+  if (remoteApiKey) return remoteApiKey;
+  try {
+    const res = await fetch('/api/paj_config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.apiKey) {
+        remoteApiKey = data.apiKey;
+        try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
+        return remoteApiKey;
+      }
+    }
+  } catch (e) {
+    try {
+      const res = await fetch('https://fiatwallet.app/api/paj_config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.apiKey) {
+          remoteApiKey = data.apiKey;
+          try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
+          return remoteApiKey;
+        }
+      }
+    } catch (err) {}
+  }
+  return null;
+}
+
+if (typeof window !== 'undefined') {
+  fetchRemotePajConfig().catch(() => {});
+}
+
+/**
+ * Resolves the effective API key or merchant auth token.
+ */
+export function getEffectiveApiKey() {
+  return (
+    import.meta.env.VITE_PAJCASH_API_KEY ||
+    remoteApiKey ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null) ||
+    ''
+  );
+}
+
 /**
  * Initialize the SDK environment and set the base URL.
  * @param {string} envString - 'production' | 'staging' | 'local'
@@ -117,8 +166,9 @@ export async function getSupportedTokens() {
  * @param {string} sessionToken - User JWT Session Token
  */
 export async function getBanks(sessionToken) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkGetBanks(sessionToken);
+    return await sdkGetBanks(token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -132,8 +182,9 @@ export async function getBanks(sessionToken) {
  * @param {string} accountNumber - Account number to resolve
  */
 export async function resolveBankAccount(sessionToken, bankId, accountNumber) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkResolveBankAccount(sessionToken, bankId, accountNumber);
+    return await sdkResolveBankAccount(token, bankId, accountNumber);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -148,8 +199,9 @@ export async function resolveBankAccount(sessionToken, bankId, accountNumber) {
  * @param {string} sessionToken - User JWT Session Token
  */
 export async function createOfframpOrder(order, sessionToken) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkCreateOfframpOrder(order, sessionToken);
+    return await sdkCreateOfframpOrder(order, token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -170,18 +222,15 @@ export async function getAllRate() {
 }
 
 /**
- * Fetch all transactions for the session account.
- * @param {string} sessionToken - User JWT Session Token
- */
-/**
  * Create an on-ramp order (Buy).
  * PajCash returns bank account details; user transfers fiat to receive crypto.
  * @param {Object} order  - { currency, amount, wallet, chain, fee? }
  * @param {string} sessionToken
  */
 export async function createOnrampOrder(order, sessionToken) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkCreateOnrampOrder(order, sessionToken);
+    return await sdkCreateOnrampOrder(order, token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -194,8 +243,9 @@ export async function createOnrampOrder(order, sessionToken) {
  * @param {string} sessionToken
  */
 export async function getOnrampValue(query, sessionToken) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkGetOnrampValue(query, sessionToken);
+    return await sdkGetOnrampValue(query, token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -203,8 +253,9 @@ export async function getOnrampValue(query, sessionToken) {
 }
 
 export async function getTransactionHistory(sessionToken) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkGetAllTransactions(sessionToken);
+    return await sdkGetAllTransactions(token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -271,8 +322,9 @@ export async function paidOnrampOrder(orderId, sessionToken) {
  * Fetch a single transaction detail to poll its latest status.
  */
 export async function getTransaction(sessionToken, orderId) {
+  const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkGetTransaction(sessionToken, orderId);
+    return await sdkGetTransaction(token, orderId);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);

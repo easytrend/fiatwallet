@@ -193,11 +193,19 @@ export default function DAppExplorer({
   const [copiedAddr, setCopiedAddr] = useState(false);
   const [wcOpen, setWcOpen] = useState(false);
   const [showConnectHub, setShowConnectHub] = useState(false);
+  const [dAppConnected, setDAppConnected] = useState(false);
 
   // Selected dApp for Full-Screen In-App Web View
   const [selectedDApp, setSelectedDApp] = useState(null);
   const [iframeKey, setIframeKey] = useState(0);
   const iframeRef = useRef(null);
+
+  // Sync dApp connection with in-wallet status
+  useEffect(() => {
+    if (effectiveConnected && effectivePublicKey) {
+      setDAppConnected(true);
+    }
+  }, [effectiveConnected, effectivePublicKey]);
 
   // Transaction Bridge states
   const [bridgeSimulating, setBridgeSimulating] = useState(false);
@@ -213,7 +221,31 @@ export default function DAppExplorer({
     }
   }, [selectedDApp]);
 
-  // Attempt to inject provider when iframe loads
+  // Direct In-Wallet Connect handler
+  const handleConnectInWallet = async () => {
+    if (!effectivePublicKey) {
+      setShowConnectHub(true);
+      return;
+    }
+    try {
+      await fiatwalletProvider.connect({
+        origin: selectedDApp?.url || window.location.origin,
+        title: selectedDApp?.name || 'Solana dApp',
+      });
+      setDAppConnected(true);
+      const cw = iframeRef.current?.contentWindow;
+      if (cw) {
+        cw.postMessage({
+          type: 'fiatwallet:wallet-ready',
+          publicKey: effectivePublicKey.toBase58(),
+        }, '*');
+      }
+    } catch (e) {
+      console.warn('In-wallet connect notice:', e);
+    }
+  };
+
+  // Attempt to inject provider and notify on iframe load
   const handleIframeLoad = () => {
     try {
       const cw = iframeRef.current?.contentWindow;
@@ -233,6 +265,26 @@ export default function DAppExplorer({
       // Cross-origin SOP may restrict direct assignment; postMessage bridge handles message requests
     }
   };
+
+  // Listen for message events from dApps inside iframe
+  useEffect(() => {
+    const handleWindowMessage = (event) => {
+      const { data, source } = event || {};
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'fiatwallet:request' || data.type === 'solana:request' || data.method === 'connect') {
+        if (!effectivePublicKey) return;
+        source?.postMessage({
+          type: 'solana:response',
+          id: data.id,
+          result: { publicKey: effectivePublicKey.toBase58() }
+        }, '*');
+        setDAppConnected(true);
+      }
+    };
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [effectivePublicKey]);
 
   // Filtered dApps
   const filteredDApps = useMemo(() => {
@@ -461,13 +513,17 @@ export default function DAppExplorer({
 
             {/* Right: Connect + WC + External + Reload */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {/* Connect Wallet Trigger */}
+              {/* Direct In-Wallet Connect Trigger */}
               <button
                 type="button"
-                onClick={() => setShowConnectHub(true)}
+                onClick={dAppConnected ? () => setShowConnectHub(true) : handleConnectInWallet}
                 style={{
-                  background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.22), rgba(163, 230, 53, 0.08))',
-                  border: '1px solid var(--lime, #a3e635)',
+                  background: dAppConnected
+                    ? 'rgba(163, 230, 53, 0.15)'
+                    : 'linear-gradient(135deg, rgba(163, 230, 53, 0.22), rgba(163, 230, 53, 0.08))',
+                  border: dAppConnected
+                    ? '1px solid var(--lime, #a3e635)'
+                    : '1px solid rgba(163, 230, 53, 0.6)',
                   borderRadius: '8px',
                   color: 'var(--lime, #a3e635)',
                   cursor: 'pointer',
@@ -479,10 +535,10 @@ export default function DAppExplorer({
                   gap: '4px',
                   whiteSpace: 'nowrap',
                 }}
-                title="Connect FiatWallet to this dApp"
+                title={dAppConnected ? "FiatWallet in-wallet is connected. Click for connection options." : "Connect FiatWallet in-wallet to this dApp"}
               >
                 <span>✓</span>
-                <span>Connect</span>
+                <span>{dAppConnected ? 'Connected' : 'Connect'}</span>
               </button>
 
               {/* WalletConnect button */}
