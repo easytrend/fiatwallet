@@ -267,6 +267,15 @@ export default function DAppExplorer({
     return list;
   }, [activeCategory, searchQuery]);
 
+  const handleOpenDApp = (dApp) => {
+    if (!dApp) return;
+    if (typeof window !== 'undefined' && window.FiatWalletBridge && typeof window.FiatWalletBridge.openDApp === 'function') {
+      window.FiatWalletBridge.openDApp(dApp.url, dApp.name);
+    } else {
+      setSelectedDApp(dApp);
+    }
+  };
+
   // Handle URL or Search submit -> Takes user straight to full screen web view
   const handleUrlSubmit = (e) => {
     e?.preventDefault();
@@ -278,7 +287,7 @@ export default function DAppExplorer({
       d => d.name.toLowerCase() === q.toLowerCase() || d.url.toLowerCase().includes(q.toLowerCase())
     );
     if (found) {
-      setSelectedDApp(found);
+      handleOpenDApp(found);
       return;
     }
 
@@ -293,7 +302,7 @@ export default function DAppExplorer({
       const domain = parsedUrl.hostname.replace(/^www\./i, '');
       const name = domain.split('.')[0];
       const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
-      setSelectedDApp({
+      const custom = {
         id: 'custom-' + domain,
         name: capitalized,
         url: fullUrl,
@@ -302,10 +311,11 @@ export default function DAppExplorer({
         categoryLabel: 'Custom dApp',
         color: 'var(--cyan)',
         bg: 'rgba(34, 211, 238, 0.12)',
-      });
+      };
+      handleOpenDApp(custom);
     } catch {
       if (filteredDApps.length > 0) {
-        setSelectedDApp(filteredDApps[0]);
+        handleOpenDApp(filteredDApps[0]);
       }
     }
   };
@@ -879,7 +889,7 @@ export default function DAppExplorer({
             {filteredDApps.map(dapp => (
               <div
                 key={dapp.id}
-                onClick={() => setSelectedDApp(dapp)}
+                onClick={() => handleOpenDApp(dapp)}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',

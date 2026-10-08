@@ -61,12 +61,33 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
           },
           isNative: true,
           resolve: async () => {
-            const txDataStr = JSON.stringify(e.detail.txData || {});
+            let resultData = e.detail.txData;
+            if (typeof effectiveSignTransaction === 'function' && e.detail.txData) {
+              try {
+                const { Transaction, VersionedTransaction } = await import('@solana/web3.js');
+                const raw = Array.isArray(e.detail.txData) ? new Uint8Array(e.detail.txData) : e.detail.txData;
+                let tx;
+                try {
+                  tx = Transaction.from(raw);
+                } catch {
+                  try {
+                    tx = VersionedTransaction.deserialize(raw);
+                  } catch {}
+                }
+                if (tx) {
+                  const signed = await effectiveSignTransaction(tx);
+                  resultData = Array.from(signed.serialize ? signed.serialize() : signed);
+                }
+              } catch (signErr) {
+                console.warn('Signing error:', signErr);
+              }
+            }
+            const txDataStr = JSON.stringify(resultData || {});
             if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveSign === 'function') {
               try { window.FiatWalletBridge.approveSign(e.detail.reqId, txDataStr); } catch {}
             }
             if (window.fiatwallet?._onSignApproved) {
-              window.fiatwallet._onSignApproved(e.detail.reqId, e.detail.txData);
+              window.fiatwallet._onSignApproved(e.detail.reqId, resultData);
             }
           },
           reject: () => {

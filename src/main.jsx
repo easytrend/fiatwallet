@@ -165,6 +165,8 @@ import {
   TrustWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
 
+import { FiatWalletAdapter } from './services/fiatwalletAdapter';
+
 // Wallet adapter default UI styles (for the "Select Wallet" modal)
 import '@solana/wallet-adapter-react-ui/styles.css';
 import App from './App';
@@ -175,6 +177,7 @@ function Root() {
   // Fallback to the placeholder if the env variable isn't set yet.
   const endpoint = useMemo(() => import.meta.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com', []);
   const wallets = useMemo(() => [
+    new FiatWalletAdapter(),
     new SolanaMobileWalletAdapter({
       addressSelector: createDefaultAddressSelector(),
       appIdentity: {
@@ -184,9 +187,7 @@ function Root() {
       },
       authorizationResultCache: createDefaultAuthorizationResultCache(),
       cluster: 'mainnet-beta',
-      onWalletNotFound: async () => {
-        console.warn('Solana Mobile Wallet Adapter: No external mobile wallet or Seed Vault responded.');
-      },
+      onWalletNotFound: createDefaultWalletNotFoundHandler(),
     }),
     new PhantomWalletAdapter(),
     new SolflareWalletAdapter(),
