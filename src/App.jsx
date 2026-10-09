@@ -383,6 +383,7 @@ export default function App() {
 
   // Listen for FiatWallet adapter events and onboarding requests
   useEffect(() => {
+    // Legacy manual-flow events (still used by other code paths)
     const handleOpenOnboard = (e) => {
       setVisible(false);
       setShowOnboardModal(e.detail?.mode || 'choose');
@@ -391,23 +392,30 @@ export default function App() {
       setVisible(false);
       setGuestBypass(false);
     };
-    const handleAdapterSelected = () => {
+
+    // New adapter-driven events — adapter.connect() is waiting on these
+    const handleAdapterNeedsUnlock = () => {
+      // User selected FiatWallet in adapter modal; vault exists but is locked
       setVisible(false);
-      if (!internalWallet.hasVault) {
-        setShowOnboardModal('choose');
-      } else if (!internalWallet.isActive) {
-        setGuestBypass(false);
-      }
+      setGuestBypass(false); // clears guestBypass so needsUnlock becomes true
     };
+    const handleAdapterNeedsOnboard = () => {
+      // User selected FiatWallet in adapter modal; no vault yet — start onboarding
+      setVisible(false);
+      setShowOnboardModal('choose');
+    };
+
     window.addEventListener('fiatwallet:open-onboard', handleOpenOnboard);
     window.addEventListener('fiatwallet:open-unlock', handleOpenUnlock);
-    window.addEventListener('fiatwallet:adapter-selected', handleAdapterSelected);
+    window.addEventListener('fiatwallet:adapter-needs-unlock', handleAdapterNeedsUnlock);
+    window.addEventListener('fiatwallet:adapter-needs-onboard', handleAdapterNeedsOnboard);
     return () => {
       window.removeEventListener('fiatwallet:open-onboard', handleOpenOnboard);
       window.removeEventListener('fiatwallet:open-unlock', handleOpenUnlock);
-      window.removeEventListener('fiatwallet:adapter-selected', handleAdapterSelected);
+      window.removeEventListener('fiatwallet:adapter-needs-unlock', handleAdapterNeedsUnlock);
+      window.removeEventListener('fiatwallet:adapter-needs-onboard', handleAdapterNeedsOnboard);
     };
-  }, [setVisible, internalWallet.hasVault, internalWallet.isActive]);
+  }, [setVisible]);
 
   // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
   // Only show full-screen unlock if the user already has a saved encrypted vault on this device and hasn't bypassed.
@@ -1362,12 +1370,20 @@ export default function App() {
           onUnlocked={(walletData) => {
             internalWallet.activate(walletData);
             setGuestBypass(false);
+            // Signal the adapter's connect() promise that the vault is now unlocked
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-unlocked', {
+              detail: { publicKey: walletData.publicKey }
+            }));
           }}
           onReset={internalWallet.reset}
           onConnectExternal={() => {
+            // User chose a different wallet — cancel the pending FiatWallet adapter connect
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setVisible(true);
           }}
           onContinueGuest={() => {
+            // User chose guest mode — cancel the pending FiatWallet adapter connect
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setIsGuestMode(true);
             setGuestBypass(true);
             setActiveTab('p2p');
@@ -1388,11 +1404,19 @@ export default function App() {
             setGuestBypass(false);
             setIsGuestMode(false);
             setActiveTab('wallet');
+            // Signal the adapter's connect() promise that a vault was created
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-created', {
+              detail: { publicKey: walletData.publicKey }
+            }));
           }}
           onConnectExternal={() => {
+            // User chose a different wallet — cancel pending FiatWallet adapter connect
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setVisible(true);
           }}
           onContinueGuest={() => {
+            // User chose guest mode — cancel pending FiatWallet adapter connect
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setIsGuestMode(true);
             setGuestBypass(true);
             setActiveTab('p2p');
@@ -2252,24 +2276,36 @@ export default function App() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
             overflowY: 'auto'
           }}
-          onClick={() => setShowOnboardModal(null)}
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
+            setShowOnboardModal(null);
+          }}
         >
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', margin: 'auto' }}>
             <WalletOnboard
               initialScreen={showOnboardModal === 'import' ? 'import-choose' : (showOnboardModal === 'create' ? 'create-edu' : 'onboard')}
-              onClose={() => setShowOnboardModal(null)}
+              onClose={() => {
+                window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
+                setShowOnboardModal(null);
+              }}
               onWalletReady={(walletData) => {
                 internalWallet.activate(walletData);
                 setShowOnboardModal(null);
                 setGuestBypass(false);
                 setIsGuestMode(false);
                 setActiveTab('wallet');
+                // Signal any waiting adapter connect() that vault was created
+                window.dispatchEvent(new CustomEvent('fiatwallet:vault-created', {
+                  detail: { publicKey: walletData.publicKey }
+                }));
               }}
               onConnectExternal={() => {
+                window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
                 setShowOnboardModal(null);
                 setVisible(true);
               }}
               onContinueGuest={() => {
+                window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
                 setShowOnboardModal(null);
                 setIsGuestMode(true);
                 setGuestBypass(true);
