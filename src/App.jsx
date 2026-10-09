@@ -288,7 +288,7 @@ function verifyTransactionIntegrity(transaction, expectedTransfers, expectedSign
 
 export default function App() {
   const { connection } = useConnection();
-  const { publicKey, connected, disconnect, sendTransaction, signTransaction, signAllTransactions } = useWallet();
+  const { publicKey, connected, wallet, disconnect, sendTransaction, signTransaction, signAllTransactions } = useWallet();
   const { setVisible } = useWalletModal();
 
   // ── Internal (self-custodial) wallet ─────────────────────────────────────────
@@ -310,7 +310,8 @@ export default function App() {
   const [walletApprovalRequest, setWalletApprovalRequest] = useState(null);
 
   // Unified wallet connection state
-  const effectiveConnected = connected || internalWallet.isActive;
+  const isFiatWalletAdapter = wallet?.adapter?.name === 'FiatWallet';
+  const effectiveConnected = (connected && !isFiatWalletAdapter) || internalWallet.isActive;
   const effectivePublicKey = useMemo(() => {
     if (publicKey) return publicKey;
     if (internalWallet.publicKey) {
@@ -379,6 +380,34 @@ export default function App() {
       sendTransaction: effectiveSendTransaction,
     });
   }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);
+
+  // Listen for FiatWallet adapter events and onboarding requests
+  useEffect(() => {
+    const handleOpenOnboard = (e) => {
+      setVisible(false);
+      setShowOnboardModal(e.detail?.mode || 'choose');
+    };
+    const handleOpenUnlock = () => {
+      setVisible(false);
+      setGuestBypass(false);
+    };
+    const handleAdapterSelected = () => {
+      setVisible(false);
+      if (!internalWallet.hasVault) {
+        setShowOnboardModal('choose');
+      } else if (!internalWallet.isActive) {
+        setGuestBypass(false);
+      }
+    };
+    window.addEventListener('fiatwallet:open-onboard', handleOpenOnboard);
+    window.addEventListener('fiatwallet:open-unlock', handleOpenUnlock);
+    window.addEventListener('fiatwallet:adapter-selected', handleAdapterSelected);
+    return () => {
+      window.removeEventListener('fiatwallet:open-onboard', handleOpenOnboard);
+      window.removeEventListener('fiatwallet:open-unlock', handleOpenUnlock);
+      window.removeEventListener('fiatwallet:adapter-selected', handleAdapterSelected);
+    };
+  }, [setVisible, internalWallet.hasVault, internalWallet.isActive]);
 
   // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
   // Only show full-screen unlock if the user already has a saved encrypted vault on this device and hasn't bypassed.
