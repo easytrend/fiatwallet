@@ -4487,45 +4487,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     1 {liveSelectedToken.symbol} = {selectedCountry.symbol}{ngnRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
                   <span style={{ color: 'rgba(255,255,255,0.38)', fontWeight: '500' }}>
-                    Fee: 0.10 USDC • Limit: $0.6 - $5,000
+                    Limit: $0.6 - $5,000
                   </span>
-                </div>
-              )}
-
-              {/* Order breakdown summary */}
-              {parsedAmt > 0 && !offrampBelowMinimum && !offrampExceedsMaximum && (
-                <div style={{
-                  marginTop: '10px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '12px',
-                  padding: '10px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  fontSize: '11.5px',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255, 255, 255, 0.55)' }}>
-                    <span>Bank Payout:</span>
-                    <span style={{ color: '#fff', fontWeight: '600' }}>{selectedCountry.symbol}{fiatAmountText}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255, 255, 255, 0.55)' }}>
-                    <span>Protocol Fee:</span>
-                    <span style={{ color: 'var(--lime)', fontWeight: '600' }}>0.10 USDC</span>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    paddingTop: '6px',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-                    fontWeight: '700',
-                    color: '#fff',
-                  }}>
-                    <span>Total to Send:</span>
-                    <span style={{ color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
-                      {baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} {isManualOfframp ? 'USDC' : liveSelectedToken.symbol}
-                    </span>
-                  </div>
                 </div>
               )}
             </div>
@@ -6082,9 +6045,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 </div>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
                   {Number(Number(manualOrder.cryptoAmount).toFixed(6))} <span style={{ fontSize: '14px' }}>USDC</span>
-                </div>
-                <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
-                  Includes 0.10 USDC protocol fee
                 </div>
               </div>
               <button
