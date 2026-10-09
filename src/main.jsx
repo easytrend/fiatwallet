@@ -197,13 +197,17 @@ function Root() {
 
   const handleWalletError = useCallback((error, adapter) => {
     console.warn(`Wallet adapter error (${adapter?.name || 'unknown'}):`, error?.message || error);
-    if (
+    // Only remove the stored walletName when the user explicitly cancelled or rejected.
+    // Do NOT remove it for WalletNotConnectedError — FiatWallet uses that to signal
+    // "vault is locked, please unlock", and we want FiatWallet to remain selected.
+    const msg = (error?.message || '').toLowerCase();
+    const isCancellation =
       error?.name === 'WalletConnectionError' ||
-      error?.name === 'WalletNotConnectedError' ||
       error?.name === 'WalletNotReadyError' ||
-      error?.message?.toLowerCase().includes('cancel') ||
-      error?.message?.toLowerCase().includes('reject')
-    ) {
+      msg.includes('cancel') ||
+      msg.includes('reject') ||
+      msg.includes('user rejected');
+    if (isCancellation) {
       try {
         localStorage.removeItem('walletName');
       } catch {}

@@ -47,86 +47,59 @@ export class FiatWalletAdapter extends BaseSignerWalletAdapter {
       if (this.connected || this.connecting) return;
       this._connecting = true;
 
-      // Check if vault is already unlocked (provider has active public key in memory)
-      let pubKey = fiatwalletProvider.publicKey?.toBase58
+      // Check if vault is already active in memory (unlocked)
+      const pubKey = fiatwalletProvider.publicKey?.toBase58
         ? fiatwalletProvider.publicKey.toBase58()
         : (fiatwalletProvider.publicKey ? String(fiatwalletProvider.publicKey) : null);
 
-      const hasVaultStored =
-        typeof localStorage !== 'undefined' && !!localStorage.getItem('fw_vault_v1');
-
-      const storedPubKey =
-        typeof localStorage !== 'undefined' ? localStorage.getItem('fw_wallet_pubkey') : null;
-
       if (pubKey) {
-        // Vault already unlocked — connect immediately
+        // Vault is unlocked — connect the adapter immediately
         this._publicKey = new PublicKey(pubKey);
         this.emit('connect', this._publicKey);
         return;
       }
 
-      if (hasVaultStored && storedPubKey) {
-        // Vault exists but is locked — show unlock screen and wait for user to unlock
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-unlock', {}));
-        }
-        const unlockedKey = await new Promise((resolve) => {
-          const onUnlock = (e) => {
-            cleanup();
-            resolve(e.detail?.publicKey || null);
-          };
-          const onCancel = () => {
-            cleanup();
-            resolve(null);
-          };
-          const cleanup = () => {
-            window.removeEventListener('fiatwallet:vault-unlocked', onUnlock);
-            window.removeEventListener('fiatwallet:vault-cancelled', onCancel);
-          };
-          window.addEventListener('fiatwallet:vault-unlocked', onUnlock);
-          window.addEventListener('fiatwallet:vault-cancelled', onCancel);
-        });
+      // Vault is locked or not yet created.
+      // Signal the React UI to show the appropriate screen, then return cleanly.
+      // The app uses effectiveConnected = internalWallet.isActive, so the UI
+      // will show the wallet dashboard after the user unlocks/creates — no adapter
+      // emit needed for the internal flow.
+      const hasVaultStored =
+        typeof localStorage !== 'undefined' && !!localStorage.getItem('fw_vault_v1');
+      const storedPubKey =
+        typeof localStorage !== 'undefined' ? localStorage.getItem('fw_wallet_pubkey') : null;
 
-        if (unlockedKey) {
-          this._publicKey = new PublicKey(unlockedKey);
-          this.emit('connect', this._publicKey);
+      if (typeof window !== 'undefined') {
+        if (hasVaultStored && storedPubKey) {
+          // Returning user — vault is locked, show PIN unlock screen
+          window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-unlock'));
         } else {
-          throw new WalletNotConnectedError('Unlock cancelled.');
-        }
-      } else {
-        // No vault — show onboard screen and wait for wallet creation
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-onboard', {}));
-        }
-        const createdKey = await new Promise((resolve) => {
-          const onCreated = (e) => {
-            cleanup();
-            resolve(e.detail?.publicKey || null);
-          };
-          const onCancel = () => {
-            cleanup();
-            resolve(null);
-          };
-          const cleanup = () => {
-            window.removeEventListener('fiatwallet:vault-created', onCreated);
-            window.removeEventListener('fiatwallet:vault-cancelled', onCancel);
-          };
-          window.addEventListener('fiatwallet:vault-created', onCreated);
-          window.addEventListener('fiatwallet:vault-cancelled', onCancel);
-        });
-
-        if (createdKey) {
-          this._publicKey = new PublicKey(createdKey);
-          this.emit('connect', this._publicKey);
-        } else {
-          throw new WalletNotConnectedError('Onboard cancelled.');
+          // New user — no vault yet, show onboarding
+          window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-onboard'));
         }
       }
+
+      // Return without throwing — this keeps walletName in localStorage
+      // and avoids triggering handleWalletError which would deselect FiatWallet.
+      // After the user unlocks/onboards, fiatwallet:vault-unlocked / fiatwallet:vault-created
+      // will fire the adapter's emit('connect') via App.jsx.
     } catch (error) {
       this.emit('error', error);
       throw error;
     } finally {
       this._connecting = false;
+    }
+  }
+
+  // Called by App.jsx after vault is unlocked or created to complete the adapter connection.
+  _completeConnect(publicKeyStr) {
+    try {
+      if (!this._publicKey && publicKeyStr) {
+        this._publicKey = new PublicKey(publicKeyStr);
+        this.emit('connect', this._publicKey);
+      }
+    } catch (e) {
+      console.warn('FiatWalletAdapter._completeConnect error:', e);
     }
   }
 

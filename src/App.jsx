@@ -1370,20 +1370,16 @@ export default function App() {
           onUnlocked={(walletData) => {
             internalWallet.activate(walletData);
             setGuestBypass(false);
-            // Signal the adapter's connect() promise that the vault is now unlocked
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-unlocked', {
-              detail: { publicKey: walletData.publicKey }
-            }));
+            // Also complete the adapter connection so wallet.connected is true for dApps
+            if (wallet?.adapter?._completeConnect) {
+              wallet.adapter._completeConnect(walletData.publicKey);
+            }
           }}
           onReset={internalWallet.reset}
           onConnectExternal={() => {
-            // User chose a different wallet — cancel the pending FiatWallet adapter connect
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setVisible(true);
           }}
           onContinueGuest={() => {
-            // User chose guest mode — cancel the pending FiatWallet adapter connect
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setIsGuestMode(true);
             setGuestBypass(true);
             setActiveTab('p2p');
@@ -1404,19 +1400,15 @@ export default function App() {
             setGuestBypass(false);
             setIsGuestMode(false);
             setActiveTab('wallet');
-            // Signal the adapter's connect() promise that a vault was created
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-created', {
-              detail: { publicKey: walletData.publicKey }
-            }));
+            // Also complete the adapter connection so wallet.connected is true for dApps
+            if (wallet?.adapter?._completeConnect) {
+              wallet.adapter._completeConnect(walletData.publicKey);
+            }
           }}
           onConnectExternal={() => {
-            // User chose a different wallet — cancel pending FiatWallet adapter connect
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setVisible(true);
           }}
           onContinueGuest={() => {
-            // User chose guest mode — cancel pending FiatWallet adapter connect
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
             setIsGuestMode(true);
             setGuestBypass(true);
             setActiveTab('p2p');
@@ -2276,36 +2268,28 @@ export default function App() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
             overflowY: 'auto'
           }}
-          onClick={() => {
-            window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
-            setShowOnboardModal(null);
-          }}
+          onClick={() => setShowOnboardModal(null)}
         >
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', margin: 'auto' }}>
             <WalletOnboard
               initialScreen={showOnboardModal === 'import' ? 'import-choose' : (showOnboardModal === 'create' ? 'create-edu' : 'onboard')}
-              onClose={() => {
-                window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
-                setShowOnboardModal(null);
-              }}
+              onClose={() => setShowOnboardModal(null)}
               onWalletReady={(walletData) => {
                 internalWallet.activate(walletData);
                 setShowOnboardModal(null);
                 setGuestBypass(false);
                 setIsGuestMode(false);
                 setActiveTab('wallet');
-                // Signal any waiting adapter connect() that vault was created
-                window.dispatchEvent(new CustomEvent('fiatwallet:vault-created', {
-                  detail: { publicKey: walletData.publicKey }
-                }));
+                // Also complete the adapter connection so wallet.connected is true for dApps
+                if (wallet?.adapter?._completeConnect) {
+                  wallet.adapter._completeConnect(walletData.publicKey);
+                }
               }}
               onConnectExternal={() => {
-                window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
                 setShowOnboardModal(null);
                 setVisible(true);
               }}
               onContinueGuest={() => {
-                window.dispatchEvent(new CustomEvent('fiatwallet:vault-cancelled'));
                 setShowOnboardModal(null);
                 setIsGuestMode(true);
                 setGuestBypass(true);
