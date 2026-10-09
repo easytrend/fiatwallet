@@ -23,8 +23,24 @@ function buildVersionPlugin() {
   };
 }
 
+// Patches the upstream @solana-mobile hang bug where connection cancellation awaits an unresolved promise.
+function patchMwaPlugin() {
+  return {
+    name: 'patch-mwa-plugin',
+    transform(code, id) {
+      if (id.includes('wallet-standard-mobile') && code.includes('currentConnectionGeneration) await new Promise')) {
+        return {
+          code: code.replace(/if\s*\(this\.#connectionGeneration\s*!==\s*currentConnectionGeneration\)\s*await\s+new\s+Promise\(\(\)\s*=>\s*\{\}\);/g, 'if (this.#connectionGeneration !== currentConnectionGeneration) return;'),
+          map: null,
+        };
+      }
+      return null;
+    }
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), buildVersionPlugin()],
+  plugins: [react(), buildVersionPlugin(), patchMwaPlugin()],
   optimizeDeps: {
     include: ['buffer'],
   },

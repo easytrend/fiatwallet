@@ -27,7 +27,7 @@ if (typeof navigator !== 'undefined') {
 import { initFiatWalletProvider } from './services/fiatwalletProvider';
 initFiatWalletProvider();
 
-import React, { useMemo, Component } from 'react';
+import React, { useMemo, useCallback, Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -195,9 +195,21 @@ function Root() {
     new TrustWalletAdapter(),
   ], []);
 
+  const handleWalletError = useCallback((error, adapter) => {
+    console.warn(`Wallet adapter error (${adapter?.name || 'unknown'}):`, error?.message || error);
+    try {
+      localStorage.removeItem('walletName');
+      sessionStorage.removeItem('walletName');
+    } catch {}
+  }, []);
+
+  const shouldAutoConnect = useCallback((adapter) => {
+    return adapter?.name === 'FiatWallet';
+  }, []);
+
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={shouldAutoConnect} onError={handleWalletError}>
         <WalletModalProvider>
           <ErrorBoundary>
             <App />

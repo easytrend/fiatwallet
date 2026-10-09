@@ -22,7 +22,7 @@ export class FiatWalletAdapter extends BaseSignerWalletAdapter {
   icon = FIATWALLET_LOGO_BASE64;
   supportedTransactionVersions = new Set(['legacy', 0]);
 
-  _readyState = WalletReadyState.Installed;
+  _readyState = WalletReadyState.Loadable;
   _connecting = false;
   _publicKey = null;
 
