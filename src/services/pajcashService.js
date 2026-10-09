@@ -131,7 +131,7 @@ export async function initiateSession(emailOrPhone, apiKey) {
 /**
  * Verify OTP session and obtain JWT token.
  * @param {string} emailOrPhone - User email or phone number
- * @param {string} otp - 6-digit OTP code
+ * @param {string} otp - 4-digit OTP code
  * @param {string} apiKey - Merchant API Key
  */
 export async function verifySession(emailOrPhone, otp, apiKey) {

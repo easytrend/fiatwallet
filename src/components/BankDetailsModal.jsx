@@ -361,7 +361,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
   // 6. Handle inline email OTP verification
   const handleVerifyEmail = async () => {
-    if (!otpInput.trim() || otpInput.trim().length < 4) {
+    if (!otpInput.trim() || otpInput.trim().length !== 4) {
       setAuthError('Please enter the 4-digit OTP code.');
       return;
     }
@@ -625,9 +625,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                   <input
                     type="text"
                     inputMode="numeric"
-                    maxLength={6}
+                    maxLength={4}
                     value={otpInput}
-                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     placeholder="Enter 4-digit OTP"
                     disabled={authLoading}
                     style={{
@@ -645,7 +645,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                   <button
                     type="button"
                     onClick={handleVerifyEmail}
-                    disabled={authLoading || otpInput.trim().length < 4}
+                    disabled={authLoading || otpInput.trim().length !== 4}
                     style={{
                       padding: '8px 12px',
                       background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.25), rgba(163, 230, 53, 0.1))',
@@ -654,7 +654,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                       color: 'var(--lime, #a3e635)',
                       fontSize: '11.5px',
                       fontWeight: '700',
-                      cursor: (authLoading || otpInput.trim().length < 4) ? 'not-allowed' : 'pointer',
+                      cursor: (authLoading || otpInput.trim().length !== 4) ? 'not-allowed' : 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >

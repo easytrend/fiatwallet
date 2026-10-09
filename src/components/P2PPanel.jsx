@@ -1617,8 +1617,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   };
 
   const handleVerifySession = async () => {
-    if (!otpInput) {
-      setAuthError('Please enter the OTP.');
+    if (!otpInput || otpInput.trim().length !== 4) {
+      setAuthError('Please enter the 4-digit OTP.');
       return;
     }
     if (!PAJCASH_API_KEY) {
@@ -2079,11 +2079,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (!effectiveAuthToken) { setOnrampError('PajCash service configuration missing.'); return; }
 
     const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail') || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
-    if (!effectiveEmail && (isGuestMode || !publicKey || isManualOfframp)) {
-      setOnrampError('Email verification is required before initiating an order.');
-      setAuthStep('input_email');
-      return;
-    }
 
     // Check recipient wallet address
     let recipientAddress = null;
@@ -2577,13 +2572,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setP2pError(null);
     if (!isLiveRoute) { setP2pError('This region/mode is not currently supported.'); return; }
     if (!effectiveAuthToken) { setP2pError('PajCash service configuration missing.'); return; }
-
-    const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail');
-    if (!effectiveEmail) {
-      setP2pError('Email verification is required before initiating an offramp order. Please verify your email.');
-      setAuthStep('input_email');
-      return;
-    }
+    const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail') || undefined;
 
     if (apiError) { setP2pError(`PajCash API error: ${apiError}`); return; }
     if (!amount || parseFloat(amount) <= 0) { setP2pError('Please enter a valid amount.'); return; }
@@ -3682,7 +3671,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <span className="p2p-mini-spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }} />
             <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>Restoring session...</span>
           </div>
-        ) : (authStep !== 'logged_in' || (!sessionEmail && (isGuestMode || !publicKey || isManualOfframp))) ? (
+        ) : (!effectiveAuthToken && authStep !== 'logged_in') ? (
           <div className="p2p-auth-container" style={{
             background: 'rgba(255, 255, 255, 0.02)',
             border: '1px solid var(--border)',
@@ -3738,16 +3727,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="field" style={{ textAlign: 'left', marginBottom: 0 }}>
-                  <div className="field-label">Enter Verification Code (OTP)</div>
+                  <div className="field-label">Enter 4-Digit OTP</div>
                   <div className="input-wrap">
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={4}
                       value={otpInput}
-                      onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                      placeholder="••••••"
+                      onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      placeholder="0000"
                       disabled={authLoading}
-                      style={{ textAlign: 'center', letterSpacing: '0.4em', fontSize: '18px' }}
+                      style={{ textAlign: 'center', letterSpacing: '0.5em', fontSize: '18px' }}
                     />
                   </div>
                 </div>
@@ -3763,7 +3752,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   <button
                     className="send-btn"
                     onClick={handleVerifySession}
-                    disabled={authLoading || otpInput.trim().length < 4}
+                    disabled={authLoading || otpInput.trim().length !== 4}
                     style={{ flex: 2 }}
                   >
                     {authLoading ? 'Verifying...' : 'Verify & Connect'}
@@ -3774,29 +3763,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           </div>
         ) : (
           <>
-            {sessionEmail && (
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', background: 'rgba(163,230,53,0.06)',
-                border: '1px solid rgba(163,230,53,0.2)', borderRadius: '10px',
-                marginBottom: '1rem', fontSize: '12px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: 'var(--lime)', fontWeight: 'bold' }}>✓</span>
-                  <span style={{ color: 'var(--text2)' }}>Verified Email:</span>
-                  <span style={{ color: 'white', fontWeight: '600' }}>{sessionEmail}</span>
-                </div>
-                <button
-                  onClick={handleLogoutSession}
-                  style={{
-                    background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
-                    fontSize: '11px', cursor: 'pointer', padding: '2px 4px'
-                  }}
-                >
-                  Change
-                </button>
-              </div>
-            )}
             {resolvedTagData ? (
               /* ── Verified Fiat Tag Recipient Card (Remaining fields disappeared!) ── */
               <div className="field" style={{ marginBottom: '1.25rem' }}>
@@ -4862,9 +4828,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           )}
 
           {/* Session notice if not yet logged in */}
-          {(authStep !== 'logged_in' || (!sessionEmail && (isGuestMode || !publicKey || isManualOfframp))) && (
+          {!effectiveAuthToken && authStep !== 'logged_in' && (
             <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '10px 14px', fontSize: '11px', color: '#facc15', lineHeight: '1.5' }}>
-              • Email verification is required to activate the Buy gateway. Please verify your email on the Sell tab.
+              • Please verify your email (above) to activate the Buy gateway.
             </div>
           )}
 
@@ -5074,8 +5040,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <button
               className="send-btn"
               onClick={handleOnrampSubmit}
-              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp || isGuestMode) && (!guestOnrampWallet.trim() || !sessionEmail))}
-              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp || isGuestMode) && (!guestOnrampWallet.trim() || !sessionEmail))) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp || isGuestMode) && (!guestOnrampWallet.trim() || !sessionEmail))) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
+              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
+              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
               {onrampLoading ? (
                 <>
