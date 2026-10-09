@@ -1941,9 +1941,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const parsedAmt = offrampInputMode === 'crypto' ? parsedAmtRaw * ngnRate : parsedAmtRaw;
   const estCryptoAmount = offrampInputMode === 'fiat' ? (ngnRate > 0 ? parsedAmt / ngnRate : 0) : parsedAmtRaw;
 
-  // ── Platform Fee: flat $0.10 USD on every Offramp ────────────────────
-  const platformFee = 0.10; // $0.10 USD flat fee
-  const platformFeeInToken = tokenPriceUsd > 0 ? platformFee / tokenPriceUsd : 0;
+  // ── Platform Fee: flat 0.10 USDC on every Offramp ────────────────────
+  const platformFee = 0.10; // 0.10 USDC flat protocol fee
+  const platformFeeInToken = tokenPriceUsd > 0 ? platformFee / tokenPriceUsd : platformFee;
   const baseCryptoAmount = estCryptoAmount + platformFeeInToken;
   const fiatAmountText = parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -2626,19 +2626,20 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
 
-      const actualCryptoAmount = order.amount !== undefined && order.amount !== null
+      // Ensure 0.10 USDC protocol fee is always intact and included
+      const finalCryptoAmount = order?.amount && Number(order.amount) >= baseCryptoAmount
         ? Number(order.amount)
-        : estCryptoAmount;
+        : baseCryptoAmount;
 
       // Log transaction to Supabase under the manual wallet address
       logP2PTransaction({
         userAddress: effectiveUserWallet,
         orderId: order.id,
         tokenSymbol: 'USDC',
-        cryptoAmount: actualCryptoAmount,
+        cryptoAmount: finalCryptoAmount,
         fiatCurrency: selectedCountry.currency,
         fiatAmount: parsedAmt,
-        usdValue: selectedCountry.currency === 'USD' ? parsedAmt : actualCryptoAmount * (tokenPriceUsd || 1),
+        usdValue: selectedCountry.currency === 'USD' ? parsedAmt : finalCryptoAmount * (tokenPriceUsd || 1),
         bankName: effectiveBankName,
         accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
         accountName: effectiveAcctName || 'Account Holder',
@@ -2651,7 +2652,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setManualOrder({
         id: order.id,
         depositAddress: order.address,
-        cryptoAmount: actualCryptoAmount,
+        cryptoAmount: finalCryptoAmount,
         fiatAmount: parsedAmt,
         fiatText: fiatAmountText,
         tokenSymbol: 'USDC',
@@ -2687,7 +2688,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         setManualConfirmCard({
           fiatAmount: parsedAmt,
           fiatText: fiatAmountText,
-          cryptoAmount: actualCryptoAmount,
+          cryptoAmount: finalCryptoAmount,
           recipientTag: recipientTagInput || (resolvedTagData?.tag_name) || null,
           date: new Date(),
           txSignature: txSig || null,
@@ -2832,8 +2833,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const depositPubkey = new PublicKey(order.address);
 
+      // Ensure 0.10 USDC protocol fee is always intact and included
+      const finalSendAmount = order?.amount && Number(order.amount) >= baseCryptoAmount
+        ? Number(order.amount)
+        : baseCryptoAmount;
+
       if (liveSelectedToken.symbol === 'SOL') {
-        const lamports = Math.round((order.amount || estCryptoAmount) * 1e9);
+        const lamports = Math.round(finalSendAmount * 1e9);
         transaction.add(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: depositPubkey, lamports })
         );
@@ -2873,7 +2879,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           decimals = mintInfo.value.data.parsed.info.decimals;
         }
 
-        const sendAmount = order.amount || estCryptoAmount;
+        const sendAmount = finalSendAmount;
         const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
 
         transaction.add(
@@ -2920,7 +2926,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       let sig;
       const offrampMeta = {
         action: 'Offramp Payout',
-        amount: (order.amount || estCryptoAmount).toString(),
+        amount: finalSendAmount.toString(),
         symbol: liveSelectedToken?.symbol || 'USDC',
         recipient: resolvedTagData
           ? `${resolvedTagData.bank_name || 'Bank'} • ${resolvedTagData.account_name || 'Account'}`
@@ -2963,7 +2969,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           fallbackTx.recentBlockhash = (await connection.getLatestBlockhash('confirmed')).blockhash;
 
           if (liveSelectedToken.symbol === 'SOL') {
-            const lamports = Math.round((order.amount || estCryptoAmount) * 1e9);
+            const lamports = Math.round(finalSendAmount * 1e9);
             fallbackTx.add(SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: depositPubkey, lamports }));
           } else {
             const mintPubkey = new PublicKey(liveSelectedToken.mint);
@@ -2978,7 +2984,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             }
             const senderATA = getAssociatedTokenAddressSync(mintPubkey, publicKey, false, tokenProgram);
             const receiverATA = getAssociatedTokenAddressSync(mintPubkey, depositPubkey, false, tokenProgram);
-            const sendAmount = order.amount || estCryptoAmount;
+            const sendAmount = finalSendAmount;
             let decimals = typeof liveSelectedToken.decimals === 'number' ? liveSelectedToken.decimals : 6;
             const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
 
@@ -3044,7 +3050,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // Number(amount) which is the raw input string and is wrong when the
       // user typed in crypto mode (e.g. typing "2" USDC logged fiatLogged=2
       // instead of the correct NGN equivalent like 3100).
-      const cryptoLogged = order.amount || estCryptoAmount;
+      const cryptoLogged = finalSendAmount;
       const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
       // usdValue: for USD fiat, it's the fiat amount directly.
       // For non-USD (e.g. NGN), derive from: cryptoAmount × live token USD price.
@@ -3104,7 +3110,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // Show modal immediately with PENDING status
       setSuccessDetails({
-        amount: `${baseCryptoAmount.toFixed(4)} ${liveSelectedToken.symbol}`,
+        amount: `${finalSendAmount.toFixed(4)} ${liveSelectedToken.symbol}`,
         fiat: `${selectedCountry.symbol}${fiatAmountText}`,
         bank: isTagOfframp ? effectiveBankName : displayBank,
         account: effectiveAcctNumber,
@@ -4275,7 +4281,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                       >
                         ✕
                       </button>
-                      fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>$0.10 USD flat fee</strong> to serve you better.
+                      fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.10 USDC protocol fee</strong> on every offramp to serve you better.
                     </div>
                   )}
                 </div>
@@ -4481,8 +4487,45 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     1 {liveSelectedToken.symbol} = {selectedCountry.symbol}{ngnRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
                   <span style={{ color: 'rgba(255,255,255,0.38)', fontWeight: '500' }}>
-                    Limit: $0.6 - $5,000
+                    Fee: 0.10 USDC • Limit: $0.6 - $5,000
                   </span>
+                </div>
+              )}
+
+              {/* Order breakdown summary */}
+              {parsedAmt > 0 && !offrampBelowMinimum && !offrampExceedsMaximum && (
+                <div style={{
+                  marginTop: '10px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  fontSize: '11.5px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255, 255, 255, 0.55)' }}>
+                    <span>Bank Payout:</span>
+                    <span style={{ color: '#fff', fontWeight: '600' }}>{selectedCountry.symbol}{fiatAmountText}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'rgba(255, 255, 255, 0.55)' }}>
+                    <span>Protocol Fee:</span>
+                    <span style={{ color: 'var(--lime)', fontWeight: '600' }}>0.10 USDC</span>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    paddingTop: '6px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                    fontWeight: '700',
+                    color: '#fff',
+                  }}>
+                    <span>Total to Send:</span>
+                    <span style={{ color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
+                      {baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} {isManualOfframp ? 'USDC' : liveSelectedToken.symbol}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -4569,13 +4612,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 : (!isLiveRoute || apiError
                   ? 'Payout Gateway Offline'
                   : (amount && Number(amount) > 0 && baseCryptoAmount > 0
-                    ? (isManualOfframp
-                        ? `SEND ${baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} USDC`
-                        : (offrampInputMode === 'crypto'
-                            ? `SEND ${selectedCountry.symbol}${parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : `SEND ${baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} ${liveSelectedToken.symbol}`
-                          )
-                      )
+                    ? `SEND ${baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} ${isManualOfframp ? 'USDC' : liveSelectedToken.symbol}`
                     : 'Send'
                   )
                 )}
@@ -6045,6 +6082,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 </div>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
                   {Number(Number(manualOrder.cryptoAmount).toFixed(6))} <span style={{ fontSize: '14px' }}>USDC</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
+                  Includes 0.10 USDC protocol fee
                 </div>
               </div>
               <button
