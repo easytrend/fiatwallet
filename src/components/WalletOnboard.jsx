@@ -5,6 +5,8 @@ import * as bip39 from 'bip39';
 import bs58 from 'bs58';
 import { createNewWallet, importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { encryptVault, saveVaultToStorage, saveWalletMeta } from '../services/walletVault';
+import { initiateSession, verifySession, getEffectiveApiKey } from '../services/pajcashService';
+import { saveSession } from '../services/supabase';
 import logoImg from '../assets/logo.png';
 
 export default function WalletOnboard({ onWalletReady, onConnectExternal, onContinueGuest, initialScreen = 'onboard', onClose }) {
@@ -49,6 +51,96 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
   const [tinyNote, setTinyNote] = useState(null);
   const tinyNoteTimerRef = useRef(null);
   const [showGuestNote, setShowGuestNote] = useState(false);
+  // Guest Mode Email Verification state
+  const [guestAuthStep, setGuestAuthStep] = useState('intro'); // 'intro' | 'email' | 'otp' | 'verified'
+  const [guestEmailInput, setGuestEmailInput] = useState(() => {
+    try { return localStorage.getItem('paj_manual_sessionEmail') || ''; } catch { return ''; }
+  });
+  const [guestOtpInput, setGuestOtpInput] = useState('');
+  const [guestAuthLoading, setGuestAuthLoading] = useState(false);
+  const [guestAuthError, setGuestAuthError] = useState('');
+
+  const handleOpenGuestModal = () => {
+    const cachedEmail = localStorage.getItem('paj_manual_sessionEmail');
+    const cachedToken = localStorage.getItem('paj_manual_sessionToken');
+    const cachedExpiry = localStorage.getItem('paj_manual_sessionExpiry');
+    if (cachedEmail && cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+      setGuestEmailInput(cachedEmail);
+      setGuestAuthStep('verified');
+    } else {
+      setGuestAuthStep('intro');
+    }
+    setGuestAuthError('');
+    setShowGuestNote(true);
+  };
+
+  const handleInitiateGuestEmail = async () => {
+    const cleanEmail = guestEmailInput.trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setGuestAuthError('Please enter a valid email address.');
+      return;
+    }
+    const apiKey = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+    if (!apiKey) {
+      setGuestAuthError('PajCash service configuration missing.');
+      return;
+    }
+
+    setGuestAuthLoading(true);
+    setGuestAuthError('');
+    try {
+      await initiateSession(cleanEmail, apiKey);
+      setGuestAuthStep('otp');
+    } catch (err) {
+      setGuestAuthError(err.message || 'Failed to send verification code. Please check your email.');
+    } finally {
+      setGuestAuthLoading(false);
+    }
+  };
+
+  const handleVerifyGuestEmail = async () => {
+    const cleanOtp = guestOtpInput.trim();
+    if (!cleanOtp || cleanOtp.length < 4) {
+      setGuestAuthError('Please enter the OTP verification code.');
+      return;
+    }
+    const apiKey = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+    if (!apiKey) {
+      setGuestAuthError('PajCash service configuration missing.');
+      return;
+    }
+
+    setGuestAuthLoading(true);
+    setGuestAuthError('');
+    try {
+      const res = await verifySession(guestEmailInput.trim(), cleanOtp, apiKey);
+      if (res?.token) {
+        const token = res.token;
+        const email = guestEmailInput.trim();
+        const expiryMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+
+        localStorage.setItem('paj_manual_sessionToken', token);
+        localStorage.setItem('paj_manual_sessionEmail', email);
+        localStorage.setItem('paj_manual_sessionExpiry', String(expiryMs));
+
+        let guestWallet = localStorage.getItem('paj_manual_wallet');
+        if (!guestWallet) {
+          guestWallet = 'guest_' + Math.random().toString(36).slice(2, 12);
+          localStorage.setItem('paj_manual_wallet', guestWallet);
+        }
+
+        saveSession(guestWallet, email, token, expiryMs);
+        setShowGuestNote(false);
+        if (onContinueGuest) onContinueGuest({ email, token, guestWallet });
+      } else {
+        setGuestAuthError('Verification succeeded but no session token was returned.');
+      }
+    } catch (err) {
+      setGuestAuthError(err.message || 'Verification failed. Please check the code.');
+    } finally {
+      setGuestAuthLoading(false);
+    }
+  };
 
   const showTinyNote = (text, type = 'info', autoCloseMs = 2000) => {
     if (tinyNoteTimerRef.current) clearTimeout(tinyNoteTimerRef.current);
@@ -115,6 +207,8 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
   useEffect(() => {
     if (initialScreen === 'create' || initialScreen === 'create-edu') {
       handleStartCreate();
+    } else if (initialScreen === 'guest') {
+      handleOpenGuestModal();
     }
   }, [initialScreen]);
 
@@ -507,13 +601,13 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
                 e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
               }}
-              onClick={() => setShowGuestNote(true)}
+              onClick={handleOpenGuestModal}
             >
               Guest mode
             </button>
           </div>
 
-          {/* Guest Mode Pop Up Card Note */}
+          {/* Guest Mode Email Verification Modal */}
           {showGuestNote && (
             <div
               style={{
@@ -531,8 +625,8 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                   background: 'linear-gradient(160deg, rgba(22,22,22,0.98) 0%, rgba(12,12,12,0.99) 100%)',
                   border: '1px solid rgba(163,230,53,0.25)',
                   borderRadius: '20px',
-                  padding: '28px 24px',
-                  maxWidth: '360px',
+                  padding: '26px 22px',
+                  maxWidth: '380px',
                   width: '100%',
                   boxShadow: '0 0 40px rgba(163,230,53,0.12), 0 20px 60px rgba(0,0,0,0.6)',
                   textAlign: 'left',
@@ -545,96 +639,285 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                     background: 'rgba(163,230,53,0.12)',
                     border: '1px solid rgba(163,230,53,0.3)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#a3e635', fontSize: '24px', fontWeight: '900', lineHeight: 1, flexShrink: 0,
+                    color: '#a3e635', fontSize: '20px', fontWeight: '900', lineHeight: 1, flexShrink: 0,
                   }}>•</div>
                   <div>
-                    <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>Welcome to Guest Room</div>
-                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '1px' }}>No wallet needed to get started</div>
+                    <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>Guest Mode</div>
+                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '1px' }}>
+                      {guestAuthStep === 'otp' ? 'Enter verification code' : guestAuthStep === 'email' ? 'Email verification required' : guestAuthStep === 'verified' ? 'Verified session active' : 'No wallet connection required'}
+                    </div>
                   </div>
                 </div>
 
-                {/* Free features */}
-                <div style={{
-                  background: 'rgba(163,230,53,0.05)',
-                  border: '1px solid rgba(163,230,53,0.15)',
-                  borderRadius: '12px', padding: '14px', marginBottom: '14px',
-                }}>
-                  <div style={{ color: '#a3e635', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
-                    <span>Available without wallet</span>
-                  </div>
-                  {[
-                    ['Offramp', 'Convert crypto to cash — no wallet connect needed'],
-                    ['Onramp', 'Receive crypto straight to any Solana address'],
-                  ].map(([title, desc]) => (
-                    <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
-                      <span style={{ color: '#a3e635', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
-                      <div>
-                        <div style={{ color: 'white', fontWeight: '700', fontSize: '12px' }}>{title}</div>
-                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                {guestAuthStep === 'intro' && (
+                  <>
+                    {/* Free features */}
+                    <div style={{
+                      background: 'rgba(163,230,53,0.05)',
+                      border: '1px solid rgba(163,230,53,0.15)',
+                      borderRadius: '12px', padding: '12px', marginBottom: '12px',
+                    }}>
+                      <div style={{ color: '#a3e635', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>Available in Guest Mode</span>
+                      </div>
+                      {[
+                        ['Offramp', 'Convert crypto to cash — no wallet connect needed'],
+                        ['Onramp', 'Receive crypto straight to any Solana address'],
+                      ].map(([title, desc]) => (
+                        <div key={title} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '6px' }}>
+                          <span style={{ color: '#a3e635', fontSize: '14px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
+                          <div>
+                            <div style={{ color: 'white', fontWeight: '700', fontSize: '12px' }}>{title}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', lineHeight: '1.3' }}>{desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Notice */}
+                    <div style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px', padding: '12px', marginBottom: '18px',
+                    }}>
+                      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', lineHeight: '1.5' }}>
+                        To prevent fraud and securely track your P2P orders, please verify your email with a one-time code.
                       </div>
                     </div>
-                  ))}
-                </div>
 
-                {/* Wallet-required features */}
-                <div style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '12px', padding: '14px', marginBottom: '20px',
-                }}>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
-                    <span>Requires wallet connection</span>
-                  </div>
-                  {[
-                    ['Recovered SOL', 'Reclaim dust & rent-exempt SOL'],
-                    ['Claim CashBack', 'Claim cashback earn from pumpfun'],
-                    ['Swap', 'Instant token swaps on-chain'],
-                    ['Bulk / Single Send', 'Send tokens to multiple wallets'],
-                    ['Future Integrations', 'More DeFi tools coming soon'],
-                  ].map(([title, desc]) => (
-                    <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
-                      <div>
-                        <div style={{ color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: '12px' }}>{title}</div>
-                        <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
-                      </div>
+                    <button
+                      onClick={() => {
+                        setGuestAuthError('');
+                        setGuestAuthStep('email');
+                      }}
+                      style={{
+                        width: '100%', background: '#a3e635',
+                        border: 'none', borderRadius: '12px',
+                        color: '#000', fontWeight: '800', fontSize: '13px',
+                        padding: '13px', cursor: 'pointer',
+                        transition: 'opacity 0.2s',
+                        textAlign: 'center',
+                        fontFamily: 'var(--ff)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                    >
+                      Verify Email to Continue
+                    </button>
+                    <button
+                      onClick={() => setShowGuestNote(false)}
+                      style={{
+                        width: '100%', background: 'transparent', border: 'none',
+                        color: 'rgba(255,255,255,0.35)', fontSize: '11px',
+                        padding: '10px', cursor: 'pointer', marginTop: '6px',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+
+                {guestAuthStep === 'email' && (
+                  <>
+                    <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '12px', lineHeight: '1.4', marginBottom: '14px' }}>
+                      Enter your email to receive a 6-digit verification code.
                     </div>
-                  ))}
-                </div>
 
-                {/* CTA Button: Continue */}
-                <button
-                  onClick={() => {
-                    setShowGuestNote(false);
-                    if (onContinueGuest) onContinueGuest();
-                  }}
-                  style={{
-                    width: '100%', background: '#a3e635',
-                    border: 'none', borderRadius: '12px',
-                    color: '#000', fontWeight: '800', fontSize: '13px',
-                    padding: '12px', cursor: 'pointer',
-                    transition: 'opacity 0.2s',
-                    textAlign: 'center',
-                    fontFamily: 'var(--ff)',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                >
-                  Continue
-                </button>
-                <button
-                  onClick={() => setShowGuestNote(false)}
-                  style={{
-                    width: '100%', background: 'transparent', border: 'none',
-                    color: 'rgba(255,255,255,0.35)', fontSize: '11px',
-                    padding: '10px', cursor: 'pointer', marginTop: '6px',
-                    textAlign: 'center', fontFamily: 'var(--ff)',
-                  }}
-                >
-                  Dismiss
-                </button>
+                    <div style={{ marginBottom: '14px' }}>
+                      <input
+                        type="email"
+                        value={guestEmailInput}
+                        onChange={(e) => setGuestEmailInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleInitiateGuestEmail(); }}
+                        placeholder="you@example.com"
+                        style={{
+                          width: '100%', boxSizing: 'border-box',
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(163,230,53,0.3)',
+                          borderRadius: '12px', padding: '12px 14px',
+                          color: '#fff', fontSize: '14px', outline: 'none',
+                          fontFamily: 'var(--ff)',
+                        }}
+                        autoFocus
+                      />
+                    </div>
+
+                    {guestAuthError && (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)',
+                        borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#f87171',
+                        marginBottom: '14px', lineHeight: '1.4'
+                      }}>
+                        ✕ {guestAuthError}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleInitiateGuestEmail}
+                      disabled={guestAuthLoading || !guestEmailInput.trim()}
+                      style={{
+                        width: '100%', background: '#a3e635',
+                        border: 'none', borderRadius: '12px',
+                        color: '#000', fontWeight: '800', fontSize: '13px',
+                        padding: '13px', cursor: guestAuthLoading || !guestEmailInput.trim() ? 'not-allowed' : 'pointer',
+                        opacity: guestAuthLoading || !guestEmailInput.trim() ? 0.6 : 1,
+                        transition: 'opacity 0.2s',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                    >
+                      {guestAuthLoading ? 'Sending code...' : 'Send Verification Code'}
+                    </button>
+
+                    <button
+                      onClick={() => { setGuestAuthError(''); setGuestAuthStep('intro'); }}
+                      style={{
+                        width: '100%', background: 'transparent', border: 'none',
+                        color: 'rgba(255,255,255,0.35)', fontSize: '11px',
+                        padding: '10px', cursor: 'pointer', marginTop: '6px',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                    >
+                      Back
+                    </button>
+                  </>
+                )}
+
+                {guestAuthStep === 'otp' && (
+                  <>
+                    <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '12px', lineHeight: '1.4', marginBottom: '14px' }}>
+                      Enter the 6-digit code sent to <span style={{ color: '#fff', fontWeight: '600' }}>{guestEmailInput}</span>
+                    </div>
+
+                    <div style={{ marginBottom: '14px' }}>
+                      <input
+                        type="text"
+                        value={guestOtpInput}
+                        onChange={(e) => setGuestOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyGuestEmail(); }}
+                        placeholder="123456"
+                        style={{
+                          width: '100%', boxSizing: 'border-box',
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(163,230,53,0.3)',
+                          borderRadius: '12px', padding: '12px 14px',
+                          color: '#fff', fontSize: '20px', letterSpacing: '0.25em',
+                          textAlign: 'center', outline: 'none',
+                          fontFamily: 'var(--mono, monospace)',
+                        }}
+                        autoFocus
+                      />
+                    </div>
+
+                    {guestAuthError && (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)',
+                        borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#f87171',
+                        marginBottom: '14px', lineHeight: '1.4'
+                      }}>
+                        ✕ {guestAuthError}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleVerifyGuestEmail}
+                      disabled={guestAuthLoading || guestOtpInput.trim().length < 4}
+                      style={{
+                        width: '100%', background: '#a3e635',
+                        border: 'none', borderRadius: '12px',
+                        color: '#000', fontWeight: '800', fontSize: '13px',
+                        padding: '13px', cursor: guestAuthLoading || guestOtpInput.trim().length < 4 ? 'not-allowed' : 'pointer',
+                        opacity: guestAuthLoading || guestOtpInput.trim().length < 4 ? 0.6 : 1,
+                        transition: 'opacity 0.2s',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                    >
+                      {guestAuthLoading ? 'Verifying...' : 'Verify & Enter Guest Mode'}
+                    </button>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                      <button
+                        onClick={handleInitiateGuestEmail}
+                        disabled={guestAuthLoading}
+                        style={{
+                          background: 'transparent', border: 'none',
+                          color: '#a3e635', fontSize: '11px',
+                          padding: '6px', cursor: 'pointer', fontFamily: 'var(--ff)',
+                        }}
+                      >
+                        Resend code
+                      </button>
+                      <button
+                        onClick={() => { setGuestAuthError(''); setGuestAuthStep('email'); }}
+                        style={{
+                          background: 'transparent', border: 'none',
+                          color: 'rgba(255,255,255,0.4)', fontSize: '11px',
+                          padding: '6px', cursor: 'pointer', fontFamily: 'var(--ff)',
+                        }}
+                      >
+                        Change email
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {guestAuthStep === 'verified' && (
+                  <>
+                    <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '12px', lineHeight: '1.4', marginBottom: '14px' }}>
+                      Your email is verified for Guest Mode on this device.
+                    </div>
+
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      background: 'rgba(163,230,53,0.08)', border: '1px solid rgba(163,230,53,0.3)',
+                      borderRadius: '12px', padding: '10px 14px', marginBottom: '18px',
+                    }}>
+                      <span style={{ color: '#a3e635', fontWeight: 'bold' }}>✓</span>
+                      <span style={{ color: '#fff', fontSize: '13px', fontWeight: '600', wordBreak: 'break-all' }}>{guestEmailInput}</span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setShowGuestNote(false);
+                        const token = localStorage.getItem('paj_manual_sessionToken');
+                        const email = guestEmailInput || localStorage.getItem('paj_manual_sessionEmail');
+                        const guestWallet = localStorage.getItem('paj_manual_wallet');
+                        if (onContinueGuest) onContinueGuest({ email, token, guestWallet });
+                      }}
+                      style={{
+                        width: '100%', background: '#a3e635',
+                        border: 'none', borderRadius: '12px',
+                        color: '#000', fontWeight: '800', fontSize: '13px',
+                        padding: '13px', cursor: 'pointer',
+                        transition: 'opacity 0.2s',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                    >
+                      Enter Guest Mode
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('paj_manual_sessionToken');
+                        localStorage.removeItem('paj_manual_sessionEmail');
+                        localStorage.removeItem('paj_manual_sessionExpiry');
+                        setGuestEmailInput('');
+                        setGuestOtpInput('');
+                        setGuestAuthStep('email');
+                      }}
+                      style={{
+                        width: '100%', background: 'transparent', border: 'none',
+                        color: 'rgba(255,255,255,0.4)', fontSize: '11px',
+                        padding: '10px', cursor: 'pointer', marginTop: '6px',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                    >
+                      Use a different email
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}

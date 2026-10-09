@@ -1395,9 +1395,16 @@ export default function App() {
             setVisible(true);
           }}
           onContinueGuest={() => {
-            setIsGuestMode(true);
-            setGuestBypass(true);
-            setActiveTab('p2p');
+            const cachedEmail = localStorage.getItem('paj_manual_sessionEmail');
+            const cachedToken = localStorage.getItem('paj_manual_sessionToken');
+            const cachedExpiry = localStorage.getItem('paj_manual_sessionExpiry');
+            if (cachedEmail && cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+              setIsGuestMode(true);
+              setGuestBypass(true);
+              setActiveTab('p2p');
+            } else {
+              setShowOnboardModal('guest');
+            }
           }}
         />
       </div>
@@ -1423,10 +1430,15 @@ export default function App() {
           onConnectExternal={() => {
             setVisible(true);
           }}
-          onContinueGuest={() => {
-            setIsGuestMode(true);
-            setGuestBypass(true);
-            setActiveTab('p2p');
+          onContinueGuest={(guestData) => {
+            const email = guestData?.email || localStorage.getItem('paj_manual_sessionEmail');
+            const token = guestData?.token || localStorage.getItem('paj_manual_sessionToken');
+            const expiry = localStorage.getItem('paj_manual_sessionExpiry');
+            if (email && token && (!expiry || Date.now() < Number(expiry))) {
+              setIsGuestMode(true);
+              setGuestBypass(true);
+              setActiveTab('p2p');
+            }
           }}
         />
       </div>
@@ -2372,7 +2384,7 @@ export default function App() {
         >
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', margin: 'auto' }}>
             <WalletOnboard
-              initialScreen={showOnboardModal === 'import' ? 'import-choose' : (showOnboardModal === 'create' ? 'create-edu' : 'onboard')}
+              initialScreen={showOnboardModal === 'import' ? 'import-choose' : (showOnboardModal === 'create' ? 'create-edu' : (showOnboardModal === 'guest' ? 'guest' : 'onboard'))}
               onClose={() => setShowOnboardModal(null)}
               onWalletReady={(walletData) => {
                 internalWallet.activate(walletData);
@@ -2389,11 +2401,16 @@ export default function App() {
                 setShowOnboardModal(null);
                 setVisible(true);
               }}
-              onContinueGuest={() => {
-                setShowOnboardModal(null);
-                setIsGuestMode(true);
-                setGuestBypass(true);
-                setActiveTab('p2p');
+              onContinueGuest={(guestData) => {
+                const email = guestData?.email || localStorage.getItem('paj_manual_sessionEmail');
+                const token = guestData?.token || localStorage.getItem('paj_manual_sessionToken');
+                const expiry = localStorage.getItem('paj_manual_sessionExpiry');
+                if (email && token && (!expiry || Date.now() < Number(expiry))) {
+                  setShowOnboardModal(null);
+                  setIsGuestMode(true);
+                  setGuestBypass(true);
+                  setActiveTab('p2p');
+                }
               }}
             />
           </div>
