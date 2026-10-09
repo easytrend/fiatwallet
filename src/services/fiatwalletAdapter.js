@@ -59,23 +59,50 @@ export class FiatWalletAdapter extends BaseSignerWalletAdapter {
         return;
       }
 
-      // Vault is locked or not yet created.
-      // Signal the React UI to show the appropriate screen, then return cleanly.
-      // The app uses effectiveConnected = internalWallet.isActive, so the UI
-      // will show the wallet dashboard after the user unlocks/creates — no adapter
-      // emit needed for the internal flow.
+      // Determine if running inside the native Android APK vs in a mobile web browser
+      const isNativeApp = typeof window !== 'undefined' && (
+        Boolean(window.Capacitor?.isNativePlatform?.()) ||
+        window.location.protocol === 'capacitor:' ||
+        window.location.hostname === 'localhost' ||
+        Boolean(window.FiatWalletBridge) ||
+        Boolean(window.Android)
+      );
+
       const hasVaultStored =
         typeof localStorage !== 'undefined' && !!localStorage.getItem('fw_vault_v1');
       const storedPubKey =
         typeof localStorage !== 'undefined' ? localStorage.getItem('fw_wallet_pubkey') : null;
 
       if (typeof window !== 'undefined') {
-        if (hasVaultStored && storedPubKey) {
-          // Returning user — vault is locked, show PIN unlock screen
-          window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-unlock'));
+        if (isNativeApp) {
+          // Inside native app:
+          if (hasVaultStored && storedPubKey) {
+            window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-unlock'));
+          } else {
+            window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-onboard'));
+          }
         } else {
-          // New user — no vault yet, show onboarding
-          window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-onboard'));
+          // On mobile web browser (e.g. Chrome on Android as shown in Image 3):
+          const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
+          if (isMobile) {
+            // Attempt to open the installed native APK via custom scheme
+            const launchStart = Date.now();
+            window.location.href = 'fiatwallet://connect';
+
+            // If the document is still visible after 1500ms, the APK is not installed on this device
+            setTimeout(() => {
+              if (document.visibilityState === 'visible' && (Date.now() - launchStart < 4000)) {
+                window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-install'));
+              }
+            }, 1500);
+          } else {
+            // On desktop web:
+            if (hasVaultStored && storedPubKey) {
+              window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-unlock'));
+            } else {
+              window.dispatchEvent(new CustomEvent('fiatwallet:adapter-needs-install'));
+            }
+          }
         }
       }
 

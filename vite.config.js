@@ -23,18 +23,27 @@ function buildVersionPlugin() {
   };
 }
 
-// Patches the upstream @solana-mobile hang bug where connection cancellation awaits an unresolved promise.
 function patchMwaPlugin() {
   return {
     name: 'patch-mwa-plugin',
     transform(code, id) {
-      if (id.includes('wallet-standard-mobile') && code.includes('currentConnectionGeneration) await new Promise')) {
-        return {
-          code: code.replace(/if\s*\(this\.#connectionGeneration\s*!==\s*currentConnectionGeneration\)\s*await\s+new\s+Promise\(\(\)\s*=>\s*\{\}\);/g, 'if (this.#connectionGeneration !== currentConnectionGeneration) return;'),
-          map: null,
-        };
+      let modified = code;
+      let changed = false;
+      if (id.includes('wallet-standard-mobile')) {
+        if (modified.includes('currentConnectionGeneration) await new Promise')) {
+          modified = modified.replace(/if\s*\(this\.#connectionGeneration\s*!==\s*currentConnectionGeneration\)\s*await\s+new\s+Promise\(\(\)\s*=>\s*\{\}\);/g, 'if (this.#connectionGeneration !== currentConnectionGeneration) return;');
+          changed = true;
+        }
+        if (modified.includes('window.addEventListener("load", this.close);') && !modified.includes('focus-fast-cancel')) {
+          modified = modified.replace('window.addEventListener("load", this.close);', 'window.addEventListener("load", this.close); /* focus-fast-cancel */ if (typeof window !== "undefined") window.addEventListener("focus", () => { setTimeout(() => { if (document.visibilityState === "visible") this.close(new Event("close")); }, 600); });');
+          changed = true;
+        }
       }
-      return null;
+      if (id.includes('mobile-wallet-adapter-protocol') && modified.includes('reject(); }, 3e3);')) {
+        modified = modified.replace(/reject\(\);\s*\}\s*,\s*3e3\);/g, 'reject(); }, 800);');
+        changed = true;
+      }
+      return changed ? { code: modified, map: null } : null;
     }
   };
 }

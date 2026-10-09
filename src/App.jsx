@@ -308,6 +308,7 @@ export default function App() {
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [walletApprovalRequest, setWalletApprovalRequest] = useState(null);
+  const [showApkInstallModal, setShowApkInstallModal] = useState(false);
 
   // Unified wallet connection state
   const isFiatWalletAdapter = wallet?.adapter?.name === 'FiatWallet';
@@ -390,6 +391,7 @@ export default function App() {
     };
     const handleOpenUnlock = () => {
       setVisible(false);
+      setShowOnboardModal(null);
       setGuestBypass(false);
     };
 
@@ -397,23 +399,32 @@ export default function App() {
     const handleAdapterNeedsUnlock = () => {
       // User selected FiatWallet in adapter modal; vault exists but is locked
       setVisible(false);
+      setShowOnboardModal(null);
       setGuestBypass(false); // clears guestBypass so needsUnlock becomes true
     };
     const handleAdapterNeedsOnboard = () => {
       // User selected FiatWallet in adapter modal; no vault yet — start onboarding
       setVisible(false);
-      setShowOnboardModal('choose');
+      setShowOnboardModal('create');
+    };
+    const handleAdapterNeedsInstall = () => {
+      // User selected FiatWallet on mobile web browser without APK detected
+      setVisible(false);
+      setShowOnboardModal(null);
+      setShowApkInstallModal(true);
     };
 
     window.addEventListener('fiatwallet:open-onboard', handleOpenOnboard);
     window.addEventListener('fiatwallet:open-unlock', handleOpenUnlock);
     window.addEventListener('fiatwallet:adapter-needs-unlock', handleAdapterNeedsUnlock);
     window.addEventListener('fiatwallet:adapter-needs-onboard', handleAdapterNeedsOnboard);
+    window.addEventListener('fiatwallet:adapter-needs-install', handleAdapterNeedsInstall);
     return () => {
       window.removeEventListener('fiatwallet:open-onboard', handleOpenOnboard);
       window.removeEventListener('fiatwallet:open-unlock', handleOpenUnlock);
       window.removeEventListener('fiatwallet:adapter-needs-unlock', handleAdapterNeedsUnlock);
       window.removeEventListener('fiatwallet:adapter-needs-onboard', handleAdapterNeedsOnboard);
+      window.removeEventListener('fiatwallet:adapter-needs-install', handleAdapterNeedsInstall);
     };
   }, [setVisible]);
 
@@ -462,14 +473,18 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('wallet');
 
-  // When user connects wallet, clear guest mode and bypass, and automatically show the wallet dashboard
+  // When user connects wallet, clear guest mode and bypass, close all overlays, and show wallet dashboard
   useEffect(() => {
-    if (effectiveConnected) {
+    if (effectiveConnected || connected) {
       setIsGuestMode(false);
       setGuestBypass(false);
+      setShowOnboardModal(null);
+      setShowConnectModal(false);
+      setShowApkInstallModal(false);
+      setVisible(false);
       setActiveTab('wallet');
     }
-  }, [effectiveConnected]);
+  }, [effectiveConnected, connected, setVisible]);
 
   const [showModal, setShowModal] = useState(false);
 
@@ -2253,6 +2268,91 @@ export default function App() {
                   </div>
                 </div>
                 <span style={{ color: 'var(--text3)' }}>→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── APK Install Prompt Modal (Shown when FiatWallet selected on web without APK) ── */}
+      {showApkInstallModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1047,
+            background: 'rgba(5, 11, 20, 0.85)', backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+          }}
+          onClick={() => setShowApkInstallModal(false)}
+        >
+          <div
+            style={{
+              position: 'relative',
+              background: 'var(--card, #111e38)',
+              border: '1px solid var(--border2, rgba(255,255,255,0.16))',
+              borderRadius: '24px',
+              padding: '32px 24px',
+              maxWidth: '380px',
+              width: '100%',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(163, 230, 53, 0.1)',
+              fontFamily: 'var(--ff, sans-serif)',
+              textAlign: 'center',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowApkInstallModal(false)}
+              style={{
+                position: 'absolute', top: '16px', right: '16px',
+                background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
+                borderRadius: '50%', width: '32px', height: '32px',
+                color: 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '14px', lineHeight: 1
+              }}
+              title="Close"
+            >
+              ✕
+            </button>
+
+            <img src={logoImg} alt="FiatWallet" style={{ width: '56px', height: '56px', objectFit: 'contain', marginBottom: '14px' }} />
+            <h3 style={{ fontSize: '20px', fontWeight: '800', color: 'white', marginBottom: '8px' }}>
+              FiatWallet App
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text2)', marginBottom: '22px', lineHeight: '1.5' }}>
+              FiatWallet native app was not detected on this device. Install the APK for self-custodial seed vault integration, or continue on web.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  setShowApkInstallModal(false);
+                  handleDownloadApk();
+                }}
+                style={{
+                  width: '100%', padding: '14px 16px',
+                  background: 'linear-gradient(135deg, #a3e635, #84cc16)',
+                  border: 'none', borderRadius: '14px',
+                  color: '#0a1628', fontSize: '14px', fontWeight: '800',
+                  cursor: 'pointer', fontFamily: 'var(--ff)',
+                  boxShadow: '0 4px 14px rgba(163, 230, 53, 0.35)',
+                }}
+              >
+                Download FiatWallet APK
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowApkInstallModal(false);
+                  setShowOnboardModal('create');
+                }}
+                style={{
+                  width: '100%', padding: '12px 16px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid var(--border)', borderRadius: '14px',
+                  color: 'var(--text)', fontSize: '13px', fontWeight: '600',
+                  cursor: 'pointer', fontFamily: 'var(--ff)',
+                }}
+              >
+                Continue on Web
               </button>
             </div>
           </div>
