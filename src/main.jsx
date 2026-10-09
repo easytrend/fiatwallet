@@ -197,19 +197,22 @@ function Root() {
 
   const handleWalletError = useCallback((error, adapter) => {
     console.warn(`Wallet adapter error (${adapter?.name || 'unknown'}):`, error?.message || error);
-    try {
-      localStorage.removeItem('walletName');
-      sessionStorage.removeItem('walletName');
-    } catch {}
-  }, []);
-
-  const shouldAutoConnect = useCallback((adapter) => {
-    return adapter?.name === 'FiatWallet';
+    if (
+      error?.name === 'WalletConnectionError' ||
+      error?.name === 'WalletNotConnectedError' ||
+      error?.name === 'WalletNotReadyError' ||
+      error?.message?.toLowerCase().includes('cancel') ||
+      error?.message?.toLowerCase().includes('reject')
+    ) {
+      try {
+        localStorage.removeItem('walletName');
+      } catch {}
+    }
   }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={shouldAutoConnect} onError={handleWalletError}>
+      <WalletProvider wallets={wallets} autoConnect onError={handleWalletError}>
         <WalletModalProvider>
           <ErrorBoundary>
             <App />
