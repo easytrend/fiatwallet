@@ -54,7 +54,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
   const [showGuestNote, setShowGuestNote] = useState(false);
 
   // Guest Mode State
-  const [guestStep, setGuestStep] = useState('wallet'); // 'wallet' | 'reinstated' | 'email' | 'otp'
+  const [guestStep, setGuestStep] = useState('intro'); // 'intro' | 'wallet' | 'reinstated' | 'email' | 'otp'
   const [guestWalletInput, setGuestWalletInput] = useState(() => {
     try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
   });
@@ -68,25 +68,8 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
   const [showTagCreateModal, setShowTagCreateModal] = useState(false);
 
   const handleOpenGuestModal = () => {
-    const cachedWallet = localStorage.getItem('paj_manual_wallet');
-    const cachedEmail = localStorage.getItem('paj_manual_sessionEmail');
-    const cachedToken = localStorage.getItem('paj_manual_sessionToken');
-    const cachedExpiry = localStorage.getItem('paj_manual_sessionExpiry');
-
-    if (cachedWallet && cachedEmail && cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
-      setGuestWalletInput(cachedWallet);
-      setGuestEmailInput(cachedEmail);
-      setReinstatedDetails({
-        wallet: cachedWallet,
-        email: cachedEmail,
-        tag: '',
-        token: cachedToken,
-      });
-      setGuestStep('reinstated');
-    } else {
-      setGuestStep('wallet');
-    }
     setGuestError('');
+    setGuestStep('intro');
     setShowGuestNote(true);
   };
 
@@ -724,15 +707,105 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                     color: '#a3e635', fontSize: '20px', fontWeight: '900', lineHeight: 1, flexShrink: 0,
                   }}>•</div>
                   <div>
-                    <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>Guest Mode</div>
+                    <div style={{ color: '#a3e635', fontWeight: '800', fontSize: '15px' }}>
+                      {guestStep === 'intro' ? 'Welcome to Guest Room' : 'Guest Mode'}
+                    </div>
                     <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', marginTop: '1px' }}>
-                      {guestStep === 'wallet' ? 'Lookup or link your Solana address' :
+                      {guestStep === 'intro' ? 'No wallet needed to get started' :
+                       guestStep === 'wallet' ? 'Lookup or link your Solana address' :
                        guestStep === 'reinstated' ? 'Existing account restored' :
                        guestStep === 'email' ? 'Verify email to link address' :
                        'Enter 4-digit verification code'}
                     </div>
                   </div>
                 </div>
+
+                {/* STEP 0: Welcome to Guest Room Card */}
+                {guestStep === 'intro' && (
+                  <>
+                    {/* Free features */}
+                    <div style={{
+                      background: 'rgba(163,230,53,0.05)',
+                      border: '1px solid rgba(163,230,53,0.15)',
+                      borderRadius: '12px', padding: '14px', marginBottom: '14px',
+                    }}>
+                      <div style={{ color: '#a3e635', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
+                        <span>Available without wallet</span>
+                      </div>
+                      {[
+                        ['Offramp', 'Convert crypto to cash — no wallet connect needed'],
+                        ['Onramp', 'Receive crypto straight to any Solana address'],
+                      ].map(([title, desc]) => (
+                        <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <span style={{ color: '#a3e635', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
+                          <div>
+                            <div style={{ color: 'white', fontWeight: '700', fontSize: '12px' }}>{title}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Wallet-required features */}
+                    <div style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px', padding: '14px', marginBottom: '20px',
+                    }}>
+                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>•</span>
+                        <span>Requires wallet connection</span>
+                      </div>
+                      {[
+                        ['Recovered SOL', 'Reclaim dust & rent-exempt SOL'],
+                        ['Claim CashBack', 'Claim cashback earn from pumpfun'],
+                        ['Swap', 'Instant token swaps on-chain'],
+                        ['Bulk / Single Send', 'Send tokens to multiple wallets'],
+                        ['Future Integrations', 'More DeFi tools coming soon'],
+                      ].map(([title, desc]) => (
+                        <div key={title} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '16px', fontWeight: '900', lineHeight: '14px', flexShrink: 0, marginTop: '2px' }}>•</span>
+                          <div>
+                            <div style={{ color: 'rgba(255,255,255,0.75)', fontWeight: '600', fontSize: '12px' }}>{title}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', lineHeight: '1.4' }}>{desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setGuestError('');
+                        setGuestStep('wallet');
+                      }}
+                      style={{
+                        width: '100%', background: '#a3e635',
+                        border: 'none', borderRadius: '12px',
+                        color: '#000', fontWeight: '800', fontSize: '13px',
+                        padding: '12px', cursor: 'pointer',
+                        transition: 'opacity 0.2s',
+                        textAlign: 'center',
+                        fontFamily: 'var(--ff)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                    >
+                      Continue
+                    </button>
+                    <button
+                      onClick={() => setShowGuestNote(false)}
+                      style={{
+                        width: '100%', background: 'transparent', border: 'none',
+                        color: 'rgba(255,255,255,0.35)', fontSize: '11px',
+                        padding: '10px', cursor: 'pointer', marginTop: '6px',
+                        textAlign: 'center', fontFamily: 'var(--ff)',
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </>
+                )}
 
                 {/* STEP 1: Enter Solana Wallet Address & Check */}
                 {guestStep === 'wallet' && (
@@ -789,17 +862,30 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
                       {guestLoading ? 'Checking account...' : 'Check Account'}
                     </button>
 
-                    <button
-                      onClick={() => setShowGuestNote(false)}
-                      style={{
-                        width: '100%', background: 'transparent', border: 'none',
-                        color: 'rgba(255,255,255,0.35)', fontSize: '11px',
-                        padding: '10px', cursor: 'pointer', marginTop: '6px',
-                        textAlign: 'center', fontFamily: 'var(--ff)',
-                      }}
-                    >
-                      Dismiss
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                      <button
+                        onClick={() => { setGuestError(''); setGuestStep('intro'); }}
+                        style={{
+                          flex: 1, background: 'transparent', border: 'none',
+                          color: 'rgba(255,255,255,0.4)', fontSize: '11px',
+                          padding: '10px', cursor: 'pointer',
+                          textAlign: 'center', fontFamily: 'var(--ff)',
+                        }}
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        onClick={() => setShowGuestNote(false)}
+                        style={{
+                          flex: 1, background: 'transparent', border: 'none',
+                          color: 'rgba(255,255,255,0.35)', fontSize: '11px',
+                          padding: '10px', cursor: 'pointer',
+                          textAlign: 'center', fontFamily: 'var(--ff)',
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
                   </>
                 )}
 
