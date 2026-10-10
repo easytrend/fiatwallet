@@ -1395,10 +1395,10 @@ export default function App() {
             setVisible(true);
           }}
           onContinueGuest={(guestData) => {
-            const email = guestData?.email || localStorage.getItem('paj_manual_sessionEmail');
+            const guestWallet = guestData?.guestWallet || localStorage.getItem('paj_manual_wallet');
             const token = guestData?.token || localStorage.getItem('paj_manual_sessionToken');
             const expiry = localStorage.getItem('paj_manual_sessionExpiry');
-            if (email && token && (!expiry || Date.now() < Number(expiry))) {
+            if (guestWallet && ((token && (!expiry || Date.now() < Number(expiry))) || guestData?.guestWallet)) {
               setIsGuestMode(true);
               setGuestBypass(true);
               setActiveTab('p2p');
@@ -1431,10 +1431,10 @@ export default function App() {
             setVisible(true);
           }}
           onContinueGuest={(guestData) => {
-            const email = guestData?.email || localStorage.getItem('paj_manual_sessionEmail');
+            const guestWallet = guestData?.guestWallet || localStorage.getItem('paj_manual_wallet');
             const token = guestData?.token || localStorage.getItem('paj_manual_sessionToken');
             const expiry = localStorage.getItem('paj_manual_sessionExpiry');
-            if (email && token && (!expiry || Date.now() < Number(expiry))) {
+            if (guestWallet && ((token && (!expiry || Date.now() < Number(expiry))) || guestData?.guestWallet)) {
               setIsGuestMode(true);
               setGuestBypass(true);
               setActiveTab('p2p');
@@ -2402,10 +2402,10 @@ export default function App() {
                 setVisible(true);
               }}
               onContinueGuest={(guestData) => {
-                const email = guestData?.email || localStorage.getItem('paj_manual_sessionEmail');
+                const guestWallet = guestData?.guestWallet || localStorage.getItem('paj_manual_wallet');
                 const token = guestData?.token || localStorage.getItem('paj_manual_sessionToken');
                 const expiry = localStorage.getItem('paj_manual_sessionExpiry');
-                if (email && token && (!expiry || Date.now() < Number(expiry))) {
+                if (guestWallet && ((token && (!expiry || Date.now() < Number(expiry))) || guestData?.guestWallet)) {
                   setShowOnboardModal(null);
                   setIsGuestMode(true);
                   setGuestBypass(true);

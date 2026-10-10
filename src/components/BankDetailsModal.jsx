@@ -681,8 +681,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           </div>
         )}
 
-        {/* ── Wallet Address Field (Shown in Guest / Manual Mode) ── */}
-        {isGuestMode && (
+        {/* ── Wallet Address Field (Shown in Guest Mode only if wallet was not provided earlier) ── */}
+        {isGuestMode && !walletAddress && (
           <div className="field" style={{ marginBottom: '14px' }}>
             <div className="field-label">Your Solana Wallet Address</div>
             <div className="input-wrap">
