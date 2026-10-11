@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { getBanks, resolveBankAccount, initiateSession, verifySession, getEffectiveApiKey } from '../services/pajcashService';
+import { getBanks, resolveBankAccount, initiateSession, verifySession, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
 import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession } from '../services/supabase';
 
-const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;
+const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
 
 const getBankNameString = (b) => {
   if (!b) return '';
@@ -342,15 +342,17 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       setAuthError('Please enter your email.');
       return;
     }
-    if (!PAJCASH_API_KEY) {
-      setAuthError('PajCash API key is not configured.');
-      return;
-    }
 
     setAuthLoading(true);
     setAuthError('');
     try {
-      await initiateSession(emailInput.trim(), PAJCASH_API_KEY);
+      const apiKey = await getEffectiveApiKeyAsync();
+      if (!apiKey) {
+        setAuthError('PajCash API configuration missing. Please try again.');
+        setAuthLoading(false);
+        return;
+      }
+      await initiateSession(emailInput.trim(), apiKey);
       setAuthStep('otp');
     } catch (err) {
       setAuthError(err.message || 'Failed to send OTP code.');
@@ -365,15 +367,17 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       setAuthError('Please enter the 4-digit OTP code.');
       return;
     }
-    if (!PAJCASH_API_KEY) {
-      setAuthError('PajCash API key is not configured.');
-      return;
-    }
 
     setAuthLoading(true);
     setAuthError('');
     try {
-      const res = await verifySession(emailInput.trim(), otpInput.trim(), PAJCASH_API_KEY);
+      const apiKey = await getEffectiveApiKeyAsync();
+      if (!apiKey) {
+        setAuthError('PajCash API configuration missing. Please try again.');
+        setAuthLoading(false);
+        return;
+      }
+      const res = await verifySession(emailInput.trim(), otpInput.trim(), apiKey);
       if (res?.token) {
         setSessionToken(res.token);
         setSessionEmail(emailInput.trim());

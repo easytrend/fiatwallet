@@ -19,6 +19,8 @@ import {
   paidOnrampOrder,
   getTransaction,
   getEffectiveApiKey,
+  getEffectiveApiKeyAsync,
+  fetchRemotePajConfig,
 } from '../services/pajcashService';
 import { getQuote, buildSwapTransaction } from '../services/swapService';
 import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
@@ -368,7 +370,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
 
   // ── Env config ──────────────────────────────────────────────────────────
-  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY;
+  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
   const isPajcashLive = !!PAJCASH_API_KEY;
 
   // ── Live crypto prices (SOL, USDC, USDT) from CoinGecko / Coinbase / Binance ──
@@ -1600,17 +1602,19 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setAuthError('Please enter your email.');
       return;
     }
-    if (!PAJCASH_API_KEY) {
-      setAuthError('API Key is missing. Please add VITE_PAJCASH_API_KEY to your env configuration.');
-      return;
-    }
     setAuthLoading(true);
     setAuthError(null);
     try {
-      await initiateSession(emailInput.trim(), PAJCASH_API_KEY);
+      const key = await getEffectiveApiKeyAsync();
+      if (!key) {
+        setAuthError('PajCash API configuration missing. Please verify API configuration.');
+        setAuthLoading(false);
+        return;
+      }
+      await initiateSession(emailInput.trim(), key);
       setAuthStep('input_otp');
     } catch (e) {
-      setAuthError(e.message || 'Failed to send OTP. Please check your API key and email.');
+      setAuthError(e.message || 'Failed to send OTP. Please check your email.');
     } finally {
       setAuthLoading(false);
     }
@@ -1621,14 +1625,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setAuthError('Please enter the 4-digit OTP.');
       return;
     }
-    if (!PAJCASH_API_KEY) {
-      setAuthError('API Key is missing.');
-      return;
-    }
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const res = await verifySession(emailInput.trim(), otpInput.trim(), PAJCASH_API_KEY);
+      const key = await getEffectiveApiKeyAsync();
+      if (!key) {
+        setAuthError('PajCash API configuration missing. Please verify API configuration.');
+        setAuthLoading(false);
+        return;
+      }
+      const res = await verifySession(emailInput.trim(), otpInput.trim(), key);
       if (res?.token) {
         setSessionToken(res.token);
         setSessionEmail(emailInput.trim());

@@ -5,7 +5,7 @@ import * as bip39 from 'bip39';
 import bs58 from 'bs58';
 import { createNewWallet, importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { encryptVault, saveVaultToStorage, saveWalletMeta } from '../services/walletVault';
-import { initiateSession, verifySession, getEffectiveApiKey } from '../services/pajcashService';
+import { initiateSession, verifySession, getEffectiveApiKey, getEffectiveApiKeyAsync, fetchRemotePajConfig } from '../services/pajcashService';
 import { saveSession, loadSession, getFiatTagByWallet, getP2PTransactionsByUser } from '../services/supabase';
 import BankDetailsModal from './BankDetailsModal';
 import logoImg from '../assets/logo.png';
@@ -71,6 +71,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
     setGuestError('');
     setGuestStep('intro');
     setShowGuestNote(true);
+    fetchRemotePajConfig().catch(() => {});
   };
 
   const handleCheckGuestWallet = async () => {
@@ -144,15 +145,16 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       setGuestError('Please enter a valid email address.');
       return;
     }
-    const apiKey = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
-    if (!apiKey) {
-      setGuestError('PajCash service configuration missing.');
-      return;
-    }
 
     setGuestLoading(true);
     setGuestError('');
     try {
+      const apiKey = await getEffectiveApiKeyAsync();
+      if (!apiKey) {
+        setGuestError('PajCash service configuration missing. Please try again.');
+        setGuestLoading(false);
+        return;
+      }
       await initiateSession(cleanEmail, apiKey);
       setGuestStep('otp');
     } catch (err) {
@@ -168,17 +170,18 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       setGuestError('Please enter the 4-digit verification code.');
       return;
     }
-    const apiKey = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
-    if (!apiKey) {
-      setGuestError('PajCash service configuration missing.');
-      return;
-    }
 
     setGuestLoading(true);
     setGuestError('');
     try {
       const cleanEmail = guestEmailInput.trim();
       const cleanWallet = guestWalletInput.trim();
+      const apiKey = await getEffectiveApiKeyAsync();
+      if (!apiKey) {
+        setGuestError('PajCash service configuration missing. Please try again.');
+        setGuestLoading(false);
+        return;
+      }
       const res = await verifySession(cleanEmail, cleanOtp, apiKey);
       if (res?.token) {
         const token = res.token;

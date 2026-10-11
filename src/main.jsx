@@ -27,6 +27,9 @@ if (typeof navigator !== 'undefined') {
 import { initFiatWalletProvider } from './services/fiatwalletProvider';
 initFiatWalletProvider();
 
+import { fetchRemotePajConfig } from './services/pajcashService';
+fetchRemotePajConfig().catch(() => {});
+
 import React, { useMemo, useCallback, Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';

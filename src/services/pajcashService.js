@@ -48,53 +48,7 @@ function getDeviceUUID() {
 let BASE_URL = 'https://api.paj.cash';
 
 let remoteApiKey = null;
-
-/**
- * Fetch PajCash merchant API key from the Vercel serverless config endpoint.
- */
-export async function fetchRemotePajConfig() {
-  if (remoteApiKey) return remoteApiKey;
-  try {
-    const res = await fetch('/api/paj_config');
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.apiKey) {
-        remoteApiKey = data.apiKey;
-        try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
-        return remoteApiKey;
-      }
-    }
-  } catch (e) {
-    try {
-      const res = await fetch('https://fiatwallet.app/api/paj_config');
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.apiKey) {
-          remoteApiKey = data.apiKey;
-          try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
-          return remoteApiKey;
-        }
-      }
-    } catch (err) {}
-  }
-  return null;
-}
-
-if (typeof window !== 'undefined') {
-  fetchRemotePajConfig().catch(() => {});
-}
-
-/**
- * Resolves the effective API key or merchant auth token.
- */
-export function getEffectiveApiKey() {
-  return (
-    import.meta.env.VITE_PAJCASH_API_KEY ||
-    remoteApiKey ||
-    (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null) ||
-    ''
-  );
-}
+let fetchConfigPromise = null;
 
 /**
  * Initialize the SDK environment and set the base URL.
@@ -114,14 +68,88 @@ export function initPajSDK(envString = 'production') {
   }
 }
 
+// Immediately ensure SDK defaults to production so requests hit https://api.paj.cash
+initPajSDK(import.meta.env.VITE_PAJCASH_ENV || 'production');
+
+/**
+ * Fetch PajCash merchant API key from the Vercel serverless config endpoint.
+ * Checks relative endpoint first, then falls back to production domain https://fiatwallet.app/api/paj_config.
+ */
+export async function fetchRemotePajConfig() {
+  if (remoteApiKey) return remoteApiKey;
+  if (fetchConfigPromise) return fetchConfigPromise;
+
+  fetchConfigPromise = (async () => {
+    const endpoints = ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.apiKey) {
+            remoteApiKey = data.apiKey;
+            try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
+            if (data?.env) {
+              initPajSDK(data.env);
+            }
+            return remoteApiKey;
+          }
+        }
+      } catch (err) {
+        // Proceed to next endpoint
+      }
+    }
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null;
+    return cached || null;
+  })();
+
+  try {
+    const result = await fetchConfigPromise;
+    return result;
+  } finally {
+    fetchConfigPromise = null;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  fetchRemotePajConfig().catch(() => {});
+}
+
+/**
+ * Resolves the effective API key or merchant auth token synchronously.
+ */
+export function getEffectiveApiKey() {
+  return (
+    import.meta.env.VITE_PAJCASH_API_KEY ||
+    remoteApiKey ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null) ||
+    ''
+  );
+}
+
+/**
+ * Resolves the effective API key asynchronously, fetching from Vercel config endpoint if needed.
+ */
+export async function getEffectiveApiKeyAsync() {
+  let key = getEffectiveApiKey();
+  if (key) return key;
+  key = await fetchRemotePajConfig();
+  return key || getEffectiveApiKey();
+}
+
 /**
  * Initiate an OTP session for the user.
  * @param {string} emailOrPhone - User email or phone number
- * @param {string} apiKey - Merchant API Key
+ * @param {string} [apiKey] - Merchant API Key
  */
 export async function initiateSession(emailOrPhone, apiKey) {
+  initPajSDK(import.meta.env.VITE_PAJCASH_ENV || 'production');
+  const effectiveKey = apiKey || await getEffectiveApiKeyAsync();
+  if (!effectiveKey) {
+    throw new Error('PajCash service configuration missing. Please verify API configuration.');
+  }
   try {
-    return await sdkInitiate(emailOrPhone, apiKey);
+    return await sdkInitiate(emailOrPhone, effectiveKey);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -132,9 +160,14 @@ export async function initiateSession(emailOrPhone, apiKey) {
  * Verify OTP session and obtain JWT token.
  * @param {string} emailOrPhone - User email or phone number
  * @param {string} otp - 4-digit OTP code
- * @param {string} apiKey - Merchant API Key
+ * @param {string} [apiKey] - Merchant API Key
  */
 export async function verifySession(emailOrPhone, otp, apiKey) {
+  initPajSDK(import.meta.env.VITE_PAJCASH_ENV || 'production');
+  const effectiveKey = apiKey || await getEffectiveApiKeyAsync();
+  if (!effectiveKey) {
+    throw new Error('PajCash service configuration missing. Please verify API configuration.');
+  }
   try {
     const device = {
       uuid: getDeviceUUID(),
@@ -142,7 +175,7 @@ export async function verifySession(emailOrPhone, otp, apiKey) {
       os: navigator.platform || 'Web',
       browser: navigator.userAgent?.split(' ').pop() || 'WebBrowser'
     };
-    return await sdkVerify(emailOrPhone, otp, device, apiKey);
+    return await sdkVerify(emailOrPhone, otp, device, effectiveKey);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
