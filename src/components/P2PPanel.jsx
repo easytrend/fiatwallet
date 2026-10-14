@@ -2626,6 +2626,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         ? Number(order.amount)
         : baseCryptoAmount;
 
+      // Net crypto converted to fiat payout (gross crypto minus the 0.10 protocol fee)
+      // Ensures usd_value in Supabase accurately reflects the net amount actually offramped
+      const netCryptoOfframped = Math.max(0, finalCryptoAmount - platformFeeInToken);
+      const netUsdValue = selectedCountry.currency === 'USD' ? parsedAmt : netCryptoOfframped * (tokenPriceUsd || 1);
+
       // Log transaction to Supabase under the manual wallet address
       logP2PTransaction({
         userAddress: effectiveUserWallet,
@@ -2634,7 +2639,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         cryptoAmount: finalCryptoAmount,
         fiatCurrency: selectedCountry.currency,
         fiatAmount: parsedAmt,
-        usdValue: selectedCountry.currency === 'USD' ? parsedAmt : finalCryptoAmount * (tokenPriceUsd || 1),
+        usdValue: netUsdValue,
         bankName: effectiveBankName,
         accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
         accountName: effectiveAcctName || 'Account Holder',
@@ -3047,12 +3052,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // instead of the correct NGN equivalent like 3100).
       const cryptoLogged = finalSendAmount;
       const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
-      // usdValue: for USD fiat, it's the fiat amount directly.
-      // For non-USD (e.g. NGN), derive from: cryptoAmount × live token USD price.
-      // This is accurate for both USDC/USDT (price ≈ 1.00) and SOL (live market price).
+      // Net crypto converted to fiat payout (gross crypto minus the 0.10 protocol fee)
+      // This ensures usd_value in Supabase accurately reflects the net amount actually offramped (e.g. crypto_amount - 0.10)
+      const netCryptoLogged = Math.max(0, cryptoLogged - platformFeeInToken);
       const usdLogged = selectedCountry.currency === 'USD'
         ? fiatLogged
-        : cryptoLogged * (tokenPriceUsd || 1);
+        : netCryptoLogged * (tokenPriceUsd || 1);
 
       // BUG FIX 2: Log to Supabase immediately with PENDING status so the
       // record exists even if the confirmation poll times out due to a blip.
