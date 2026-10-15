@@ -86,7 +86,7 @@ export default function HistoryPanel({
     if (filter === 'send') return history.filter(t => t.type === 'send' || t.type === 'bulk_send');
     if (filter === 'receive') return history.filter(t => t.type === 'receive');
     if (filter === 'swap') return history.filter(t => t.type === 'swap');
-    if (filter === 'p2p') return history.filter(t => t.type === 'onramp' || t.type === 'offramp');
+    if (filter === 'defi') return history.filter(t => t.type === 'interaction' || t.type === 'nft');
     return history;
   }, [history, filter]);
 
@@ -95,7 +95,7 @@ export default function HistoryPanel({
     send: history.filter(t => t.type === 'send' || t.type === 'bulk_send').length,
     receive: history.filter(t => t.type === 'receive').length,
     swap: history.filter(t => t.type === 'swap').length,
-    p2p: history.filter(t => t.type === 'onramp' || t.type === 'offramp').length,
+    defi: history.filter(t => t.type === 'interaction' || t.type === 'nft').length,
   }), [history]);
 
   return (
@@ -223,7 +223,7 @@ export default function HistoryPanel({
           { key: 'send', label: `Sent (${filterCounts.send})` },
           { key: 'receive', label: `Received (${filterCounts.receive})` },
           { key: 'swap', label: `Swaps (${filterCounts.swap})` },
-          { key: 'p2p', label: `P2P (${filterCounts.p2p})` },
+          { key: 'defi', label: `DeFi & More (${filterCounts.defi})` },
         ].map(tab => (
           <button
             key={tab.key}
@@ -300,7 +300,7 @@ export default function HistoryPanel({
             const isSend = tx.type === 'send' || tx.type === 'bulk_send';
             const isReceive = tx.type === 'receive';
             const isSwap = tx.type === 'swap';
-            const isP2P = tx.type === 'onramp' || tx.type === 'offramp';
+            const isNFT = tx.type === 'nft';
 
             return (
               <div
@@ -338,6 +338,8 @@ export default function HistoryPanel({
                       ? 'rgba(248, 113, 113, 0.12)'
                       : isSwap
                       ? 'rgba(167, 139, 250, 0.12)'
+                      : isNFT
+                      ? 'rgba(236, 72, 153, 0.12)'
                       : 'rgba(34, 211, 238, 0.12)',
                     border: `1px solid ${
                       isReceive
@@ -346,6 +348,8 @@ export default function HistoryPanel({
                         ? 'rgba(248, 113, 113, 0.25)'
                         : isSwap
                         ? 'rgba(167, 139, 250, 0.25)'
+                        : isNFT
+                        ? 'rgba(236, 72, 153, 0.25)'
                         : 'rgba(34, 211, 238, 0.25)'
                     }`,
                     display: 'flex',
@@ -359,10 +363,12 @@ export default function HistoryPanel({
                       ? '#f87171'
                       : isSwap
                       ? '#a78bfa'
+                      : isNFT
+                      ? '#ec4899'
                       : 'var(--cyan, #22d3ee)',
                     flexShrink: 0,
                   }}>
-                    {isReceive ? '↓' : isSend ? '↑' : isSwap ? '⇄' : '•'}
+                    {isReceive ? '↓' : isSend ? '↑' : isSwap ? '⇄' : isNFT ? '✦' : '•'}
                   </div>
 
                   <div style={{ minWidth: 0 }}>

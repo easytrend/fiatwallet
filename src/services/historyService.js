@@ -1,5 +1,4 @@
 import { PublicKey } from '@solana/web3.js';
-import { supabase } from './supabase';
 import { KNOWN_MINTS } from '../data/tokens';
 
 const JUPITER_PROGRAM_IDS = [
@@ -29,7 +28,205 @@ function resolveMintSymbol(mint) {
 }
 
 /**
- * Parses a single Solana transaction into a human-friendly activity item.
+ * Parses a Helius Enhanced Transaction into a standard wallet activity item.
+ */
+export function parseHeliusTransaction(tx, userAddress) {
+  const userKeyStr = String(userAddress);
+  const signature = tx.signature;
+  const isFailed = Boolean(tx.transactionError);
+  const status = isFailed ? 'failed' : 'confirmed';
+  const timestamp = tx.timestamp ? tx.timestamp * 1000 : Date.now();
+  const fee = tx.fee !== undefined ? (tx.fee / 1e9).toFixed(6) : '0.000005';
+  const slot = tx.slot || null;
+  const txType = (tx.type || 'UNKNOWN').toUpperCase();
+
+  // 1. SWAP (Jupiter, Raydium, Orca, Pump.fun, etc.)
+  if (txType === 'SWAP') {
+    let inSymbol = 'SOL';
+    let outSymbol = 'SOL';
+    let inAmount = '';
+    let outAmount = '';
+
+    if (Array.isArray(tx.tokenTransfers)) {
+      for (const t of tx.tokenTransfers) {
+        const symbol = t.tokenStandard === 'NonFungible' ? 'NFT' : (t.tokenName || t.symbol || resolveMintSymbol(t.mint));
+        if (t.fromUserAccount === userKeyStr) {
+          inSymbol = symbol;
+          inAmount = t.tokenAmount !== undefined ? String(t.tokenAmount) : '';
+        } else if (t.toUserAccount === userKeyStr) {
+          outSymbol = symbol;
+          outAmount = t.tokenAmount !== undefined ? String(t.tokenAmount) : '';
+        }
+      }
+    }
+
+    if (Array.isArray(tx.nativeTransfers)) {
+      for (const n of tx.nativeTransfers) {
+        const solAmt = (n.amount / 1e9).toFixed(4);
+        if (n.fromUserAccount === userKeyStr && !inAmount) {
+          inSymbol = 'SOL';
+          inAmount = solAmt;
+        } else if (n.toUserAccount === userKeyStr && !outAmount) {
+          outSymbol = 'SOL';
+          outAmount = solAmt;
+        }
+      }
+    }
+
+    const sourceName = tx.source ? tx.source.replace(/_/g, ' ') : 'DEX';
+
+    return {
+      id: signature,
+      signature,
+      slot,
+      status,
+      timestamp,
+      type: 'swap',
+      title: `Swap ${inSymbol} → ${outSymbol}`,
+      subtitle: `${sourceName} Swap`,
+      amount: outAmount ? `+${outAmount}` : (inAmount ? `-${inAmount}` : null),
+      symbol: outSymbol,
+      fee,
+      from: userKeyStr,
+      to: sourceName,
+      source: 'onchain',
+      rawType: txType,
+    };
+  }
+
+  // 2. SPL TOKEN TRANSFERS
+  if (Array.isArray(tx.tokenTransfers) && tx.tokenTransfers.length > 0) {
+    const userTransfer = tx.tokenTransfers.find(
+      t => t.fromUserAccount === userKeyStr || t.toUserAccount === userKeyStr
+    ) || tx.tokenTransfers[0];
+
+    const isUserSending = userTransfer.fromUserAccount === userKeyStr;
+    const isUserReceiving = userTransfer.toUserAccount === userKeyStr;
+    const symbol = userTransfer.tokenStandard === 'NonFungible'
+      ? 'NFT'
+      : (userTransfer.symbol || resolveMintSymbol(userTransfer.mint));
+    const rawAmt = userTransfer.tokenAmount !== undefined ? Number(userTransfer.tokenAmount) : 0;
+    const amountStr = rawAmt > 0 && rawAmt < 0.0001 ? rawAmt.toExponential(2) : String(rawAmt);
+    const counterParty = isUserSending ? userTransfer.toUserAccount : userTransfer.fromUserAccount;
+    const counterPartyShort = counterParty ? `${counterParty.slice(0, 4)}...${counterParty.slice(-4)}` : '';
+
+    if (isUserReceiving) {
+      return {
+        id: signature,
+        signature,
+        slot,
+        status,
+        timestamp,
+        type: 'receive',
+        title: `Received ${symbol}`,
+        subtitle: counterPartyShort ? `From ${counterPartyShort}` : (tx.description || 'Token Transfer'),
+        amount: `+${amountStr}`,
+        symbol,
+        fee,
+        from: counterParty,
+        to: userKeyStr,
+        source: 'onchain',
+        rawType: txType,
+      };
+    } else if (isUserSending) {
+      return {
+        id: signature,
+        signature,
+        slot,
+        status,
+        timestamp,
+        type: 'send',
+        title: `Sent ${symbol}`,
+        subtitle: counterPartyShort ? `To ${counterPartyShort}` : (tx.description || 'Token Transfer'),
+        amount: `-${amountStr}`,
+        symbol,
+        fee,
+        from: userKeyStr,
+        to: counterParty,
+        source: 'onchain',
+        rawType: txType,
+      };
+    }
+  }
+
+  // 3. NATIVE SOL TRANSFERS
+  if (Array.isArray(tx.nativeTransfers) && tx.nativeTransfers.length > 0) {
+    const userNative = tx.nativeTransfers.find(
+      n => n.fromUserAccount === userKeyStr || n.toUserAccount === userKeyStr
+    );
+
+    if (userNative) {
+      const solAmt = (userNative.amount / 1e9).toFixed(4);
+      const isSending = userNative.fromUserAccount === userKeyStr;
+      const counterParty = isSending ? userNative.toUserAccount : userNative.fromUserAccount;
+      const counterPartyShort = counterParty ? `${counterParty.slice(0, 4)}...${counterParty.slice(-4)}` : '';
+
+      return {
+        id: signature,
+        signature,
+        slot,
+        status,
+        timestamp,
+        type: isSending ? 'send' : 'receive',
+        title: isSending ? 'Sent SOL' : 'Received SOL',
+        subtitle: counterPartyShort ? (isSending ? `To ${counterPartyShort}` : `From ${counterPartyShort}`) : (tx.description || 'SOL Transfer'),
+        amount: isSending ? `-${solAmt}` : `+${solAmt}`,
+        symbol: 'SOL',
+        fee,
+        from: isSending ? userKeyStr : counterParty,
+        to: isSending ? counterParty : userKeyStr,
+        source: 'onchain',
+        rawType: txType,
+      };
+    }
+  }
+
+  // 4. NFT MINT / SALE / BURN / COMPRESSED NFT
+  if (txType.includes('NFT') || txType === 'BURN' || txType === 'TOKEN_MINT') {
+    const readable = txType.replace(/_/g, ' ');
+    return {
+      id: signature,
+      signature,
+      slot,
+      status,
+      timestamp,
+      type: 'nft',
+      title: tx.description || readable,
+      subtitle: `${tx.source ? tx.source.replace(/_/g, ' ') + ' • ' : ''}Fee: ${fee} SOL`,
+      amount: null,
+      symbol: 'SOL',
+      fee,
+      from: userKeyStr,
+      to: tx.source || null,
+      source: 'onchain',
+      rawType: txType,
+    };
+  }
+
+  // 5. GENERIC PROGRAM / SMART CONTRACT INTERACTION
+  const readable = txType !== 'UNKNOWN' ? txType.replace(/_/g, ' ') : 'Smart Contract Interaction';
+  return {
+    id: signature,
+    signature,
+    slot,
+    status,
+    timestamp,
+    type: 'interaction',
+    title: tx.description || readable,
+    subtitle: `${tx.source ? tx.source.replace(/_/g, ' ') + ' • ' : ''}Fee: ${fee} SOL`,
+    amount: null,
+    symbol: 'SOL',
+    fee,
+    from: userKeyStr,
+    to: tx.source || null,
+    source: 'onchain',
+    rawType: txType,
+  };
+}
+
+/**
+ * Parses a single Solana transaction from raw RPC into a human-friendly activity item.
+ * Used as high-reliability fallback when Helius indexer API is unreachable.
  */
 export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
   const signature = sigInfo.signature;
@@ -62,7 +259,6 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
   const { meta, transaction } = parsedTx;
   const message = transaction.message;
   const instructions = message?.instructions || [];
-  const accountKeys = message?.accountKeys || [];
   const userKeyStr = String(userAddress);
 
   // 1. Check if transaction involved a known DEX aggregator or AMM (Swap)
@@ -76,7 +272,6 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
     let outSymbol = 'Tokens';
     let displayAmt = '';
 
-    // Inspect user's token balance deltas
     if (meta.preTokenBalances && meta.postTokenBalances) {
       const userPre = meta.preTokenBalances.filter(b => b.owner === userKeyStr);
       const userPost = meta.postTokenBalances.filter(b => b.owner === userKeyStr);
@@ -103,7 +298,7 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
       type: 'swap',
       title: `Swap ${inSymbol} → ${outSymbol}`,
       subtitle: 'Jupiter / DEX Aggregator',
-      amount: displayAmt,
+      amount: displayAmt ? `+${displayAmt}` : null,
       symbol: outSymbol,
       fee,
       from: userKeyStr,
@@ -125,7 +320,6 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
         const destination = info.destination || '';
         const authority = info.authority || info.source || '';
 
-        // Compare against user's token accounts
         const userPre = (meta.preTokenBalances || []).filter(b => b.owner === userKeyStr);
         const userPost = (meta.postTokenBalances || []).filter(b => b.owner === userKeyStr);
         let isUserSending = authority === userKeyStr;
@@ -178,15 +372,38 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
     }
   }
 
-  // 3. Check for Native SOL Transfer (system program)
-  for (const ix of instructions) {
-    if (ix.program === 'system' && ix.parsed?.type === 'transfer') {
-      const info = ix.parsed.info;
-      const lamports = Number(info.lamports) || 0;
-      const solAmt = (lamports / 1e9).toFixed(4);
-      const isSender = info.source === userKeyStr;
+  // 3. Native SOL Balance Delta
+  if (meta.preBalances && meta.postBalances && message.accountKeys) {
+    const keys = message.accountKeys.map(k => (typeof k === 'string' ? k : k.pubkey?.toBase58?.() || String(k)));
+    const userIdx = keys.indexOf(userKeyStr);
 
-      if (isSender) {
+    if (userIdx !== -1) {
+      const preLamports = meta.preBalances[userIdx] || 0;
+      const postLamports = meta.postBalances[userIdx] || 0;
+      const deltaLamports = postLamports - preLamports;
+      const delta = deltaLamports / 1e9;
+      const feeSOL = Number(fee);
+
+      if (Math.abs(delta) < 0.000001 || Math.abs(delta + feeSOL) < 0.000001) {
+        return {
+          id: signature,
+          signature,
+          slot,
+          status,
+          timestamp,
+          type: 'interaction',
+          title: 'Program Interaction',
+          subtitle: `Fee: ${fee} SOL`,
+          amount: null,
+          symbol: 'SOL',
+          fee,
+          from: userKeyStr,
+          to: null,
+          memo: sigInfo.memo || null,
+          source: 'onchain',
+        };
+      } else if (delta < 0) {
+        const netSent = Math.abs(delta + feeSOL).toFixed(4);
         return {
           id: signature,
           signature,
@@ -195,16 +412,16 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
           timestamp,
           type: 'send',
           title: 'Sent SOL',
-          subtitle: `To ${info.destination?.slice(0, 4)}...${info.destination?.slice(-4)}`,
-          amount: `-${solAmt}`,
+          subtitle: `Slot #${slot}`,
+          amount: `-${netSent}`,
           symbol: 'SOL',
           fee,
-          from: info.source,
-          to: info.destination,
+          from: userKeyStr,
+          to: null,
           memo: sigInfo.memo || null,
           source: 'onchain',
         };
-      } else if (info.destination === userKeyStr) {
+      } else if (delta > 0) {
         return {
           id: signature,
           signature,
@@ -213,12 +430,12 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
           timestamp,
           type: 'receive',
           title: 'Received SOL',
-          subtitle: `From ${info.source?.slice(0, 4)}...${info.source?.slice(-4)}`,
-          amount: `+${solAmt}`,
+          subtitle: `Slot #${slot}`,
+          amount: `+${delta.toFixed(4)}`,
           symbol: 'SOL',
           fee,
-          from: info.source,
-          to: info.destination,
+          from: null,
+          to: userKeyStr,
           memo: sigInfo.memo || null,
           source: 'onchain',
         };
@@ -226,78 +443,6 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
     }
   }
 
-  // 4. Fallback: inspect raw SOL balance changes for user
-  const userAccountIndex = accountKeys.findIndex(k => {
-    const keyStr = typeof k === 'string' ? k : k.pubkey ? (typeof k.pubkey === 'string' ? k.pubkey : k.pubkey.toBase58?.()) : '';
-    return keyStr === userKeyStr;
-  });
-
-  if (userAccountIndex !== -1 && meta.preBalances && meta.postBalances) {
-    const preLamports = meta.preBalances[userAccountIndex] || 0;
-    const postLamports = meta.postBalances[userAccountIndex] || 0;
-    const delta = (postLamports - preLamports) / 1e9;
-    const feeSOL = Number(fee) || 0;
-
-    // Notice: if user is fee payer and delta is just -fee, it's a program interaction
-    if (Math.abs(delta + feeSOL) < 0.00001 && delta < 0) {
-      return {
-        id: signature,
-        signature,
-        slot,
-        status,
-        timestamp,
-        type: 'interaction',
-        title: 'Program Interaction',
-        subtitle: `Fee: ${fee} SOL`,
-        amount: null,
-        symbol: 'SOL',
-        fee,
-        from: userKeyStr,
-        to: null,
-        memo: sigInfo.memo || null,
-        source: 'onchain',
-      };
-    } else if (delta < 0) {
-      const netSent = Math.abs(delta + feeSOL).toFixed(4);
-      return {
-        id: signature,
-        signature,
-        slot,
-        status,
-        timestamp,
-        type: 'send',
-        title: 'Sent SOL',
-        subtitle: `Slot #${slot}`,
-        amount: `-${netSent}`,
-        symbol: 'SOL',
-        fee,
-        from: userKeyStr,
-        to: null,
-        memo: sigInfo.memo || null,
-        source: 'onchain',
-      };
-    } else if (delta > 0) {
-      return {
-        id: signature,
-        signature,
-        slot,
-        status,
-        timestamp,
-        type: 'receive',
-        title: 'Received SOL',
-        subtitle: `Slot #${slot}`,
-        amount: `+${delta.toFixed(4)}`,
-        symbol: 'SOL',
-        fee,
-        from: null,
-        to: userKeyStr,
-        memo: sigInfo.memo || null,
-        source: 'onchain',
-      };
-    }
-  }
-
-  // Generic fallback
   return {
     id: signature,
     signature,
@@ -318,9 +463,40 @@ export function parseSolanaTransaction(sigInfo, parsedTx, userAddress) {
 }
 
 /**
- * Fetch and merge transaction history from both on-chain Solana RPC and Supabase.
+ * Fallback to direct on-chain RPC parsing if Helius indexer API is unreachable.
  */
-export async function getUnifiedWalletHistory(connection, walletAddress, limit = 25) {
+async function fetchOnChainRpcFallback(connection, pubkey, addressStr, limit) {
+  if (!connection || typeof connection.getSignaturesForAddress !== 'function') return [];
+  try {
+    const sigInfos = await connection.getSignaturesForAddress(pubkey, { limit });
+    if (!sigInfos || sigInfos.length === 0) return [];
+
+    const batchSigs = sigInfos.slice(0, 15).map(s => s.signature);
+    let parsedTxs = [];
+    try {
+      parsedTxs = await connection.getParsedTransactions(batchSigs, {
+        maxSupportedTransactionVersion: 0,
+      });
+    } catch (e) {
+      console.warn('[HistoryService] getParsedTransactions batch failed:', e?.message);
+    }
+
+    return sigInfos.map((sigInfo, idx) => {
+      const parsed = parsedTxs && parsedTxs[idx] ? parsedTxs[idx] : null;
+      return parseSolanaTransaction(sigInfo, parsed, addressStr);
+    });
+  } catch (err) {
+    console.warn('[HistoryService] RPC fallback failed:', err?.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch wallet transaction history via pure Blockchain Indexing (Helius) or RPC nodes.
+ * Identical to self-custodial wallets like Phantom or Solflare.
+ * Zero database / Supabase dependencies.
+ */
+export async function getUnifiedWalletHistory(connection, walletAddress, limit = 30) {
   if (!walletAddress) return [];
 
   const addressStr = String(walletAddress).trim();
@@ -331,146 +507,39 @@ export async function getUnifiedWalletHistory(connection, walletAddress, limit =
     return [];
   }
 
-  // Parallel tasks: Fetch on-chain signatures + Fetch Supabase ledger
-  const onchainPromise = (async () => {
-    if (!connection || typeof connection.getSignaturesForAddress !== 'function') return [];
+  // 1. Query Helius Blockchain Indexer via serverless proxy
+  const endpoints = [
+    `/api/history?address=${encodeURIComponent(addressStr)}&limit=${limit}`,
+    `https://fiatwallet.app/api/history?address=${encodeURIComponent(addressStr)}&limit=${limit}`,
+  ];
+
+  for (const endpoint of endpoints) {
     try {
-      const sigInfos = await connection.getSignaturesForAddress(pubkey, { limit });
-      if (!sigInfos || sigInfos.length === 0) return [];
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      // Fetch parsed transactions for first batch
-      const batchSigs = sigInfos.slice(0, 15).map(s => s.signature);
-      let parsedTxs = [];
-      try {
-        parsedTxs = await connection.getParsedTransactions(batchSigs, {
-          maxSupportedTransactionVersion: 0,
-        });
-      } catch (e) {
-        console.warn('[HistoryService] getParsedTransactions batch failed:', e?.message);
-      }
-
-      return sigInfos.map((sigInfo, idx) => {
-        const parsed = parsedTxs && parsedTxs[idx] ? parsedTxs[idx] : null;
-        return parseSolanaTransaction(sigInfo, parsed, addressStr);
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal,
       });
-    } catch (err) {
-      console.warn('[HistoryService] On-chain history fetch error:', err?.message);
-      return [];
-    }
-  })();
+      clearTimeout(timeoutId);
 
-  const supabasePromise = (async () => {
-    if (!supabase) return [];
-    try {
-      const [txRes, p2pRes] = await Promise.all([
-        supabase
-          .from('transactions')
-          .select('*')
-          .eq('user_address', addressStr)
-          .order('created_at', { ascending: false })
-          .limit(20),
-        supabase
-          .from('p2p_transactions')
-          .select('*')
-          .eq('user_address', addressStr)
-          .order('created_at', { ascending: false })
-          .limit(20),
-      ]);
-
-      const items = [];
-
-      if (txRes.data) {
-        for (const t of txRes.data) {
-          const type = t.transaction_type || 'send';
-          items.push({
-            id: t.signature || `sb_${t.id}`,
-            signature: t.signature,
-            slot: null,
-            status: 'confirmed',
-            timestamp: t.created_at ? new Date(t.created_at).getTime() : Date.now(),
-            type: type === 'swap' ? 'swap' : (type === 'bulk_send' ? 'bulk_send' : 'send'),
-            title: type === 'swap' ? 'DEX Swap' : (type === 'bulk_send' ? 'Bulk Send' : `Sent ${t.token_symbol || 'SOL'}`),
-            subtitle: type === 'swap' ? 'Jupiter Swap' : 'FiatWallet Send',
-            amount: t.token_amount ? `-${t.token_amount}` : null,
-            symbol: t.token_symbol || 'SOL',
-            usdValue: t.usd_value || null,
-            fee: '0.000005',
-            from: addressStr,
-            to: null,
-            source: 'supabase',
-          });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.transactions)) {
+          const items = json.transactions.map(tx => parseHeliusTransaction(tx, addressStr));
+          items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          return items;
         }
       }
-
-      if (p2pRes.data) {
-        for (const p of p2pRes.data) {
-          const isBuy = p.transaction_type === 'p2p_onramp';
-          const sym = p.token_symbol || 'USDC';
-          const fiatCurr = p.fiat_currency || 'NGN';
-          const fiatAmt = p.fiat_amount ? Number(p.fiat_amount).toLocaleString() : '0';
-          const isPending = ['INIT', 'PENDING', 'PROCESSING'].includes(p.status);
-          const isFailed = p.status === 'ERROR';
-
-          items.push({
-            id: p.signature || `p2p_${p.order_id}`,
-            signature: p.signature?.startsWith('pending_') ? null : p.signature,
-            orderId: p.order_id,
-            slot: null,
-            status: isFailed ? 'failed' : (isPending ? 'pending' : 'confirmed'),
-            timestamp: p.created_at ? new Date(p.created_at).getTime() : Date.now(),
-            type: isBuy ? 'onramp' : 'offramp',
-            title: isBuy ? `P2P Buy ${sym}` : `P2P Cashout ${sym}`,
-            subtitle: `${fiatCurr} ${fiatAmt} • ${p.bank_name || 'Bank Transfer'}`,
-            amount: isBuy ? `+${p.crypto_amount}` : `-${p.crypto_amount}`,
-            symbol: sym,
-            fiatAmount: fiatAmt,
-            fiatCurrency: fiatCurr,
-            fee: '0.000000',
-            from: isBuy ? 'PajCash Gateway' : addressStr,
-            to: isBuy ? addressStr : (p.bank_name ? `${p.bank_name} (${p.account_number})` : 'Bank Account'),
-            source: 'p2p',
-          });
-        }
-      }
-
-      return items;
-    } catch (err) {
-      console.warn('[HistoryService] Supabase history fetch error:', err?.message);
-      return [];
-    }
-  })();
-
-  const [onchainItems, supabaseItems] = await Promise.all([onchainPromise, supabasePromise]);
-
-  // Merge and deduplicate by signature (prefer on-chain data for signatures, enriched with Supabase metadata)
-  const map = new Map();
-
-  for (const item of onchainItems) {
-    if (item.signature) {
-      map.set(item.signature, item);
-    } else {
-      map.set(item.id, item);
+    } catch {
+      // Continue to next endpoint or fallback
     }
   }
 
-  for (const item of supabaseItems) {
-    if (item.signature && map.has(item.signature)) {
-      // Enrich existing on-chain item with friendly title/usdValue
-      const existing = map.get(item.signature);
-      existing.usdValue = item.usdValue || existing.usdValue;
-      if (item.type === 'onramp' || item.type === 'offramp') {
-        existing.type = item.type;
-        existing.title = item.title;
-        existing.subtitle = item.subtitle;
-      }
-    } else {
-      map.set(item.id, item);
-    }
-  }
-
-  const combined = Array.from(map.values());
-  // Sort descending by timestamp
-  combined.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-  return combined;
+  // 2. Pure On-Chain RPC Fallback
+  const fallbackItems = await fetchOnChainRpcFallback(connection, pubkey, addressStr, limit);
+  fallbackItems.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return fallbackItems;
 }
