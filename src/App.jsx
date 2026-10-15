@@ -1679,7 +1679,7 @@ export default function App() {
             {!isGuestMode && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
                 <button
-                  onClick={() => setActiveTab('wallet')}
+                  onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
                   style={{
                     background: 'rgba(255, 255, 255, 0.06)',
                     border: '1px solid var(--border)',
@@ -1695,7 +1695,7 @@ export default function App() {
                     fontFamily: 'var(--ff)',
                   }}
                 >
-                  ← Wallet
+                  ← Home
                 </button>
                 <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text2)' }}>
                   dApp Explorer
@@ -2092,27 +2092,33 @@ export default function App() {
         </div>
       </footer>
 
-      {/* ── Fixed Bottom Navigation Bar (Centered Explorer Only) ── */}
-      <div className="bottom-nav bottom-nav-solo" role="navigation" aria-label="Bottom Navigation">
-        {/* Center Explorer Button — Elevated & Highlighted */}
+      {/* ── Fixed Bottom Navigation Bar (Home & Explorer) ── */}
+      <div className="bottom-nav" role="navigation" aria-label="Bottom Navigation">
+        {/* 1. Home Button — Always returns user to Home */}
         <button
-          className={`bnav-item bnav-item-center bnav-item-solo ${activeTab === 'explorer' ? 'active' : ''}`}
-          onClick={() => {
-            if (activeTab === 'explorer') {
-              setActiveTab(isGuestMode ? 'p2p' : 'wallet');
-            } else {
-              setActiveTab('explorer');
-            }
-          }}
-          aria-label="Explorer"
-          title={activeTab === 'explorer' ? 'Return to Wallet' : 'Open dApp Explorer'}
+          className={`bnav-item ${activeTab !== 'explorer' ? 'active' : ''}`}
+          onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
+          aria-label="Home"
+          title="Return to Home"
         >
-          <div className="bnav-center-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-            </svg>
-          </div>
+          <svg className="bnav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          <span className="bnav-label">Home</span>
+        </button>
+
+        {/* 2. Explorer Button — Opens and stays on Explorer */}
+        <button
+          className={`bnav-item ${activeTab === 'explorer' ? 'active' : ''}`}
+          onClick={() => setActiveTab('explorer')}
+          aria-label="Explorer"
+          title="dApp Explorer"
+        >
+          <svg className="bnav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+          </svg>
           <span className="bnav-label">Explorer</span>
         </button>
       </div>
