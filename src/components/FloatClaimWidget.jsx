@@ -297,17 +297,18 @@ export default function FloatClaimWidget({
   // ─── Fee & rate constants ───────────────────────────────────────────────
   const RENT_FEE_PCT      = 0.06;  // 6%  protocol fee on rent reclaim
   const CASHBACK_FEE_PCT  = 0.10;  // 10% protocol fee on cashback claim
-  const SOL_PER_ACCT      = 0.002; // exact 0.002 SOL per empty account
+  const SOL_PER_ACCT      = 0.002; // fallback estimate per account if lamports unavailable
 
   // 2. Compute dynamic balances
   const emptyCount = useMemo(() => {
     return rentClaimed ? 0 : emptyAccounts.length;
   }, [emptyAccounts, rentClaimed]);
 
-  // Gross rent (what closeAccount frees before fee)
+  // Gross rent (what closeAccount frees before fee) - dynamic on-chain lamports
   const rentSOL = useMemo(() => {
     if (rentClaimed) return 0;
-    return emptyAccounts.length * SOL_PER_ACCT;
+    const totalLamports = emptyAccounts.reduce((sum, acc) => sum + (acc.lamports || 0), 0);
+    return totalLamports > 0 ? totalLamports / 1e9 : emptyAccounts.length * SOL_PER_ACCT;
   }, [emptyAccounts, rentClaimed]);
 
   // Net rent — what the user actually receives after 6% fee
@@ -371,8 +372,11 @@ export default function FloatClaimWidget({
         throw new Error('No empty token accounts found to close.');
       }
 
-      // Gross = exact 0.002 SOL × count; fee = 6%
-      const grossLamports = emptyAccounts.length * Math.round(SOL_PER_ACCT * 1e9);
+      // Gross = dynamic sum of on-chain lamports for empty accounts; fee = 6%
+      const grossLamports = emptyAccounts.reduce(
+        (sum, acc) => sum + (acc.lamports || Math.round(SOL_PER_ACCT * 1e9)),
+        0
+      );
       const feeLamports   = Math.round(grossLamports * RENT_FEE_PCT);
       const netLamports   = grossLamports - feeLamports;
       const netSOL        = netLamports / 1e9;
