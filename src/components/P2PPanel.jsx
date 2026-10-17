@@ -377,9 +377,45 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const { liveRates } = useLiveRates();
 
   // ── Session State ────────────────────────────────────────────────────────
-  const [sessionToken, setSessionToken] = useState('');
-  const [sessionEmail, setSessionEmail] = useState('');
-  const [authStep, setAuthStep] = useState('logged_in'); // Self-custodial default
+  const [sessionToken, setSessionToken] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && publicKey) {
+        const key = publicKey.toBase58();
+        const cachedToken = localStorage.getItem(`paj_sessionToken_${key}`);
+        const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
+        if (cachedToken && cachedExpiry && Date.now() < Number(cachedExpiry)) {
+          return cachedToken;
+        }
+      }
+    } catch (e) {}
+    return '';
+  });
+  const [sessionEmail, setSessionEmail] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && publicKey) {
+        const key = publicKey.toBase58();
+        const cachedToken = localStorage.getItem(`paj_sessionToken_${key}`);
+        const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
+        if (cachedToken && cachedExpiry && Date.now() < Number(cachedExpiry)) {
+          return localStorage.getItem(`paj_sessionEmail_${key}`) || '';
+        }
+      }
+    } catch (e) {}
+    return '';
+  });
+  const [authStep, setAuthStep] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && publicKey) {
+        const key = publicKey.toBase58();
+        const cachedToken = localStorage.getItem(`paj_sessionToken_${key}`);
+        const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
+        if (cachedToken && cachedExpiry && Date.now() < Number(cachedExpiry)) {
+          return 'logged_in';
+        }
+      }
+    } catch (e) {}
+    return 'input_email';
+  });
   const [emailInput, setEmailInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [authError, setAuthError] = useState(null);
@@ -605,7 +641,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   // ── Computed ─────────────────────────────────────────────────────────────
   const effectiveAuthToken = sessionToken || PAJCASH_API_KEY || getEffectiveApiKey();
   const isLiveRoute = LIVE_CURRENCIES.has(selectedCountry.currency) && mode === 'sell';
-  const canTransact = !!effectiveAuthToken && isLiveRoute && !apiError;
+  const canTransact = authStep === 'logged_in' && !!effectiveAuthToken && isLiveRoute && !apiError;
 
   // Show all transactions from the API (already scoped to authenticated user).
   // Supplement with localStorage-only entries that haven't appeared in the API yet.
@@ -780,7 +816,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setAccountName('');
       setSessionToken('');
       setSessionEmail('');
-      setAuthStep('logged_in');
+      setAuthStep('input_email');
       return;
     }
 
@@ -789,7 +825,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const cachedEmail  = localStorage.getItem(`paj_sessionEmail_${key}`);
     const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
 
-    // ① Same device: restore from localStorage instantly (no network)
+    // 1. Same device: restore from localStorage instantly (no network)
     if (cachedToken && cachedExpiry && Date.now() < Number(cachedExpiry)) {
       setSessionToken(cachedToken);
       setSessionEmail(cachedEmail || '');
@@ -802,10 +838,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     localStorage.removeItem(`paj_sessionEmail_${key}`);
     localStorage.removeItem(`paj_sessionExpiry_${key}`);
 
-    // ② Check Supabase for existing linked session
+    // 2. Check Supabase for existing linked session
+    setAuthStep('checking');
     loadSession(key)
       .then(row => {
-        if (row) {
+        if (row && row.session_token) {
           const expiryMs = new Date(row.expires_at).getTime();
           setSessionToken(row.session_token);
           setSessionEmail(row.email);
@@ -815,16 +852,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           localStorage.setItem(`paj_sessionEmail_${key}`, row.email);
           localStorage.setItem(`paj_sessionExpiry_${key}`, String(expiryMs));
         } else {
-          // Self-custodial: user is automatically logged in via wallet identity & merchant key
           setSessionToken('');
           setSessionEmail('');
-          setAuthStep('logged_in');
+          setAuthStep('input_email');
         }
       })
       .catch(() => {
         setSessionToken('');
         setSessionEmail('');
-        setAuthStep('logged_in');
+        setAuthStep('input_email');
       });
   }, [publicKey]);
 
@@ -2039,6 +2075,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   const isFormValid = (() => {
     const base =
+      authStep === 'logged_in' &&
       !!effectiveAuthToken &&
       isLiveRoute &&
       !apiError &&
@@ -2082,6 +2119,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampOrder(null);
     setOnrampStatus(null);
     swapTriggeredRef.current = false; // reset swap guard for new order
+    if (authStep !== 'logged_in') { setOnrampError('Please verify your email on the Sell tab first.'); return; }
     if (!effectiveAuthToken) { setOnrampError('PajCash service configuration missing.'); return; }
 
     const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail') || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
@@ -2577,6 +2615,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const handleManualOfframpSubmit = async () => {
     setP2pError(null);
     if (!isLiveRoute) { setP2pError('This region/mode is not currently supported.'); return; }
+    if (authStep !== 'logged_in') { setP2pError('Please verify your email first.'); return; }
     if (!effectiveAuthToken) { setP2pError('PajCash service configuration missing.'); return; }
     const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail') || undefined;
 
@@ -2765,6 +2804,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const handleSubmit = async () => {
     setP2pError(null);
     if (!isLiveRoute) { setP2pError('This region/mode is not currently supported.'); return; }
+    if (authStep !== 'logged_in') { setP2pError('Please verify your email first.'); return; }
     if (!effectiveAuthToken) { setP2pError('PajCash service configuration missing.'); return; }
     if (apiError) { setP2pError(`PajCash API error: ${apiError}`); return; }
     if (!connected || !publicKey) { setP2pError('Please connect your Solana wallet first.'); return; }
@@ -3682,7 +3722,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <span className="p2p-mini-spinner" style={{ width: '24px', height: '24px', borderWidth: '3px' }} />
             <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>Restoring session...</span>
           </div>
-        ) : (!effectiveAuthToken && authStep !== 'logged_in') ? (
+        ) : authStep !== 'logged_in' ? (
           <div className="p2p-auth-container" style={{
             background: 'rgba(255, 255, 255, 0.02)',
             border: '1px solid var(--border)',
@@ -4839,9 +4879,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           )}
 
           {/* Session notice if not yet logged in */}
-          {!effectiveAuthToken && authStep !== 'logged_in' && (
+          {authStep !== 'logged_in' && (
             <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '10px 14px', fontSize: '11px', color: '#facc15', lineHeight: '1.5' }}>
-              • Please verify your email (above) to activate the Buy gateway.
+              • Please verify your email on the Sell tab to activate the Buy gateway.
             </div>
           )}
 
@@ -5051,8 +5091,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <button
               className="send-btn"
               onClick={handleOnrampSubmit}
-              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
-              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
+              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || authStep !== 'logged_in' || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
+              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || authStep !== 'logged_in' || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || authStep !== 'logged_in' || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
               {onrampLoading ? (
                 <>
