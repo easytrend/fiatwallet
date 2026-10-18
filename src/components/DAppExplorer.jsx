@@ -265,30 +265,34 @@ const DAppExplorer = forwardRef(function DAppExplorer({
 
   const handleOpenDApp = async (dApp) => {
     if (!dApp) return;
+    const targetUrl = typeof dApp === 'string' ? dApp : (dApp.url || '');
+    const targetTitle = (typeof dApp === 'object' && dApp.name) ? dApp.name : 'dApp';
 
-    // 1. Try Capacitor Native Bridge Plugin (Android native WebView - bypasses all X-Frame-Options)
+    // 1. Try window.FiatWalletBridge (Direct Android JavascriptInterface — always available on native)
+    if (typeof window !== 'undefined' && window.FiatWalletBridge) {
+      try {
+        if (typeof window.FiatWalletBridge.openDApp === 'function' || window.FiatWalletBridge.openDApp) {
+          window.FiatWalletBridge.openDApp(targetUrl, targetTitle);
+          return;
+        }
+      } catch (e) {
+        console.warn('window.FiatWalletBridge error, falling back:', e);
+      }
+    }
+
+    // 2. Try Capacitor Native Bridge Plugin (fallback)
     if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.FiatWalletBridge?.openDApp) {
       try {
-        await window.Capacitor.Plugins.FiatWalletBridge.openDApp({ url: dApp.url, title: dApp.name });
+        await window.Capacitor.Plugins.FiatWalletBridge.openDApp({ url: targetUrl, title: targetTitle });
         return;
       } catch (e) {
         console.warn('Capacitor FiatWalletBridge error, falling back:', e);
       }
     }
 
-    // 2. Try window.FiatWalletBridge (Direct Android JavascriptInterface)
-    if (typeof window !== 'undefined' && window.FiatWalletBridge && typeof window.FiatWalletBridge.openDApp === 'function') {
-      try {
-        window.FiatWalletBridge.openDApp(dApp.url, dApp.name);
-        return;
-      } catch (e) {
-        console.warn('window.FiatWalletBridge error, falling back:', e);
-      }
-    }
-
-    // 3. Fallback: In-app browser state
-    setSelectedDApp(dApp);
-    setBrowserUrlInput(dApp.url || '');
+    // 3. Last resort: In-app browser state
+    setSelectedDApp(typeof dApp === 'object' ? dApp : { id: 'custom', name: targetTitle, url: targetUrl });
+    setBrowserUrlInput(targetUrl);
   };
 
   // Navigate directly inside in-app browser top bar without leaving

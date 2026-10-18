@@ -1,27 +1,40 @@
 package app.fiatwallet.twa;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ClipDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
+import android.net.http.SslError;
 import android.os.Bundle;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.webkit.ConsoleMessage;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.getcapacitor.BridgeActivity;
@@ -70,6 +83,7 @@ public class MainActivity extends BridgeActivity {
     private ViewGroup dAppContainer = null;
     private WebView dAppWebView = null;
     private EditText dAppSearchBar = null;
+    private ProgressBar dAppProgressBar = null;
     private final FiatWalletBridge bridgeInstance = new FiatWalletBridge();
 
     @Override
@@ -141,10 +155,7 @@ public class MainActivity extends BridgeActivity {
         if (webView == null) return;
 
         String defaultUa = webView.getSettings().getUserAgentString();
-        String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "");
-        if (!cleanUa.contains("Solana Mobile Web Shell")) {
-            cleanUa = cleanUa + " Solana Mobile Web Shell";
-        }
+        String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "").replace("Version/4.0 ", "");
         webView.getSettings().setUserAgentString(cleanUa);
 
         webView.getSettings().setJavaScriptEnabled(true);
@@ -155,14 +166,6 @@ public class MainActivity extends BridgeActivity {
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
 
         webView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
-
-        String bridgeShim = "if (!window.FiatWalletBridge) {" +
-            "  window.FiatWalletBridge = {" +
-            "    openDApp: function(u, t) { if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FiatWalletBridge) { window.Capacitor.Plugins.FiatWalletBridge.openDApp({ url: u, title: t }); } }," +
-            "    closeDApp: function() { if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FiatWalletBridge) { window.Capacitor.Plugins.FiatWalletBridge.closeDApp(); } }" +
-            "  };" +
-            "}";
-        webView.evaluateJavascript(bridgeShim, null);
     }
 
     private void closeDAppInternal() {
@@ -172,10 +175,14 @@ public class MainActivity extends BridgeActivity {
                 parent.removeView(dAppContainer);
             }
             if (dAppWebView != null) {
+                dAppWebView.stopLoading();
+                dAppWebView.loadUrl("about:blank");
+                dAppWebView.clearHistory();
                 dAppWebView.destroy();
                 dAppWebView = null;
             }
             dAppSearchBar = null;
+            dAppProgressBar = null;
             dAppContainer = null;
         }
     }
@@ -409,6 +416,10 @@ public class MainActivity extends BridgeActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT
             );
             container.setLayoutParams(layoutParams);
+            container.setElevation(dpToPx(50));
+            container.setClickable(true);
+            container.setFocusable(true);
+            container.setFocusableInTouchMode(true);
 
             // Sleek in-app browser header
             LinearLayout header = new LinearLayout(MainActivity.this);
@@ -450,7 +461,7 @@ public class MainActivity extends BridgeActivity {
 
             // Center: Editable search and domain bar
             EditText searchBar = new EditText(MainActivity.this);
-            String initialUrl = resolveDAppUrl(url != null ? url : "https://pump.fun");
+            String initialUrl = resolveDAppUrl(url != null ? url : "https://pump.fun/explore");
             searchBar.setText(initialUrl);
             searchBar.setTextColor(Color.parseColor("#f0f6ff"));
             searchBar.setHintTextColor(Color.parseColor("#64748b"));
@@ -506,13 +517,38 @@ public class MainActivity extends BridgeActivity {
 
             container.addView(header);
 
+            // Progress Bar below header
+            ProgressBar progressBar = new ProgressBar(MainActivity.this, null, android.R.attr.progressBarStyleHorizontal);
+            LinearLayout.LayoutParams pbParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(3)
+            );
+            progressBar.setLayoutParams(pbParams);
+            progressBar.setMax(100);
+            progressBar.setProgress(0);
+            progressBar.setIndeterminate(false);
+
+            GradientDrawable pbBg = new GradientDrawable();
+            pbBg.setColor(Color.parseColor("#0a1628"));
+            GradientDrawable pbProgress = new GradientDrawable();
+            pbProgress.setColor(Color.parseColor("#a3e635"));
+            ClipDrawable pbClip = new ClipDrawable(pbProgress, Gravity.START, ClipDrawable.HORIZONTAL);
+            LayerDrawable pbLayer = new LayerDrawable(new android.graphics.drawable.Drawable[]{pbBg, pbClip});
+            pbLayer.setId(0, android.R.id.background);
+            pbLayer.setId(1, android.R.id.progress);
+            progressBar.setProgressDrawable(pbLayer);
+            container.addView(progressBar);
+            dAppProgressBar = progressBar;
+
             // Full-screen native webview
             dAppWebView = new WebView(MainActivity.this);
+            dAppWebView.setBackgroundColor(Color.parseColor("#0a1628"));
             LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0, 1.0f
             );
             dAppWebView.setLayoutParams(webParams);
+            dAppWebView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
             WebSettings s = dAppWebView.getSettings();
             s.setJavaScriptEnabled(true);
@@ -522,9 +558,23 @@ public class MainActivity extends BridgeActivity {
             s.setAllowContentAccess(true);
             s.setMediaPlaybackRequiresUserGesture(false);
             s.setJavaScriptCanOpenWindowsAutomatically(true);
-            s.setSupportMultipleWindows(true);
+            s.setSupportMultipleWindows(false);
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            s.setUserAgentString(s.getUserAgentString().replace("; wv", "").replace(";wv", "") + " Solana Mobile Web Shell");
+            s.setUseWideViewPort(true);
+            s.setLoadWithOverviewMode(true);
+            s.setCacheMode(WebSettings.LOAD_DEFAULT);
+            s.setBuiltInZoomControls(false);
+            s.setDisplayZoomControls(false);
+
+            // Enable third-party cookies for Cloudflare Turnstile, Solana auth:
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+            cookieManager.setAcceptThirdPartyCookies(dAppWebView, true);
+
+            // Clean User-Agent without WebView markers or custom bot tokens
+            String defaultUa = s.getUserAgentString();
+            String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "").replace("Version/4.0 ", "");
+            s.setUserAgentString(cleanUa);
 
             dAppWebView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
 
@@ -534,9 +584,12 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
                     super.onPageStarted(view, pageUrl, favicon);
-                    view.evaluateJavascript(providerScript, null);
                     if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
                         dAppSearchBar.setText(pageUrl);
+                    }
+                    if (dAppProgressBar != null) {
+                        dAppProgressBar.setVisibility(View.VISIBLE);
+                        dAppProgressBar.setProgress(15);
                     }
                 }
 
@@ -547,16 +600,33 @@ public class MainActivity extends BridgeActivity {
                     if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
                         dAppSearchBar.setText(pageUrl);
                     }
+                    if (dAppProgressBar != null) {
+                        dAppProgressBar.setVisibility(View.GONE);
+                    }
                 }
 
                 @Override
-                public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
+                public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                    android.util.Log.w("DAppBrowser", "SSL error: " + error.toString());
+                    handler.proceed();
+                }
+
+                @Override
+                public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                    super.onReceivedError(view, request, error);
+                    if (request != null && request.isForMainFrame()) {
+                        android.util.Log.e("DAppBrowser", "Main frame load error: " + error.getDescription());
+                    }
+                }
+
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     Uri reqUri = request.getUrl();
                     if (reqUri != null) {
                         String scheme = reqUri.getScheme();
                         if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
                             try {
-                                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, reqUri);
+                                Intent intent = new Intent(Intent.ACTION_VIEW, reqUri);
                                 startActivity(intent);
                                 return true;
                             } catch (Exception ignored) {}
@@ -566,11 +636,36 @@ public class MainActivity extends BridgeActivity {
                 }
             });
 
-            dAppWebView.setWebChromeClient(new WebChromeClient());
+            dAppWebView.setWebChromeClient(new WebChromeClient() {
+                @Override
+                public void onProgressChanged(WebView view, int newProgress) {
+                    super.onProgressChanged(view, newProgress);
+                    if (dAppProgressBar != null) {
+                        dAppProgressBar.setProgress(newProgress);
+                        dAppProgressBar.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);
+                    }
+                }
+
+                @Override
+                public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                    android.util.Log.d("DAppBrowser", consoleMessage.message() + " -- line " + consoleMessage.lineNumber());
+                    return true;
+                }
+
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    request.grant(request.getResources());
+                }
+            });
 
             container.addView(dAppWebView);
             rootView.addView(container);
             dAppContainer = container;
+
+            // Force overlay to sit above the Capacitor WebView in the view hierarchy
+            container.bringToFront();
+            rootView.requestLayout();
+            rootView.invalidate();
 
             dAppWebView.loadUrl(initialUrl);
         } catch (Exception e) {
@@ -586,6 +681,16 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void openDApp(String url, String title) {
             runOnUiThread(() -> openDAppNative(url, title));
+        }
+
+        @JavascriptInterface
+        public void openDApp(String url) {
+            runOnUiThread(() -> openDAppNative(url, "dApp"));
+        }
+
+        @JavascriptInterface
+        public void openUrl(String url) {
+            runOnUiThread(() -> openDAppNative(url, "dApp"));
         }
 
         @JavascriptInterface
