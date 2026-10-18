@@ -1,23 +1,34 @@
 package app.fiatwallet.twa;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
 
 /**
  * FiatWallet MainActivity
@@ -29,12 +40,43 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
+    @CapacitorPlugin(name = "FiatWalletBridge")
+    public static class FiatWalletBridgePlugin extends Plugin {
+        @PluginMethod
+        public void openDApp(PluginCall call) {
+            String url = call.getString("url");
+            String title = call.getString("title");
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.runOnUiThread(() -> activity.openDAppNative(url, title));
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
+
+        @PluginMethod
+        public void closeDApp(PluginCall call) {
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.runOnUiThread(activity::closeDAppInternal);
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
+    }
+
     private ViewGroup dAppContainer = null;
     private WebView dAppWebView = null;
+    private EditText dAppSearchBar = null;
+    private final FiatWalletBridge bridgeInstance = new FiatWalletBridge();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(FiatWalletBridgePlugin.class);
         super.onCreate(savedInstanceState);
+        setupWebView();
         handleDeepLinkIntent(getIntent());
     }
 
@@ -94,6 +136,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void setupWebView() {
+        if (getBridge() == null) return;
         WebView webView = getBridge().getWebView();
         if (webView == null) return;
 
@@ -111,7 +154,15 @@ public class MainActivity extends BridgeActivity {
         webView.getSettings().setAllowContentAccess(true);
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
 
-        webView.addJavascriptInterface(new FiatWalletBridge(), "FiatWalletBridge");
+        webView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
+
+        String bridgeShim = "if (!window.FiatWalletBridge) {" +
+            "  window.FiatWalletBridge = {" +
+            "    openDApp: function(u, t) { if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FiatWalletBridge) { window.Capacitor.Plugins.FiatWalletBridge.openDApp({ url: u, title: t }); } }," +
+            "    closeDApp: function() { if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FiatWalletBridge) { window.Capacitor.Plugins.FiatWalletBridge.closeDApp(); } }" +
+            "  };" +
+            "}";
+        webView.evaluateJavascript(bridgeShim, null);
     }
 
     private void closeDAppInternal() {
@@ -124,7 +175,70 @@ public class MainActivity extends BridgeActivity {
                 dAppWebView.destroy();
                 dAppWebView = null;
             }
+            dAppSearchBar = null;
             dAppContainer = null;
+        }
+    }
+
+    private void hideKeyboard(EditText editText) {
+        if (editText == null) return;
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(editText.getWindowToken(), 0);
+        }
+    }
+
+    private String resolveDAppUrl(String query) {
+        if (query == null) return "https://pump.fun";
+        String trimmed = query.trim();
+        String lower = trimmed.toLowerCase();
+
+        switch (lower) {
+            case "pump":
+            case "pump.fun":
+                return "https://pump.fun";
+            case "raydium":
+                return "https://raydium.io/swap/";
+            case "jupiter":
+            case "jup":
+            case "jup.ag":
+                return "https://jup.ag";
+            case "magiceden":
+            case "magic eden":
+                return "https://magiceden.io/solana";
+            case "kamino":
+                return "https://kamino.com/";
+            case "orca":
+                return "https://www.orca.so";
+            case "dexscreener":
+                return "https://dexscreener.com/solana";
+            case "jito":
+                return "https://www.jito.network/staking";
+            case "marinade":
+                return "https://app.marinade.finance/";
+            case "drift":
+                return "https://app.drift.trade";
+            case "meteora":
+                return "https://app.meteora.ag";
+            case "sanctum":
+                return "https://app.sanctum.so";
+            case "birdeye":
+                return "https://birdeye.so/?chain=solana";
+            case "tensor":
+                return "https://www.tensor.trade";
+            case "solanafm":
+            case "solana.fm":
+                return "https://solana.fm";
+            case "marginfi":
+                return "https://app.marginfi.com";
+            default:
+                if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                    return trimmed;
+                }
+                if (trimmed.contains(".")) {
+                    return "https://" + trimmed;
+                }
+                return "https://www.google.com/search?q=" + Uri.encode(trimmed);
         }
     }
 
@@ -279,6 +393,192 @@ public class MainActivity extends BridgeActivity {
             "})();";
     }
 
+    public void openDAppNative(String url, String title) {
+        try {
+            if (dAppContainer != null) {
+                closeDAppInternal();
+            }
+
+            ViewGroup rootView = (ViewGroup) getWindow().getDecorView().findViewById(android.R.id.content);
+            if (rootView == null) return;
+
+            LinearLayout container = new LinearLayout(MainActivity.this);
+            container.setOrientation(LinearLayout.VERTICAL);
+            container.setBackgroundColor(Color.parseColor("#0a1628"));
+            FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            );
+            container.setLayoutParams(layoutParams);
+
+            // Sleek in-app browser header
+            LinearLayout header = new LinearLayout(MainActivity.this);
+            header.setOrientation(LinearLayout.HORIZONTAL);
+            header.setBackgroundColor(Color.parseColor("#0a1628"));
+            LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(50)
+            );
+            header.setLayoutParams(headerParams);
+            header.setGravity(Gravity.CENTER_VERTICAL);
+            header.setPadding(dpToPx(8), 0, dpToPx(8), 0);
+
+            // Back button
+            TextView backBtn = new TextView(MainActivity.this);
+            backBtn.setText("←");
+            backBtn.setTextColor(Color.WHITE);
+            backBtn.setTextSize(18);
+            backBtn.setTypeface(null, Typeface.BOLD);
+            backBtn.setPadding(dpToPx(8), dpToPx(6), dpToPx(6), dpToPx(6));
+            backBtn.setOnClickListener(v -> {
+                if (dAppWebView != null && dAppWebView.canGoBack()) {
+                    dAppWebView.goBack();
+                } else {
+                    closeDAppInternal();
+                }
+            });
+            header.addView(backBtn);
+
+            // Close button (returns user to FiatWallet Explorer)
+            TextView closeBtn = new TextView(MainActivity.this);
+            closeBtn.setText("✕");
+            closeBtn.setTextColor(Color.parseColor("#94a3b8"));
+            closeBtn.setTextSize(15);
+            closeBtn.setTypeface(null, Typeface.BOLD);
+            closeBtn.setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6));
+            closeBtn.setOnClickListener(v -> closeDAppInternal());
+            header.addView(closeBtn);
+
+            // Center: Editable search and domain bar
+            EditText searchBar = new EditText(MainActivity.this);
+            String initialUrl = resolveDAppUrl(url != null ? url : "https://pump.fun");
+            searchBar.setText(initialUrl);
+            searchBar.setTextColor(Color.parseColor("#f0f6ff"));
+            searchBar.setHintTextColor(Color.parseColor("#64748b"));
+            searchBar.setHint("Search or enter dApp URL...");
+            searchBar.setTextSize(12);
+            searchBar.setSingleLine(true);
+            searchBar.setImeOptions(EditorInfo.IME_ACTION_GO);
+            searchBar.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            searchBar.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6));
+
+            GradientDrawable gd = new GradientDrawable();
+            gd.setColor(Color.parseColor("#13233c"));
+            gd.setCornerRadius(dpToPx(10));
+            gd.setStroke(dpToPx(1), Color.parseColor("#334155"));
+            searchBar.setBackground(gd);
+
+            LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f
+            );
+            searchParams.setMargins(dpToPx(4), 0, dpToPx(4), 0);
+            searchBar.setLayoutParams(searchParams);
+
+            searchBar.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_GO ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                    String query = searchBar.getText().toString().trim();
+                    if (!query.isEmpty()) {
+                        String target = resolveDAppUrl(query);
+                        if (dAppWebView != null) {
+                            dAppWebView.loadUrl(target);
+                        }
+                        hideKeyboard(searchBar);
+                        searchBar.clearFocus();
+                    }
+                    return true;
+                }
+                return false;
+            });
+            header.addView(searchBar);
+            dAppSearchBar = searchBar;
+
+            // Reload button
+            TextView reloadBtn = new TextView(MainActivity.this);
+            reloadBtn.setText("↻");
+            reloadBtn.setTextColor(Color.parseColor("#22d3ee"));
+            reloadBtn.setTextSize(18);
+            reloadBtn.setTypeface(null, Typeface.BOLD);
+            reloadBtn.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
+            reloadBtn.setOnClickListener(v -> {
+                if (dAppWebView != null) dAppWebView.reload();
+            });
+            header.addView(reloadBtn);
+
+            container.addView(header);
+
+            // Full-screen native webview
+            dAppWebView = new WebView(MainActivity.this);
+            LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0, 1.0f
+            );
+            dAppWebView.setLayoutParams(webParams);
+
+            WebSettings s = dAppWebView.getSettings();
+            s.setJavaScriptEnabled(true);
+            s.setDomStorageEnabled(true);
+            s.setDatabaseEnabled(true);
+            s.setAllowFileAccess(true);
+            s.setAllowContentAccess(true);
+            s.setMediaPlaybackRequiresUserGesture(false);
+            s.setJavaScriptCanOpenWindowsAutomatically(true);
+            s.setSupportMultipleWindows(true);
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            s.setUserAgentString(s.getUserAgentString().replace("; wv", "").replace(";wv", "") + " Solana Mobile Web Shell");
+
+            dAppWebView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
+
+            final String providerScript = getProviderInjectionScript();
+
+            dAppWebView.setWebViewClient(new WebViewClient() {
+                @Override
+                public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
+                    super.onPageStarted(view, pageUrl, favicon);
+                    view.evaluateJavascript(providerScript, null);
+                    if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
+                        dAppSearchBar.setText(pageUrl);
+                    }
+                }
+
+                @Override
+                public void onPageFinished(WebView view, String pageUrl) {
+                    super.onPageFinished(view, pageUrl);
+                    view.evaluateJavascript(providerScript, null);
+                    if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
+                        dAppSearchBar.setText(pageUrl);
+                    }
+                }
+
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
+                    Uri reqUri = request.getUrl();
+                    if (reqUri != null) {
+                        String scheme = reqUri.getScheme();
+                        if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
+                            try {
+                                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, reqUri);
+                                startActivity(intent);
+                                return true;
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    return false;
+                }
+            });
+
+            dAppWebView.setWebChromeClient(new WebChromeClient());
+
+            container.addView(dAppWebView);
+            rootView.addView(container);
+            dAppContainer = container;
+
+            dAppWebView.loadUrl(initialUrl);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * Java bridge exposed to JavaScript as window.FiatWalletBridge.
      */
@@ -286,116 +586,7 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void openDApp(String url, String title) {
-            runOnUiThread(() -> {
-                try {
-                    if (dAppContainer != null) {
-                        closeDAppInternal();
-                    }
-
-                    ViewGroup rootView = (ViewGroup) getWindow().getDecorView().findViewById(android.R.id.content);
-                    if (rootView == null) return;
-
-                    LinearLayout container = new LinearLayout(MainActivity.this);
-                    container.setOrientation(LinearLayout.VERTICAL);
-                    container.setBackgroundColor(Color.parseColor("#0a1628"));
-                    FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    );
-                    container.setLayoutParams(layoutParams);
-
-                    LinearLayout header = new LinearLayout(MainActivity.this);
-                    header.setOrientation(LinearLayout.HORIZONTAL);
-                    header.setBackgroundColor(Color.parseColor("#0a1628"));
-                    LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dpToPx(48)
-                    );
-                    header.setLayoutParams(headerParams);
-                    header.setGravity(Gravity.CENTER_VERTICAL);
-                    header.setPadding(dpToPx(12), 0, dpToPx(12), 0);
-
-                    TextView backBtn = new TextView(MainActivity.this);
-                    backBtn.setText("← Back");
-                    backBtn.setTextColor(Color.WHITE);
-                    backBtn.setTextSize(13);
-                    backBtn.setTypeface(null, Typeface.BOLD);
-                    backBtn.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
-                    backBtn.setOnClickListener(v -> closeDAppInternal());
-                    header.addView(backBtn);
-
-                    TextView titleView = new TextView(MainActivity.this);
-                    titleView.setText(title != null ? title : "dApp");
-                    titleView.setTextColor(Color.WHITE);
-                    titleView.setTextSize(14);
-                    titleView.setTypeface(null, Typeface.BOLD);
-                    titleView.setGravity(Gravity.CENTER);
-                    titleView.setSingleLine(true);
-                    titleView.setEllipsize(TextUtils.TruncateAt.END);
-                    LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f
-                    );
-                    titleView.setLayoutParams(titleParams);
-                    header.addView(titleView);
-
-                    TextView reloadBtn = new TextView(MainActivity.this);
-                    reloadBtn.setText("Reload");
-                    reloadBtn.setTextColor(Color.parseColor("#22d3ee"));
-                    reloadBtn.setTextSize(13);
-                    reloadBtn.setTypeface(null, Typeface.BOLD);
-                    reloadBtn.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
-                    reloadBtn.setOnClickListener(v -> {
-                        if (dAppWebView != null) dAppWebView.reload();
-                    });
-                    header.addView(reloadBtn);
-
-                    container.addView(header);
-
-                    dAppWebView = new WebView(MainActivity.this);
-                    LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0, 1.0f
-                    );
-                    dAppWebView.setLayoutParams(webParams);
-
-                    WebSettings s = dAppWebView.getSettings();
-                    s.setJavaScriptEnabled(true);
-                    s.setDomStorageEnabled(true);
-                    s.setDatabaseEnabled(true);
-                    s.setAllowFileAccess(true);
-                    s.setAllowContentAccess(true);
-                    s.setMediaPlaybackRequiresUserGesture(false);
-                    s.setUserAgentString(s.getUserAgentString().replace("; wv", "").replace(";wv", "") + " Solana Mobile Web Shell");
-
-                    dAppWebView.addJavascriptInterface(this, "FiatWalletBridge");
-
-                    final String providerScript = getProviderInjectionScript();
-
-                    dAppWebView.setWebViewClient(new WebViewClient() {
-                        @Override
-                        public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
-                            super.onPageStarted(view, pageUrl, favicon);
-                            view.evaluateJavascript(providerScript, null);
-                        }
-
-                        @Override
-                        public void onPageFinished(WebView view, String pageUrl) {
-                            super.onPageFinished(view, pageUrl);
-                            view.evaluateJavascript(providerScript, null);
-                        }
-                    });
-
-                    dAppWebView.setWebChromeClient(new WebChromeClient());
-
-                    container.addView(dAppWebView);
-                    rootView.addView(container);
-                    dAppContainer = container;
-
-                    dAppWebView.loadUrl(url);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
+            runOnUiThread(() -> openDAppNative(url, title));
         }
 
         @JavascriptInterface

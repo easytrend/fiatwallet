@@ -197,6 +197,7 @@ const DAppExplorer = forwardRef(function DAppExplorer({
 
   // Selected dApp for Full-Screen In-App Web View
   const [selectedDApp, setSelectedDApp] = useState(null);
+  const [browserUrlInput, setBrowserUrlInput] = useState('');
   const [iframeKey, setIframeKey] = useState(0);
   const iframeRef = useRef(null);
 
@@ -207,10 +208,11 @@ const DAppExplorer = forwardRef(function DAppExplorer({
   const [bridgeTxSignature, setBridgeTxSignature] = useState(null);
   const [bridgeError, setBridgeError] = useState(null);
 
-  // Reset reload key when opening dApp
+  // Reset reload key and sync browser url input when opening dApp
   useEffect(() => {
     if (selectedDApp) {
       setIframeKey(k => k + 1);
+      setBrowserUrlInput(selectedDApp.url || '');
     }
   }, [selectedDApp]);
 
@@ -271,12 +273,77 @@ const DAppExplorer = forwardRef(function DAppExplorer({
     return list;
   }, [activeCategory, searchQuery]);
 
-  const handleOpenDApp = (dApp) => {
+  const handleOpenDApp = async (dApp) => {
     if (!dApp) return;
+
+    // 1. Try Capacitor Native Bridge Plugin (Android native WebView - bypasses all X-Frame-Options)
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.FiatWalletBridge?.openDApp) {
+      try {
+        await window.Capacitor.Plugins.FiatWalletBridge.openDApp({ url: dApp.url, title: dApp.name });
+        return;
+      } catch (e) {
+        console.warn('Capacitor FiatWalletBridge error, falling back:', e);
+      }
+    }
+
+    // 2. Try window.FiatWalletBridge (Direct Android JavascriptInterface)
     if (typeof window !== 'undefined' && window.FiatWalletBridge && typeof window.FiatWalletBridge.openDApp === 'function') {
-      window.FiatWalletBridge.openDApp(dApp.url, dApp.name);
-    } else {
-      setSelectedDApp(dApp);
+      try {
+        window.FiatWalletBridge.openDApp(dApp.url, dApp.name);
+        return;
+      } catch (e) {
+        console.warn('window.FiatWalletBridge error, falling back:', e);
+      }
+    }
+
+    // 3. Fallback: In-app browser state
+    setSelectedDApp(dApp);
+    setBrowserUrlInput(dApp.url || '');
+  };
+
+  // Navigate directly inside in-app browser top bar without leaving
+  const handleNavigateInBrowser = (targetQuery) => {
+    const raw = (targetQuery || '').trim();
+    if (!raw) return;
+
+    // Check if query matches a curated dApp
+    const found = CURATED_DAPPS.find(
+      d => d.name.toLowerCase() === raw.toLowerCase() || d.id === raw.toLowerCase() || d.url.toLowerCase().includes(raw.toLowerCase())
+    );
+    if (found) {
+      handleOpenDApp(found);
+      return;
+    }
+
+    let fullUrl = raw;
+    if (!/^https?:\/\//i.test(fullUrl)) {
+      if (fullUrl.includes('.')) {
+        fullUrl = 'https://' + fullUrl;
+      } else {
+        fullUrl = `https://www.google.com/search?q=${encodeURIComponent(fullUrl)}`;
+      }
+    }
+
+    try {
+      const parsedUrl = new URL(fullUrl);
+      const domain = parsedUrl.hostname.replace(/^www\./i, '');
+      const custom = {
+        id: 'custom-' + domain,
+        name: domain,
+        url: fullUrl,
+        icon: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+        category: 'web3',
+        categoryLabel: 'Custom dApp',
+        color: 'var(--cyan)',
+      };
+      handleOpenDApp(custom);
+    } catch {
+      setSelectedDApp({
+        id: 'custom-' + Date.now(),
+        name: 'dApp',
+        url: fullUrl,
+      });
+      setBrowserUrlInput(fullUrl);
     }
   };
 
@@ -429,17 +496,18 @@ const DAppExplorer = forwardRef(function DAppExplorer({
           padding: 0,
           overflow: 'hidden'
         }}>
-          {/* Top minimal mobile navigation bar */}
+          {/* Top minimal mobile navigation bar with editable search bar */}
           <div style={{
-            height: '46px',
+            height: '50px',
             background: 'rgba(10, 22, 40, 0.98)',
             borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '0 12px',
+            padding: '0 8px',
             flexShrink: 0,
-            zIndex: 10
+            zIndex: 10,
+            gap: '8px'
           }}>
             {/* Left: Back to Explorer */}
             <button
@@ -452,81 +520,90 @@ const DAppExplorer = forwardRef(function DAppExplorer({
                 color: 'white',
                 fontSize: '12px',
                 fontWeight: '700',
-                padding: '6px 12px',
+                padding: '6px 10px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '4px',
+                flexShrink: 0
               }}
             >
               ← Back
             </button>
 
-            {/* Center: dApp Info */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-              {selectedDApp.icon && (
-                <img
-                  src={selectedDApp.icon}
-                  alt={selectedDApp.name}
-                  style={{ width: '20px', height: '20px', borderRadius: '5px' }}
-                  onError={e => { e.currentTarget.style.display = 'none'; }}
+            {/* Center: In-app Editable Search and Domain Bar */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleNavigateInBrowser(browserUrlInput);
+              }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                margin: '0 4px'
+              }}
+            >
+              <div style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                borderRadius: '10px',
+                padding: '5px 9px',
+                gap: '6px'
+              }}>
+                {selectedDApp.icon ? (
+                  <img
+                    src={selectedDApp.icon}
+                    alt=""
+                    style={{ width: '15px', height: '15px', borderRadius: '3px', flexShrink: 0 }}
+                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : (
+                  <span style={{ fontSize: '11px', color: 'var(--lime, #a3e635)', flexShrink: 0 }}>✓</span>
+                )}
+                <input
+                  type="text"
+                  value={browserUrlInput}
+                  onChange={(e) => setBrowserUrlInput(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="Search or enter dApp URL..."
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: '#f0f6ff',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    padding: '1px 0'
+                  }}
                 />
-              )}
-              <span style={{ fontSize: '14px', fontWeight: '800', color: 'white', whiteSpace: 'nowrap' }}>
-                {selectedDApp.name}
-              </span>
-            </div>
+              </div>
+            </form>
 
-            {/* Right: External + Reload */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {/* Open in external browser / Chrome button */}
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    const w = window.open(selectedDApp.url, '_system');
-                    if (!w) window.open(selectedDApp.url, '_blank');
-                  } catch {
-                    window.open(selectedDApp.url, '_blank');
-                  }
-                }}
-                style={{
-                  background: 'rgba(163, 230, 53, 0.12)',
-                  border: '1px solid rgba(163, 230, 53, 0.3)',
-                  borderRadius: '8px',
-                  color: 'var(--lime, #a3e635)',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  padding: '6px 10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-                title="Open in External Browser / Chrome"
-              >
-                <span>Browser ↗</span>
-              </button>
-
-              {/* Reload button */}
-              <button
-                type="button"
-                onClick={() => setIframeKey(k => k + 1)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderRadius: '8px',
-                  color: 'var(--cyan, #22d3ee)',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  padding: '6px 10px'
-                }}
-                title="Reload dApp"
-              >
-                ↻ Reload
-              </button>
-            </div>
+            {/* Right: Reload button */}
+            <button
+              type="button"
+              onClick={() => setIframeKey(k => k + 1)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '8px',
+                color: 'var(--cyan, #22d3ee)',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '700',
+                padding: '6px 10px',
+                flexShrink: 0
+              }}
+              title="Reload dApp"
+            >
+              ↻
+            </button>
           </div>
 
           {/* Full Screen Web View Iframe */}
@@ -539,7 +616,7 @@ const DAppExplorer = forwardRef(function DAppExplorer({
             style={{
               flex: 1,
               width: '100%',
-              height: 'calc(100vh - 46px)',
+              height: 'calc(100vh - 50px)',
               border: 'none',
               background: '#0a1628',
               display: 'block'
