@@ -1947,8 +1947,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const parsedAmt = offrampInputMode === 'crypto' ? parsedAmtRaw * ngnRate : parsedAmtRaw;
   const estCryptoAmount = offrampInputMode === 'fiat' ? (ngnRate > 0 ? parsedAmt / ngnRate : 0) : parsedAmtRaw;
 
-  // ── Platform Fee: flat 0.10 USDC on every Offramp ────────────────────
-  const platformFee = 0.10; // 0.10 USDC flat protocol fee
+  // ── Platform Fee: 0.4% USDC (minimum floor of 0.10 USDC) on every Offramp ──
+  const estUsdValue = estCryptoAmount * (tokenPriceUsd || 1);
+  const rawPlatformFee = estUsdValue * 0.004;
+  // Round to 2 decimal places (cents) with a 0.10 USDC minimum floor
+  const platformFee = Math.max(0.10, Math.round(rawPlatformFee * 100) / 100);
   const platformFeeInToken = tokenPriceUsd > 0 ? platformFee / tokenPriceUsd : platformFee;
   const baseCryptoAmount = estCryptoAmount + platformFeeInToken;
   const fiatAmountText = parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2624,12 +2627,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
 
-      // Ensure 0.10 USDC protocol fee is always intact and included
+      // Ensure protocol fee is always intact and included
       const finalCryptoAmount = order?.amount && Number(order.amount) >= baseCryptoAmount
         ? Number(order.amount)
         : baseCryptoAmount;
 
-      // Net crypto converted to fiat payout (gross crypto minus the 0.10 protocol fee)
+      // Net crypto converted to fiat payout (gross crypto minus platform fee)
       // Ensures usd_value in Supabase accurately reflects the net amount actually offramped
       const netCryptoOfframped = Math.max(0, finalCryptoAmount - platformFeeInToken);
       const netUsdValue = selectedCountry.currency === 'USD' ? parsedAmt : netCryptoOfframped * (tokenPriceUsd || 1);
@@ -2837,7 +2840,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const depositPubkey = new PublicKey(order.address);
 
-      // Ensure 0.10 USDC protocol fee is always intact and included
+      // Ensure protocol fee is always intact and included
       const finalSendAmount = order?.amount && Number(order.amount) >= baseCryptoAmount
         ? Number(order.amount)
         : baseCryptoAmount;
@@ -3056,8 +3059,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // instead of the correct NGN equivalent like 3100).
       const cryptoLogged = finalSendAmount;
       const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
-      // Net crypto converted to fiat payout (gross crypto minus the 0.10 protocol fee)
-      // This ensures usd_value in Supabase accurately reflects the net amount actually offramped (e.g. crypto_amount - 0.10)
+      // Net crypto converted to fiat payout (gross crypto minus platform fee)
+      // This ensures usd_value in Supabase accurately reflects the net amount actually offramped
       const netCryptoLogged = Math.max(0, cryptoLogged - platformFeeInToken);
       const usdLogged = selectedCountry.currency === 'USD'
         ? fiatLogged
@@ -4270,7 +4273,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                       >
                         ✕
                       </button>
-                      fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.10 USDC protocol fee</strong> on every offramp to serve you better.
+                      fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.4% platform fee</strong> (min 0.10 USDC) on every offramp to serve you better.
                     </div>
                   )}
                 </div>
@@ -4433,7 +4436,19 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                             setAmount('0');
                             return;
                           }
-                          const rawMaxCrypto = Math.max(0, balance - platformFeeInToken);
+                          const balanceUsd = balance * (tokenPriceUsd || 1);
+                          let rawMaxCrypto;
+                          if (balanceUsd > 25.10) {
+                            // 0.4% platform fee applies
+                            const netUsd = balanceUsd / 1.004;
+                            const estimatedFeeUsdc = Math.round(netUsd * 0.004 * 100) / 100;
+                            const feeInToken = tokenPriceUsd > 0 ? estimatedFeeUsdc / tokenPriceUsd : estimatedFeeUsdc;
+                            rawMaxCrypto = Math.max(0, balance - feeInToken);
+                          } else {
+                            // 0.10 USDC minimum floor applies
+                            const feeInToken = tokenPriceUsd > 0 ? 0.10 / tokenPriceUsd : 0.10;
+                            rawMaxCrypto = Math.max(0, balance - feeInToken);
+                          }
                           if (offrampInputMode === 'crypto') {
                             const maxCrypto = Math.floor(rawMaxCrypto * 10000) / 10000;
                             setAmount(maxCrypto > 0 ? maxCrypto.toString() : '0');
