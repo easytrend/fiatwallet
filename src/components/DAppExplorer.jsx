@@ -27,7 +27,7 @@ const CURATED_DAPPS = [
   {
     id: 'pumpfun',
     name: 'Pump.fun',
-    url: 'https://pump.fun',
+    url: 'https://pump.fun/explore',
     icon: 'https://www.google.com/s2/favicons?domain=pump.fun&sz=128',
     category: 'meme',
     categoryLabel: 'Meme & Launchpads',
@@ -37,7 +37,7 @@ const CURATED_DAPPS = [
   {
     id: 'magiceden',
     name: 'Magic Eden',
-    url: 'https://magiceden.io/solana',
+    url: 'https://magiceden.io',
     icon: 'https://www.google.com/s2/favicons?domain=magiceden.io&sz=128',
     category: 'nft',
     categoryLabel: 'NFTs & Gaming',
@@ -47,7 +47,7 @@ const CURATED_DAPPS = [
   {
     id: 'kamino',
     name: 'Kamino',
-    url: 'https://kamino.com/',
+    url: 'https://kamino.com/earn/lend',
     icon: 'https://www.google.com/s2/favicons?domain=kamino.com&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
@@ -57,7 +57,7 @@ const CURATED_DAPPS = [
   {
     id: 'orca',
     name: 'Orca',
-    url: 'https://www.orca.so',
+    url: 'https://www.orca.so/pools',
     icon: 'https://www.google.com/s2/favicons?domain=orca.so&sz=128',
     category: 'dex',
     categoryLabel: 'DEX & Swaps',
@@ -77,7 +77,7 @@ const CURATED_DAPPS = [
   {
     id: 'dexscreener',
     name: 'DexScreener',
-    url: 'https://dexscreener.com/solana',
+    url: 'https://dexscreener.com/?rankBy=trendingScoreH6&order=desc&chainIds=solana&profile=0',
     icon: 'https://www.google.com/s2/favicons?domain=dexscreener.com&sz=128',
     category: 'meme',
     categoryLabel: 'Meme & Launchpads',
@@ -107,7 +107,7 @@ const CURATED_DAPPS = [
   {
     id: 'jito',
     name: 'Jito',
-    url: 'https://www.jito.network/staking',
+    url: 'https://www.jito.network/staking/',
     icon: 'https://www.google.com/s2/favicons?domain=jito.network&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
@@ -133,16 +133,6 @@ const CURATED_DAPPS = [
     categoryLabel: 'DEX & Swaps',
     color: '#ff4d4d',
     bg: 'rgba(255, 77, 77, 0.12)',
-  },
-  {
-    id: 'drift',
-    name: 'Drift',
-    url: 'https://app.drift.trade',
-    icon: 'https://www.google.com/s2/favicons?domain=drift.trade&sz=128',
-    category: 'dex',
-    categoryLabel: 'DEX & Swaps',
-    color: '#8b5cf6',
-    bg: 'rgba(139, 92, 246, 0.12)',
   },
   {
     id: 'sanctum',

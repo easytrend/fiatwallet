@@ -189,14 +189,15 @@ public class MainActivity extends BridgeActivity {
     }
 
     private String resolveDAppUrl(String query) {
-        if (query == null) return "https://pump.fun";
+        if (query == null) return "https://pump.fun/explore";
         String trimmed = query.trim();
         String lower = trimmed.toLowerCase();
 
         switch (lower) {
             case "pump":
             case "pump.fun":
-                return "https://pump.fun";
+            case "pumpfun":
+                return "https://pump.fun/explore";
             case "raydium":
                 return "https://raydium.io/swap/";
             case "jupiter":
@@ -205,19 +206,17 @@ public class MainActivity extends BridgeActivity {
                 return "https://jup.ag";
             case "magiceden":
             case "magic eden":
-                return "https://magiceden.io/solana";
+                return "https://magiceden.io";
             case "kamino":
-                return "https://kamino.com/";
+                return "https://kamino.com/earn/lend";
             case "orca":
-                return "https://www.orca.so";
+                return "https://www.orca.so/pools";
             case "dexscreener":
-                return "https://dexscreener.com/solana";
+                return "https://dexscreener.com/?rankBy=trendingScoreH6&order=desc&chainIds=solana&profile=0";
             case "jito":
-                return "https://www.jito.network/staking";
+                return "https://www.jito.network/staking/";
             case "marinade":
                 return "https://app.marinade.finance/";
-            case "drift":
-                return "https://app.drift.trade";
             case "meteora":
                 return "https://app.meteora.ag";
             case "sanctum":
