@@ -17,7 +17,7 @@ const CURATED_DAPPS = [
   {
     id: 'raydium',
     name: 'Raydium',
-    url: 'https://raydium.io',
+    url: 'https://raydium.io/swap/',
     icon: 'https://www.google.com/s2/favicons?domain=raydium.io&sz=128',
     category: 'dex',
     categoryLabel: 'DEX & Swaps',
@@ -37,7 +37,7 @@ const CURATED_DAPPS = [
   {
     id: 'magiceden',
     name: 'Magic Eden',
-    url: 'https://magiceden.io',
+    url: 'https://magiceden.io/solana',
     icon: 'https://www.google.com/s2/favicons?domain=magiceden.io&sz=128',
     category: 'nft',
     categoryLabel: 'NFTs & Gaming',
@@ -47,8 +47,8 @@ const CURATED_DAPPS = [
   {
     id: 'kamino',
     name: 'Kamino',
-    url: 'https://app.kamino.finance',
-    icon: 'https://www.google.com/s2/favicons?domain=kamino.finance&sz=128',
+    url: 'https://kamino.com/',
+    icon: 'https://www.google.com/s2/favicons?domain=kamino.com&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
     color: '#818cf8',
@@ -87,7 +87,7 @@ const CURATED_DAPPS = [
   {
     id: 'birdeye',
     name: 'Birdeye',
-    url: 'https://birdeye.so',
+    url: 'https://birdeye.so/?chain=solana',
     icon: 'https://www.google.com/s2/favicons?domain=birdeye.so&sz=128',
     category: 'meme',
     categoryLabel: 'Meme & Launchpads',
@@ -107,7 +107,7 @@ const CURATED_DAPPS = [
   {
     id: 'jito',
     name: 'Jito',
-    url: 'https://www.jito.network',
+    url: 'https://www.jito.network/staking',
     icon: 'https://www.google.com/s2/favicons?domain=jito.network&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
@@ -117,7 +117,7 @@ const CURATED_DAPPS = [
   {
     id: 'marinade',
     name: 'Marinade',
-    url: 'https://marinade.finance',
+    url: 'https://app.marinade.finance/',
     icon: 'https://www.google.com/s2/favicons?domain=marinade.finance&sz=128',
     category: 'defi',
     categoryLabel: 'DeFi & Lending',
@@ -483,24 +483,29 @@ const DAppExplorer = forwardRef(function DAppExplorer({
               <button
                 type="button"
                 onClick={() => {
-                  window.open(selectedDApp.url, '_system');
+                  try {
+                    const w = window.open(selectedDApp.url, '_system');
+                    if (!w) window.open(selectedDApp.url, '_blank');
+                  } catch {
+                    window.open(selectedDApp.url, '_blank');
+                  }
                 }}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  background: 'rgba(163, 230, 53, 0.12)',
+                  border: '1px solid rgba(163, 230, 53, 0.3)',
                   borderRadius: '8px',
-                  color: 'var(--text, #f0f6ff)',
+                  color: 'var(--lime, #a3e635)',
                   cursor: 'pointer',
                   fontSize: '11px',
                   fontWeight: '700',
-                  padding: '6px 9px',
+                  padding: '6px 10px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '2px',
+                  gap: '4px',
                 }}
                 title="Open in External Browser / Chrome"
               >
-                <span>↗</span>
+                <span>Browser ↗</span>
               </button>
 
               {/* Reload button */}
