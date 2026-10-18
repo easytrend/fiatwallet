@@ -88,7 +88,9 @@ export default function FloatClaimWidget({
   effectiveSignAllTransactions: propSignAllTransactions,
   isOpen: externalIsOpen,
   onOpen: externalOnOpen,
-  onClose: externalOnClose
+  onClose: externalOnClose,
+  activeTab,
+  isHome: propIsHome
 }) {
   const { connection } = useConnection();
   const {
@@ -101,6 +103,8 @@ export default function FloatClaimWidget({
   const sendTransaction = propSendTransaction || adapterSendTransaction;
   const signAllTransactions = propSignAllTransactions || adapterSignAllTransactions;
   const { setVisible: setWalletModalVisible } = useWalletModal();
+
+  const isHome = propIsHome !== undefined ? propIsHome : (activeTab ? activeTab === 'wallet' : true);
 
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = externalIsOpen !== undefined ? (externalIsOpen || internalOpen) : internalOpen;
@@ -288,6 +292,21 @@ export default function FloatClaimWidget({
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  // Reset dismissal and re-check on-chain claimables whenever user returns to Home
+  useEffect(() => {
+    if (isHome) {
+      setIsDismissed(false);
+      if (effectivePublicKey) {
+        fetchClaimables();
+      }
+    }
+  }, [isHome, activeTab, effectivePublicKey?.toBase58()]);
+
+  // Determine whether user has real claimable items (unclaimed empty accounts or unclaimed cashback)
+  const hasClaimables = useMemo(() => {
+    return (!rentClaimed && emptyAccounts.length > 0) || (!cashbackClaimed && realCashback > 0);
+  }, [rentClaimed, emptyAccounts, cashbackClaimed, realCashback]);
 
   // Check if wallet has no empty accounts or cashback left
   const isRealWalletClean = useMemo(() => {
@@ -728,8 +747,9 @@ export default function FloatClaimWidget({
     setClaimingCashback(false);
   };
 
-  // Determine if the floating pill should be visible
-  const showPill = !isOpen && !isDismissed && effectivePublicKey && totalSOL > 0;
+  // Determine if the floating pill should be visible:
+  // ONLY on the Home page, NOT dismissed, NOT open, wallet connected/available, AND has real claimables (totalSOL > 0)
+  const showPill = isHome && !isOpen && !isDismissed && effectivePublicKey && hasClaimables && totalSOL > 0;
 
   // If the modal is not open and the floating pill shouldn't be shown, render nothing
   if (!isOpen && !showPill) return null;

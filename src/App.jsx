@@ -1591,6 +1591,8 @@ export default function App() {
         isOpen={showClaimModal}
         onOpen={() => setShowClaimModal(true)}
         onClose={() => setShowClaimModal(false)}
+        activeTab={activeTab}
+        isHome={isGuestMode ? activeTab === 'p2p' : activeTab === 'wallet'}
       />
 
       <div className={`main tab-${activeTab}`}>
