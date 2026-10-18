@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 import { fiatwalletProvider } from '../services/fiatwalletProvider';
 
@@ -175,7 +175,7 @@ const CATEGORIES = [
   { id: 'bridge', label: 'Tx Bridge' },
 ];
 
-export default function DAppExplorer({
+const DAppExplorer = forwardRef(function DAppExplorer({
   connection,
   effectivePublicKey,
   effectiveConnected,
@@ -186,9 +186,13 @@ export default function DAppExplorer({
   isGuestMode,
   onOpenConnect,
   onNavigateTab,
-}) {
+  searchQuery: propSearchQuery,
+  onSearchQueryChange,
+}, ref) {
   const [activeCategory, setActiveCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const searchQuery = propSearchQuery !== undefined ? propSearchQuery : internalSearchQuery;
+  const setSearchQuery = onSearchQueryChange || setInternalSearchQuery;
   const [copiedAddr, setCopiedAddr] = useState(false);
 
   // Selected dApp for Full-Screen In-App Web View
@@ -277,14 +281,17 @@ export default function DAppExplorer({
   };
 
   // Handle URL or Search submit -> Takes user straight to full screen web view
-  const handleUrlSubmit = (e) => {
-    e?.preventDefault();
-    const q = searchQuery.trim();
-    if (!q) return;
+  const handleUrlSubmit = (eOrQuery) => {
+    if (eOrQuery && typeof eOrQuery.preventDefault === 'function') {
+      eOrQuery.preventDefault();
+      eOrQuery = null;
+    }
+    const raw = (typeof eOrQuery === 'string' ? eOrQuery : (searchQuery || '')).trim();
+    if (!raw) return;
 
     // Check if query matches a curated dApp
     const found = CURATED_DAPPS.find(
-      d => d.name.toLowerCase() === q.toLowerCase() || d.url.toLowerCase().includes(q.toLowerCase())
+      d => d.name.toLowerCase() === raw.toLowerCase() || d.url.toLowerCase().includes(raw.toLowerCase())
     );
     if (found) {
       handleOpenDApp(found);
@@ -292,7 +299,7 @@ export default function DAppExplorer({
     }
 
     // Direct URL or custom query
-    let fullUrl = q;
+    let fullUrl = raw;
     if (!/^https?:\/\//i.test(fullUrl)) {
       fullUrl = 'https://' + fullUrl;
     }
@@ -319,6 +326,15 @@ export default function DAppExplorer({
       }
     }
   };
+
+  useImperativeHandle(ref, () => ({
+    handleUrlSubmit: (customQuery) => {
+      handleUrlSubmit(customQuery);
+    },
+    openDApp: (dApp) => {
+      handleOpenDApp(dApp);
+    }
+  }), [searchQuery, filteredDApps]);
 
   // Copy address helper
   const handleCopyAddress = () => {
@@ -534,69 +550,7 @@ export default function DAppExplorer({
          MAIN EXPLORER GRID & SEARCH VIEW
          ══════════════════════════════════════════════════════ */}
       <div style={{ width: '100%', maxWidth: '640px', margin: '0 auto', fontFamily: 'var(--ff, sans-serif)', color: 'var(--text)' }}>
-        {/* Header */}
-        <div style={{ marginBottom: '14px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
-            dApp Explorer
-          </h2>
-          <p style={{ fontSize: '13px', color: 'var(--text2)', margin: 0 }}>
-            Solana dApps &amp; Full-Screen Web3 Browser
-          </p>
-        </div>
-
-        {/* Connection Status Bar */}
-        <div style={{
-          background: 'rgba(17, 30, 56, 0.65)',
-          border: '1px solid var(--border2)',
-          borderRadius: '14px',
-          padding: '12px 16px',
-          marginBottom: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              background: effectiveConnected ? 'var(--lime)' : '#eab308',
-              boxShadow: effectiveConnected ? '0 0 8px var(--lime)' : 'none'
-            }} />
-            <div>
-              <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {effectiveConnected ? (isInternal ? 'Self-Custodial Vault Connected' : 'Solana Wallet Connected') : 'Guest Mode (Read-Only)'}
-              </div>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {effectivePublicKey ? (
-                  <>
-                    <span>{effectivePublicKey.toBase58().slice(0, 6)}...{effectivePublicKey.toBase58().slice(-6)}</span>
-                    <button
-                      type="button"
-                      onClick={handleCopyAddress}
-                      style={{ background: 'none', border: 'none', color: 'var(--cyan)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
-                    >
-                      {copiedAddr ? '✓' : 'Copy'}
-                    </button>
-                  </>
-                ) : (
-                  <span>No wallet connected</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text3)' }}>Balance</div>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: (solBalance || 0) < 0.005 ? '#f87171' : 'var(--lime)', fontFamily: 'var(--mono)' }}>
-              {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
-            </div>
-          </div>
-        </div>
-
-        {/* Low Gas Warning */}
+        {/* Low Gas Warning (if below minimum) */}
         {effectiveConnected && (solBalance || 0) < 0.005 && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.1)',
@@ -616,65 +570,6 @@ export default function DAppExplorer({
             </div>
           </div>
         )}
-
-        {/* Search & URL Input Bar */}
-        <form onSubmit={handleUrlSubmit} style={{ marginBottom: '16px' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            background: 'rgba(10, 22, 40, 0.8)',
-            border: '1px solid var(--border2)',
-            borderRadius: '14px',
-            padding: '6px 12px',
-            gap: '8px',
-            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)'
-          }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search dApps or enter URL (e.g. meteora, pump.fun)..."
-              style={{
-                flex: 1,
-                background: 'none',
-                border: 'none',
-                outline: 'none',
-                color: 'white',
-                fontSize: '13px',
-                fontFamily: 'var(--ff)'
-              }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: '14px', padding: 0 }}
-              >
-                ✕
-              </button>
-            )}
-            <button
-              type="submit"
-              style={{
-                background: 'linear-gradient(135deg, var(--lime), #65a30d)',
-                color: '#090d16',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '6px 12px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                fontFamily: 'var(--ff)'
-              }}
-            >
-              Go →
-            </button>
-          </div>
-        </form>
 
         {/* Categories Pill Selector */}
         <div style={{
@@ -1002,4 +897,6 @@ export default function DAppExplorer({
       </div>
     </>
   );
-}
+});
+
+export default DAppExplorer;

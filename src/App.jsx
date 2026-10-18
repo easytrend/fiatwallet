@@ -309,6 +309,15 @@ export default function App() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [walletApprovalRequest, setWalletApprovalRequest] = useState(null);
   const [showApkInstallModal, setShowApkInstallModal] = useState(false);
+  const [explorerSearchQuery, setExplorerSearchQuery] = useState('');
+  const explorerRef = useRef(null);
+
+  const handleExplorerSearchSubmit = (e) => {
+    e?.preventDefault();
+    if (explorerRef.current && typeof explorerRef.current.handleUrlSubmit === 'function') {
+      explorerRef.current.handleUrlSubmit(explorerSearchQuery);
+    }
+  };
 
   // Unified wallet connection state
   const isFiatWalletAdapter = wallet?.adapter?.name === 'FiatWallet';
@@ -1536,7 +1545,7 @@ export default function App() {
       )}
 
       <nav>
-        <div className="nav-logo-wrap" style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="nav-logo-wrap" style={{ display: 'flex', alignItems: 'center', marginRight: activeTab === 'explorer' ? '8px' : 'auto' }}>
           <button
             onClick={() => setShowMenuDrawer(true)}
             aria-label="Menu"
@@ -1561,6 +1570,44 @@ export default function App() {
           </button>
           <img src={logoImg} alt="Fiatwallet Logo" className="nav-logo" onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')} style={{ cursor: 'pointer' }} />
         </div>
+
+        {activeTab === 'explorer' && (
+          <div className="nav-browser-search-wrap">
+            <form onSubmit={handleExplorerSearchSubmit} style={{ margin: 0, width: '100%' }}>
+              <div className="nav-browser-search-box">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  value={explorerSearchQuery}
+                  onChange={e => setExplorerSearchQuery(e.target.value)}
+                  placeholder="Search dApps or enter URL..."
+                  className="nav-browser-input"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                {explorerSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setExplorerSearchQuery('')}
+                    className="nav-browser-clear"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="nav-browser-go-btn"
+                >
+                  Go →
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div className="nav-actions">
           {effectiveConnected && effectivePublicKey && (
@@ -1678,34 +1725,10 @@ export default function App() {
         {/* ── dApp Explorer Card ── */}
         <div className="app-card explorer-card" style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
           <div className="card-body">
-            {!isGuestMode && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                <button
-                  onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontFamily: 'var(--ff)',
-                  }}
-                >
-                  ← Home
-                </button>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text2)' }}>
-                  dApp Explorer
-                </span>
-                <div style={{ width: '60px' }} />
-              </div>
-            )}
             <DAppExplorer
+              ref={explorerRef}
+              searchQuery={explorerSearchQuery}
+              onSearchQueryChange={setExplorerSearchQuery}
               connection={connection}
               effectivePublicKey={effectivePublicKey}
               effectiveConnected={effectiveConnected}
