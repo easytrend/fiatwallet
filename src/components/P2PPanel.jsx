@@ -1426,44 +1426,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setIsAcctInputFocused(false);
   }, [apiBanks]);
 
-  // ── Auto-pop full account number, bank & account name on first 3+ digits ──
-  const autoPoppedRef = useRef('');
-
-  useEffect(() => {
-    const isPureDigits = /^\d+$/.test(accountNumber.trim());
-    if (isPureDigits && cleanAcctDigits.length >= 3 && cleanAcctDigits.length < 10) {
-      // ONLY auto-fill automatically if there is EXACTLY 1 matching past account.
-      // If there are multiple matching accounts, do NOT auto-overwrite so the user
-      // can see all matching options in the popup list and tap the one they want.
-      if (matchingPastAccounts.length === 1) {
-        const topMatch = matchingPastAccounts[0];
-        if (autoPoppedRef.current !== topMatch.accountNumber && topMatch && topMatch.accountNumber) {
-          autoPoppedRef.current = topMatch.accountNumber;
-          // Auto-fill full 10-digit account number
-          setAccountNumber(topMatch.accountNumber);
-          // Auto-fill bank selection
-          if (topMatch.bankName && topMatch.bankName !== 'Choose Bank' && topMatch.bankName !== 'Saved Account') {
-            const match = apiBanks.find(b => {
-              const bName = typeof b === 'string' ? b : (b.name || b.bank_name || b.code || '');
-              return bName.toLowerCase().includes(topMatch.bankName.toLowerCase()) || topMatch.bankName.toLowerCase().includes(bName.toLowerCase());
-            });
-            if (match) {
-              const matchedName = typeof match === 'string' ? match : (match.name || match.bank_name);
-              setSelectedBank(matchedName);
-            } else {
-              setSelectedBank(topMatch.bankName);
-            }
-          }
-          // Auto-fill account holder name
-          if (topMatch.accountName) {
-            setAccountName(topMatch.accountName);
-          }
-        }
-      }
-    } else if (cleanAcctDigits.length < 3) {
-      autoPoppedRef.current = '';
-    }
-  }, [accountNumber, cleanAcctDigits, matchingPastAccounts, apiBanks]);
+  // Matching accounts are listed in the suggestion dropdown for the user to tap to autofill,
+  // preventing accidental overwrites when typing a new account with matching initial digits.
 
   const hasPromptedTagRef = useRef(false);
 
@@ -4112,6 +4076,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                               <div
                                 key={`${acc.accountNumber}_${idx}`}
                                 onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectPastAccount(acc);
+                                }}
+                                onTouchStart={(e) => {
+                                  e.preventDefault();
+                                  handleSelectPastAccount(acc);
+                                }}
+                                onClick={(e) => {
                                   e.preventDefault();
                                   handleSelectPastAccount(acc);
                                 }}
