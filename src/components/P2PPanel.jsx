@@ -21,6 +21,9 @@ import {
   getEffectiveApiKey,
   getEffectiveApiKeyAsync,
   fetchRemotePajConfig,
+  getEffectiveRelayerPublicKey,
+  getEffectiveUseOnrampRelayer,
+  getEffectiveRelayerConfigAsync,
 } from '../services/pajcashService';
 import { getQuote, buildSwapTransaction } from '../services/swapService';
 import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
@@ -33,6 +36,19 @@ import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
+
+export function getRelayEndpoint(path) {
+  if (typeof window !== 'undefined') {
+    const isLocalOrCapacitor = window.location.protocol === 'capacitor:'
+      || window.location.protocol === 'file:'
+      || window.location.hostname === 'localhost'
+      || window.location.hostname === '127.0.0.1';
+    if (isLocalOrCapacitor) {
+      return `https://fiatwallet.app${path}`;
+    }
+  }
+  return path;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -522,7 +538,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setReleaseSuccessTx(null);
     setReleasingLogId(orderId);
     try {
-      const res = await fetch('/api/relay_onramp_fee', {
+      const res = await fetch(getRelayEndpoint('/api/relay_onramp_fee'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, sessionToken })
@@ -2140,19 +2156,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     if (!parsedOnrampAmt || parsedOnrampAmt <= 0) { setOnrampError('Please enter a valid NGN amount.'); return; }
-    if (!PAJCASH_API_KEY) { setOnrampError('PajCash API Key is not configured.'); return; }
 
     setOnrampLoading(true);
     try {
+      const effectiveAuthToken = sessionToken || (await getEffectiveApiKeyAsync()) || PAJCASH_API_KEY;
+      if (!effectiveAuthToken) {
+        setOnrampError('PajCash API configuration missing. Please verify API settings.');
+        setOnrampLoading(false);
+        return;
+      }
+
       // End-user wallet that should receive onramp crypto (never the relayer).
       const userWalletAddress = publicKey
         ? publicKey.toBase58()
         : recipientAddress;
 
       // Optional relayer intermediary: PajCash → relayer → forward to user (see relay_onramp_fee).
-      // Only when explicitly enabled; otherwise funds must land directly on the user's wallet.
-      const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
-      const useOnrampRelayer = import.meta.env.VITE_ONRAMP_USE_RELAYER === 'true';
+      // Uses VITE_RELAYER_PUBLIC_KEY or remotely fetched relayer public key from api/paj_config.
+      const { relayerPublicKey: relayerPubkeyStr, useOnrampRelayer } = await getEffectiveRelayerConfigAsync();
       if (useOnrampRelayer && relayerPubkeyStr) {
         try {
           new PublicKey(relayerPubkeyStr);
@@ -2183,6 +2204,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           currency: 'NGN',
           fiatAmount: parsedOnrampAmt, // Exactly what the user typed
           recipient: recipientAddress,
+          wallet: recipientAddress,
+          address: recipientAddress,
           chain: 'SOLANA',
           mint: onrampMint,
         },
@@ -2300,7 +2323,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // relayerPayer: when set, Jupiter builds the tx with the relayer as fee payer (index 0).
       // Both the user AND the relayer must sign before the tx can be broadcast.
       // The user signs here; relay_swap.js adds the relayer signature and broadcasts.
-      const relayerPayer = import.meta.env.VITE_RELAYER_PUBLIC_KEY || undefined;
+      const relayerPayer = getEffectiveRelayerPublicKey() || undefined;
 
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
@@ -2322,7 +2345,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           signedTx.serialize({ requireAllSignatures: false })
         ).toString('base64');
 
-        const relayRes = await fetch('/api/relay_swap', {
+        const relayRes = await fetch(getRelayEndpoint('/api/relay_swap'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ serializedTransaction: serialized }),
@@ -2403,7 +2426,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         throw new Error("Failed to retrieve quote from Jupiter.");
       }
 
-      const relayerPayer = import.meta.env.VITE_RELAYER_PUBLIC_KEY || undefined;
+      const relayerPayer = getEffectiveRelayerPublicKey() || undefined;
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
         throw new Error("Failed to construct swap transaction.");
@@ -2421,7 +2444,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           signedTx.serialize({ requireAllSignatures: false })
         ).toString('base64');
 
-        const relayRes = await fetch('/api/relay_swap', {
+        const relayRes = await fetch(getRelayEndpoint('/api/relay_swap'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ serializedTransaction: serialized }),
@@ -2458,8 +2481,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     swapTriggeredRef.current = true;
 
     // Check if we are using the relayer intermediary for onramp fee deduction
-    const isRelayerActive = import.meta.env.VITE_ONRAMP_USE_RELAYER === 'true'
-      && !!import.meta.env.VITE_RELAYER_PUBLIC_KEY;
+    const { relayerPublicKey: relayerPubkeyStr, useOnrampRelayer } = await getEffectiveRelayerConfigAsync();
+    const isRelayerActive = useOnrampRelayer && !!relayerPubkeyStr;
     let step = 'init';
 
     try {
@@ -2467,7 +2490,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         step = 'forwarding';
         setOnrampStatus('forwarding');
         // Call backend API to deduct the fee and forward USDC to user
-        const res = await fetch('/api/relay_onramp_fee', {
+        const res = await fetch(getRelayEndpoint('/api/relay_onramp_fee'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId, sessionToken })
@@ -2848,7 +2871,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
 
       // 2. Check if server-side relayer is configured
-      const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY;
+      const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY || getEffectiveRelayerPublicKey();
       let relayerPublicKey = null;
       let usingRelayer = false;
       if (relayerPubkeyStr) {
@@ -2982,7 +3005,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             signedTx.serialize({ requireAllSignatures: false })
           ).toString('base64');
 
-          const relayRes = await fetch('/api/relay', {
+          const relayRes = await fetch(getRelayEndpoint('/api/relay'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ serializedTransaction: serialized }),

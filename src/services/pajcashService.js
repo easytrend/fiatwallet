@@ -71,12 +71,15 @@ export function initPajSDK(envString = 'production') {
 // Immediately ensure SDK defaults to production so requests hit https://api.paj.cash
 initPajSDK(import.meta.env.VITE_PAJCASH_ENV || 'production');
 
+let remoteRelayerPublicKey = null;
+let remoteUseOnrampRelayer = false;
+
 /**
- * Fetch PajCash merchant API key from the Vercel serverless config endpoint.
+ * Fetch PajCash merchant API key and Relayer public key from the Vercel serverless config endpoint.
  * Checks relative endpoint first, then falls back to production domain https://fiatwallet.app/api/paj_config.
  */
 export async function fetchRemotePajConfig() {
-  if (remoteApiKey) return remoteApiKey;
+  if (remoteApiKey && remoteRelayerPublicKey) return remoteApiKey;
   if (fetchConfigPromise) return fetchConfigPromise;
 
   fetchConfigPromise = (async () => {
@@ -92,8 +95,16 @@ export async function fetchRemotePajConfig() {
             if (data?.env) {
               initPajSDK(data.env);
             }
-            return remoteApiKey;
           }
+          if (data?.relayerPublicKey) {
+            remoteRelayerPublicKey = data.relayerPublicKey;
+            remoteUseOnrampRelayer = Boolean(data.useOnrampRelayer);
+            try {
+              localStorage.setItem('relayer_public_key', data.relayerPublicKey);
+              localStorage.setItem('use_onramp_relayer', 'true');
+            } catch (e) {}
+          }
+          if (remoteApiKey) return remoteApiKey;
         }
       } catch (err) {
         // Proceed to next endpoint
@@ -109,6 +120,37 @@ export async function fetchRemotePajConfig() {
   } finally {
     fetchConfigPromise = null;
   }
+}
+
+export function getEffectiveRelayerPublicKey() {
+  return (
+    import.meta.env.VITE_RELAYER_PUBLIC_KEY ||
+    remoteRelayerPublicKey ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('relayer_public_key') : null) ||
+    ''
+  );
+}
+
+export function getEffectiveUseOnrampRelayer() {
+  if (import.meta.env.VITE_ONRAMP_USE_RELAYER === 'true') return true;
+  if (import.meta.env.VITE_ONRAMP_USE_RELAYER === 'false') return false;
+  if (remoteUseOnrampRelayer) return true;
+  if (typeof localStorage !== 'undefined') {
+    const cached = localStorage.getItem('use_onramp_relayer');
+    if (cached === 'true') return true;
+    if (cached === 'false') return false;
+  }
+  return Boolean(getEffectiveRelayerPublicKey());
+}
+
+export async function getEffectiveRelayerConfigAsync() {
+  if (!getEffectiveRelayerPublicKey()) {
+    await fetchRemotePajConfig();
+  }
+  return {
+    relayerPublicKey: getEffectiveRelayerPublicKey(),
+    useOnrampRelayer: getEffectiveUseOnrampRelayer(),
+  };
 }
 
 if (typeof window !== 'undefined') {
@@ -132,7 +174,7 @@ export function getEffectiveApiKey() {
  */
 export async function getEffectiveApiKeyAsync() {
   let key = getEffectiveApiKey();
-  if (key) return key;
+  if (key && getEffectiveRelayerPublicKey()) return key;
   key = await fetchRemotePajConfig();
   return key || getEffectiveApiKey();
 }

@@ -121,8 +121,9 @@ export default async function handler(req, res) {
     if (!orderId) {
       return res.status(400).json({ error: 'Missing orderId' });
     }
-    if (!sessionToken) {
-      return res.status(400).json({ error: 'Missing sessionToken' });
+    const authToken = sessionToken || process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
+    if (!authToken) {
+      return res.status(400).json({ error: 'Missing sessionToken and server PAJCASH_API_KEY is not configured.' });
     }
 
     // 3. Query PajCash to verify order details & status
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
     for (const baseUrl of baseUrls) {
       try {
         const response = await fetch(`${baseUrl}/pub/transactions/${orderId}`, {
-          headers: { 'Authorization': `Bearer ${sessionToken}` }
+          headers: { 'Authorization': `Bearer ${authToken}` }
         });
         if (response.ok) {
           pajTx = await response.json();
@@ -249,18 +250,24 @@ export default async function handler(req, res) {
     const userATA = getAssociatedTokenAddressSync(USDC_MINT, userPublicKey);
 
     let relayerUsdcBalance = 0n;
-    try {
-      const balResp = await connection.getTokenAccountBalance(relayerATA, 'confirmed');
-      relayerUsdcBalance = BigInt(balResp.value.amount || '0');
-    } catch (e) {
-      throw new Error(`Failed to check relayer USDC balance: ${e.message}`);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        const balResp = await connection.getTokenAccountBalance(relayerATA, 'confirmed');
+        relayerUsdcBalance = BigInt(balResp.value.amount || '0');
+        if (relayerUsdcBalance >= units) break;
+      } catch (e) {
+        // Relayer ATA may not be created or indexed yet
+      }
+      if (attempt < 7) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
 
     if (relayerUsdcBalance < units) {
       throw new Error(
         `Relayer USDC balance (${relayerUsdcBalance} base units) is insufficient ` +
         `to forward ${units} base units (${netAmount} USDC). ` +
-        `The on-chain deposit may not have arrived yet.`
+        `The on-chain deposit may not have arrived yet. Please retry in a moment.`
       );
     }
 
