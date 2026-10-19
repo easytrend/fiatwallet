@@ -186,7 +186,11 @@ export default async function handler(req, res) {
             .upsert({
               order_id: String(orderId),
               user_address: destinationAddress,
+              token_symbol: 'USDC',
               crypto_amount: Number(pajTx.amount ?? pajTx.usdcAmount ?? 0),
+              usd_value: Number(pajTx.amount ?? pajTx.usdcAmount ?? 0),
+              fiat_currency: 'NGN',
+              fiat_amount: Number(pajTx.fiatAmount ?? 0),
               status: 'PENDING',
               transaction_type: 'p2p_onramp',
               created_at: new Date().toISOString(),
