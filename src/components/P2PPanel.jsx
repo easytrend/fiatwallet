@@ -2204,8 +2204,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           currency: 'NGN',
           fiatAmount: parsedOnrampAmt, // Exactly what the user typed
           recipient: recipientAddress,
-          wallet: recipientAddress,
-          address: recipientAddress,
           chain: 'SOLANA',
           mint: onrampMint,
         },
