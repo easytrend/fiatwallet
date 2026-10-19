@@ -223,7 +223,7 @@ export default async function handler(req, res) {
     }
 
     // 5. Build forwarding transaction
-    const rpcUrl = process.env.VITE_RPC_URL || 'https://rpc.ankr.com/solana';
+    const rpcUrl = process.env.HELIUS_RPC_URL || process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
     const connection = new Connection(rpcUrl, 'confirmed');
 
     // Platform fee math: 0.4% USDC with a 0.10 USDC minimum floor

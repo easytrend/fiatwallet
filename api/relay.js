@@ -221,7 +221,7 @@ export default async function handler(req, res) {
     }
 
     // ── Connect and check relayer SOL balance ─────────────────────────────────
-    const rpcUrl = process.env.VITE_RPC_URL || 'https://rpc.ankr.com/solana';
+    const rpcUrl = process.env.HELIUS_RPC_URL || process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
     const connection = new Connection(rpcUrl, 'confirmed');
 
     let relayerBalance;
