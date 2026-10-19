@@ -195,7 +195,10 @@ export default async function handler(req, res) {
     // ──────────────────────────────────────────────────────────────────────────
     const currentDbStatus = (dbTx.status || '').toUpperCase();
     if (currentDbStatus === 'FORWARDED_SUCCESS') {
-      return res.status(200).json({ signature: dbTx.signature, netAmount: dbTx.crypto_amount - 0.10, alreadyForwarded: true });
+      const gross = Number(dbTx.crypto_amount || 0);
+      const rawFee = gross * 0.004;
+      const fee = Math.max(0.10, Math.round(rawFee * 100) / 100);
+      return res.status(200).json({ signature: dbTx.signature, netAmount: Math.max(0, gross - fee), alreadyForwarded: true });
     }
 
     // Atomically claim this order for forwarding — only succeeds if status is NOT already FORWARDING or FORWARDED_SUCCESS
@@ -222,10 +225,11 @@ export default async function handler(req, res) {
     const rpcUrl = process.env.VITE_RPC_URL || 'https://rpc.ankr.com/solana';
     const connection = new Connection(rpcUrl, 'confirmed');
 
-    // Platform fee math
+    // Platform fee math: 0.4% USDC with a 0.10 USDC minimum floor
     const grossAmount = Number(pajTx.amount ?? pajTx.usdcAmount ?? dbTx.crypto_amount ?? 0);
-    const PLATFORM_FEE_USD = 0.10;
-    const netAmount = Math.max(0, grossAmount - PLATFORM_FEE_USD);
+    const rawFee = grossAmount * 0.004;
+    const platformFeeUsd = Math.max(0.10, Math.round(rawFee * 100) / 100);
+    const netAmount = Math.max(0, grossAmount - platformFeeUsd);
     const units = BigInt(Math.round(netAmount * 1_000_000)); // USDC has 6 decimals
 
     if (units <= 0n) {

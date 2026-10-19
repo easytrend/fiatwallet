@@ -572,6 +572,21 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     };
   }, [showAmountTooltip]);
 
+  const onrampTooltipRef = useRef(null);
+
+  useEffect(() => {
+    if (!showOnrampTooltip) return;
+    const handleOutsideClick = (e) => {
+      if (onrampTooltipRef.current && !onrampTooltipRef.current.contains(e.target)) {
+        setShowOnrampTooltip(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+    };
+  }, [showOnrampTooltip]);
+
   const countryPickerRef = useRef(null);
 
   useEffect(() => {
@@ -979,8 +994,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (mode === 'buy' && parsedOnrampAmt > 0 && selectedToken && selectedToken.symbol !== 'USDC') {
       const fetchJupiterQuote = async () => {
         try {
-          const usdcAmount = onrampInputMode === 'fiat' ? Math.max(0, parsedOnrampAmt / onrampNgnRate) : parsedOnrampAmtRaw;
-          const amountLamports = Math.floor(usdcAmount * 1_000_000); // USDC has 6 decimals
+          const grossUsdc = pajcashNetUsdc !== null
+            ? pajcashNetUsdc
+            : (onrampInputMode === 'fiat' ? Math.max(0, parsedOnrampAmt / onrampNgnRate) : parsedOnrampAmtRaw);
+          const rawFee = grossUsdc * 0.004;
+          const fee = Math.max(0.10, Math.round(rawFee * 100) / 100);
+          const netUsdc = Math.max(0, grossUsdc - fee);
+          const amountLamports = Math.floor(netUsdc * 1_000_000); // USDC has 6 decimals
           
           if (amountLamports <= 0) {
              setJupiterQuote(null);
@@ -1005,7 +1025,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } else {
       setJupiterQuote(null);
     }
-  }, [mode, onrampAmount, selectedToken, pajRates]);
+  }, [mode, onrampAmount, selectedToken, pajRates, pajcashNetUsdc]);
 
   // ── Live PajCash Onramp Estimate (accounts for PajCash's own fees) ────────
   // getOnrampValue() returns the EXACT net USDC PajCash will deposit after their
@@ -1973,20 +1993,26 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   
   // Use the live PajCash quote (pajcashNetUsdc) when available — it reflects 
   // PajCash's own processing fee.
-  const estOnrampCrypto = pajcashNetUsdc !== null
+  const estOnrampGrossCrypto = pajcashNetUsdc !== null
     ? pajcashNetUsdc
     : grossOnrampCrypto;
+
+  // Onramp Platform Fee: 0.4% USDC (minimum floor of 0.10 USDC) deducted from the crypto payout
+  const onrampPlatformFee = parsedOnrampAmt > 0
+    ? Math.max(0.10, Math.round(estOnrampGrossCrypto * 0.004 * 100) / 100)
+    : 0.10;
+  const netOnrampCrypto = Math.max(0, estOnrampGrossCrypto - onrampPlatformFee);
 
   const displayOnrampAmount = useMemo(() => {
     if (parsedOnrampAmt <= 0) return 0;
     if (liveSelectedToken.symbol === 'USDC') {
-      return estOnrampCrypto; // full quote amount — fee is on the naira side, not deducted from USDC received
+      return netOnrampCrypto; // Net amount received after 0.4% platform fee deduction
     }
     if (jupiterQuote && jupiterQuote.outAmount) {
       return Number(jupiterQuote.outAmount) / Math.pow(10, liveSelectedToken.decimals);
     }
     return 0;
-  }, [parsedOnrampAmt, liveSelectedToken, estOnrampCrypto, jupiterQuote]);
+  }, [parsedOnrampAmt, liveSelectedToken, netOnrampCrypto, jupiterQuote]);
 
   const displayOnrampRate = useMemo(() => {
     if (liveSelectedToken.symbol === 'USDC') {
@@ -2173,7 +2199,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // For SOL this correctly applies the live market price (not NGN/USDC cross rate).
       // We prefer PajCash's exact net USDC figure (pajcashNetUsdc) when available;
       // otherwise fall back to the estimated amount.
-      const onrampCryptoAmt = displayOnrampAmount > 0 ? displayOnrampAmount : estOnrampCrypto;
+      const onrampCryptoAmt = displayOnrampAmount > 0 ? displayOnrampAmount : netOnrampCrypto;
       const usdVal = onrampCryptoAmt * (tokenPriceUsd || 1);
       logP2PTransaction({
         userAddress: userWalletAddress,
@@ -2245,7 +2271,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       ? Math.max(0, parsedOnrampAmt / onrampNgnRate)
       : parsedOnrampAmtRaw;
     const pajcashGross = pajcashNetUsdc !== null ? pajcashNetUsdc : grossUsdcFallback;
-    const amountLamports = Math.floor(pajcashGross * 1_000_000);
+    const rawFee = pajcashGross * 0.004;
+    const onrampFee = Math.max(0.10, Math.round(rawFee * 100) / 100);
+    const usableUsdc = Math.max(0, pajcashGross - onrampFee);
+    const amountLamports = Math.floor(usableUsdc * 1_000_000);
     
     if (amountLamports <= 0) {
       throw new Error("Invalid USDC amount for swap.");
@@ -4599,16 +4628,48 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               <div className="field-label" style={{ marginBottom: 0, textTransform: 'none', fontSize: '13px', fontWeight: '500', color: 'rgba(255,255,255,0.6)', letterSpacing: 'normal' }}>
                 Amount
               </div>
-              {/* Unclickable info icon */}
-              <svg
-                width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                style={{ color: 'rgba(255,255,255,0.2)', cursor: 'default' }}
+              {/* Clickable fee tooltip */}
+              <div
+                ref={onrampTooltipRef}
+                style={{ position: 'relative', display: 'inline-flex', cursor: 'pointer' }}
+                onClick={() => setShowOnrampTooltip(v => !v)}
               >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="16" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12.01" y2="8" />
-              </svg>
+                <svg
+                  width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ color: 'var(--lime)', filter: 'drop-shadow(0 0 4px rgba(163,230,53,0.5))' }}
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                {showOnrampTooltip && (
+                  <div
+                    onClick={e => { e.stopPropagation(); setShowOnrampTooltip(false); }}
+                    style={{
+                      position: 'absolute', bottom: '24px', left: '-6px',
+                      background: 'var(--card)', border: '1px solid var(--border)',
+                      borderRadius: '12px', padding: '12px 24px 10px 14px', fontSize: '11px', color: 'var(--text)',
+                      width: '230px', maxWidth: 'calc(100vw - 60px)', lineHeight: '1.6', zIndex: 300, cursor: 'pointer',
+                      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(163, 230, 53, 0.1)',
+                      backdropFilter: 'blur(16px)', textAlign: 'center',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setShowOnrampTooltip(false); }}
+                      style={{
+                        position: 'absolute', top: '6px', right: '8px', background: 'none',
+                        border: 'none', color: 'var(--text3)', fontSize: '12px',
+                        cursor: 'pointer', padding: '2px', lineHeight: 1
+                      }}
+                    >
+                      ✕
+                    </button>
+                    fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.4% platform fee</strong> (min 0.10 USDC) on every onramp to serve you better.
+                  </div>
+                )}
+              </div>
             </div>
             <div className="amount-block" style={{ marginTop: '4px', padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
