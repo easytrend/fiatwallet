@@ -115,7 +115,7 @@ export default async function handler(req, res) {
       try { body = JSON.parse(body.toString('utf-8')); } catch (e) { return res.status(400).json({ error: 'Malformed JSON payload from Buffer' }); }
     }
 
-    const { orderId, sessionToken } = body || {};
+    const { orderId, sessionToken, destinationAddress } = body || {};
     globalOrderId = orderId;
 
     if (!orderId) {
@@ -166,19 +166,48 @@ export default async function handler(req, res) {
     }
 
     // 4. Resolve actual user wallet from Supabase
-    const { data: dbTx, error: dbError } = await supabase
+    let { data: dbTx, error: dbError } = await supabase
       .from('p2p_transactions')
       .select('*')
       .eq('order_id', String(orderId))
-      .single();
+      .maybeSingle();
 
-    if (dbError || !dbTx) {
-      throw new Error(`Could not find transaction mapping in database: ${dbError?.message || 'Record not found'}`);
+    let userAddressStr = dbTx?.user_address;
+
+    // Fallback: If DB record is missing (e.g. guest mode client insert failed or was blocked),
+    // or if dbTx has no user_address, use destinationAddress provided in request payload.
+    if (!userAddressStr && destinationAddress) {
+      try {
+        new PublicKey(destinationAddress);
+        userAddressStr = destinationAddress;
+        if (!dbTx) {
+          const { data: insertedTx } = await supabase
+            .from('p2p_transactions')
+            .upsert({
+              order_id: String(orderId),
+              user_address: destinationAddress,
+              crypto_amount: Number(pajTx.amount ?? pajTx.usdcAmount ?? 0),
+              status: 'PENDING',
+              transaction_type: 'p2p_onramp',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'order_id' })
+            .select('*')
+            .single();
+          dbTx = insertedTx || { crypto_amount: pajTx.amount, status: 'PENDING' };
+        } else {
+          await supabase
+            .from('p2p_transactions')
+            .update({ user_address: destinationAddress, updated_at: new Date().toISOString() })
+            .eq('order_id', String(orderId));
+        }
+      } catch (e) {
+        throw new Error(`Invalid destinationAddress provided: ${destinationAddress}`);
+      }
     }
 
-    const userAddressStr = dbTx.user_address;
     if (!userAddressStr) {
-      throw new Error('Database record is missing user Solana address');
+      throw new Error(`Could not find transaction mapping or destination address for order ${orderId}`);
     }
     const userPublicKey = new PublicKey(userAddressStr);
 

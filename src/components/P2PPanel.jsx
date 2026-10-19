@@ -538,10 +538,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setReleaseSuccessTx(null);
     setReleasingLogId(orderId);
     try {
+      const destinationAddress = (selectedLog?.user_address || selectedLog?.userAddress)
+        || (publicKey ? publicKey.toBase58() : guestOnrampWallet)
+        || (typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_onramp_wallet_${orderId}`) : null)
+        || manualWalletAddress
+        || undefined;
+
       const res = await fetch(getRelayEndpoint('/api/relay_onramp_fee'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, sessionToken })
+        body: JSON.stringify({ orderId, sessionToken, destinationAddress })
       });
       const result = await res.json();
       if (!res.ok) {
@@ -2214,6 +2220,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setOnrampOrder(order);
       setOnrampStatus('pending');
 
+      // Cache intended recipient wallet for this specific order
+      if (typeof localStorage !== 'undefined' && userWalletAddress) {
+        try {
+          localStorage.setItem(`paj_onramp_wallet_${order.id}`, userWalletAddress);
+        } catch {}
+      }
+
       // Log Onramp order in Supabase
       // usdValue = crypto the user will RECEIVE × live token USD price.
       // For USDC this is ≈ the USDC amount (since 1 USDC ≈ $1).
@@ -2487,11 +2500,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       if (isRelayerActive) {
         step = 'forwarding';
         setOnrampStatus('forwarding');
+        const destinationAddress = (publicKey ? publicKey.toBase58() : guestOnrampWallet)
+          || (typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_onramp_wallet_${orderId}`) : null)
+          || manualWalletAddress
+          || undefined;
+
         // Call backend API to deduct the fee and forward USDC to user
         const res = await fetch(getRelayEndpoint('/api/relay_onramp_fee'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId, sessionToken })
+          body: JSON.stringify({ orderId, sessionToken, destinationAddress })
         });
         const result = await res.json();
         if (!res.ok) {
