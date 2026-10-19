@@ -91,7 +91,6 @@ export async function fetchRemotePajConfig() {
           const data = await res.json();
           if (data?.apiKey) {
             remoteApiKey = data.apiKey;
-            try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
             if (data?.env) {
               initPajSDK(data.env);
             }
@@ -110,8 +109,7 @@ export async function fetchRemotePajConfig() {
         // Proceed to next endpoint
       }
     }
-    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null;
-    return cached || null;
+    return remoteApiKey || null;
   })();
 
   try {
@@ -154,6 +152,7 @@ export async function getEffectiveRelayerConfigAsync() {
 }
 
 if (typeof window !== 'undefined') {
+  try { localStorage.removeItem('paj_merchant_api_key'); } catch (e) {}
   fetchRemotePajConfig().catch(() => {});
 }
 
@@ -164,7 +163,6 @@ export function getEffectiveApiKey() {
   return (
     import.meta.env.VITE_PAJCASH_API_KEY ||
     remoteApiKey ||
-    (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null) ||
     ''
   );
 }
