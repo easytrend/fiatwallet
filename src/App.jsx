@@ -35,10 +35,8 @@ import DAppApprovalModal from './components/DAppApprovalModal';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
 import NativeWalletApprovalModal from './components/NativeWalletApprovalModal';
 import { parseTransactionBreakdown } from './utils/txParser';
-import { registerPlugin } from '@capacitor/core';
 import HistoryPanel from './components/HistoryPanel';
 
-const NativeFiatWalletBridge = registerPlugin('FiatWalletBridge');
 
 
 // SNS_LINK must not embed referral/tracking parameters.
@@ -384,26 +382,13 @@ export default function App() {
 
   // Sync Injected Web3 Provider State (window.solana, window.fiatwallet, Solana Wallet Standard)
   useEffect(() => {
-    const pubStr = effectivePublicKey ? effectivePublicKey.toBase58() : null;
     fiatwalletProvider.updateWalletState({
-      publicKey: pubStr,
+      publicKey: effectivePublicKey ? effectivePublicKey.toBase58() : null,
       isActive: effectiveConnected,
       signTransaction: effectiveSignTransaction,
       signAllTransactions: effectiveSignAllTransactions,
       sendTransaction: effectiveSendTransaction,
     });
-
-    if (typeof window !== 'undefined') {
-      window._fiatWalletPubKey = pubStr || '';
-      if (pubStr) {
-        if (window.FiatWalletBridge?.setWalletPublicKey) {
-          try { window.FiatWalletBridge.setWalletPublicKey(pubStr); } catch {}
-        }
-        if (NativeFiatWalletBridge && typeof NativeFiatWalletBridge.setWalletPublicKey === 'function') {
-          try { NativeFiatWalletBridge.setWalletPublicKey({ publicKey: pubStr }).catch(() => {}); } catch {}
-        }
-      }
-    }
   }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);
 
   // Listen for FiatWallet adapter events and onboarding requests
@@ -462,20 +447,8 @@ export default function App() {
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
   // Detect if no private RPC endpoint is configured — user is on the default
   // rate-limited public endpoint. Show a UI warning in this case.
-  const [isUsingPublicRpc, setIsUsingPublicRpc] = useState(() => {
-    const rpc = import.meta.env.VITE_RPC_URL || (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '');
-    return !rpc;
-  });
+  const isUsingPublicRpc = !import.meta.env.VITE_RPC_URL;
   const [rpcWarnDismissed, setRpcWarnDismissed] = useState(false);
-
-  useEffect(() => {
-    const handleConfig = (e) => {
-      const rpc = e?.detail?.rpcUrl || import.meta.env.VITE_RPC_URL || (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '');
-      setIsUsingPublicRpc(!rpc);
-    };
-    window.addEventListener('fiatwallet:remote-config-ready', handleConfig);
-    return () => window.removeEventListener('fiatwallet:remote-config-ready', handleConfig);
-  }, []);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   // ── App Update Detection ─────────────────────────────────────────────────────────────
@@ -776,12 +749,10 @@ export default function App() {
     setWalletLoading(true);
     setWalletError(null);
 
-    const cachedRpc = typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '';
     const rpcEndpoints = [
       connection?.rpcEndpoint,
-      cachedRpc,
-      'https://solana-rpc.publicnode.com',
       'https://api.mainnet-beta.solana.com',
+      'https://solana-rpc.publicnode.com',
     ].filter(Boolean);
     const uniqueRpcs = [...new Set(rpcEndpoints)];
 

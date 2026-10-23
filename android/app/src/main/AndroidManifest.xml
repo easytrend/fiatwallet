@@ -33,6 +33,14 @@
 
 
 
+            <!-- ── Solana Mobile Wallet Adapter (MWA) Deep Link ────── -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="solana-wallet" />
+            </intent-filter>
+
             <!-- ── Custom App Schemes (WalletConnect & Deep Links) ────── -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

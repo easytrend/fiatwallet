@@ -1,48 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-let supabaseInstance = null;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export function getSupabase() {
-  if (supabaseInstance) return supabaseInstance;
-
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_supabase_url') : '');
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_supabase_anon_key') : '');
-
-  if (supabaseUrl && supabaseAnonKey) {
-    try {
-      supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
-      supabase = supabaseInstance;
-    } catch (e) {
-      console.warn('[Supabase] Failed to initialize client:', e?.message);
-    }
-  }
-  return supabaseInstance;
-}
-
-export function initSupabase(url, anonKey) {
-  if (url && anonKey) {
-    try {
-      supabaseInstance = createClient(url, anonKey);
-      supabase = supabaseInstance;
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('cached_supabase_url', url);
-        localStorage.setItem('cached_supabase_anon_key', anonKey);
-      }
-      return supabaseInstance;
-    } catch (e) {
-      console.warn('[Supabase] initSupabase failed:', e?.message);
-    }
-  }
-  return supabaseInstance;
-}
-
-export let supabase = getSupabase();
+export const supabase = (supabaseUrl && supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
 
 /**
  * Log a general on-chain transaction (send, swap, bulk_send, claims).
  */
 export async function logTransaction({ signature, userAddress, type, symbol, tokenAmount, usdValue }) {
-  const supabase = getSupabase();
   if (!supabase || !signature) return;
 
   try {
@@ -100,7 +68,6 @@ export async function logP2PTransaction({
   recipientTag,
   type = 'p2p_offramp',
 }) {
-  const supabase = getSupabase();
   if (!supabase || !orderId) return;
 
   const actualSignature = signature || `pending_${type}_${orderId}`;
@@ -185,7 +152,6 @@ export async function logP2PTransaction({
  * Update P2P transaction status (and optional actual signature) in Supabase.
  */
 export async function updateP2PTransactionStatus(orderId, status, signature = null) {
-  const supabase = getSupabase();
   if (!supabase || !orderId) return;
   try {
     // Guard against overwriting terminal forwarded status
@@ -222,7 +188,6 @@ export async function updateP2PTransactionStatus(orderId, status, signature = nu
  * Sync PajCash API status back to Supabase for tracked P2P orders.
  */
 export async function syncP2PTransactionStatuses(orders = [], walletAddress = null) {
-  const supabase = getSupabase();
   if (!supabase || !Array.isArray(orders) || orders.length === 0) return;
 
   try {
@@ -287,81 +252,6 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
   }
 }
 
-/**
- * Proactively check Supabase for any P2P orders currently stuck in 'INIT' or 'PENDING',
- * verify their live status directly with PajCash API, and update Supabase to 'COMPLETED' or 'ERROR'.
- */
-export async function reconcilePendingP2PTransactions(walletAddress, authToken) {
-  const supabase = getSupabase();
-  if (!supabase) return [];
-  try {
-    const token = authToken;
-    if (!token) return [];
-
-    let query = supabase
-      .from('p2p_transactions')
-      .select('id, order_id, status, signature, transaction_type, crypto_amount, usd_value')
-      .in('status', ['INIT', 'PENDING'])
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    if (walletAddress) {
-      query = query.eq('user_address', walletAddress);
-    }
-
-    const { data: pendingOrders, error } = await query;
-    if (error || !pendingOrders || pendingOrders.length === 0) return [];
-
-    const reconciled = [];
-    const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
-
-    for (const row of pendingOrders) {
-      const orderId = row.order_id;
-      if (!orderId) continue;
-
-      let pajData = null;
-      for (const baseUrl of baseUrls) {
-        try {
-          const resp = await fetch(`${baseUrl}/pub/transactions/${orderId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (resp.ok) {
-            pajData = await resp.json();
-            break;
-          }
-        } catch (e) {}
-      }
-
-      if (pajData) {
-        const rawStatus = (pajData.status || pajData.state || '').toUpperCase();
-        if (['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE'].includes(rawStatus)) {
-          const patch = {
-            status: 'COMPLETED',
-            updated_at: new Date().toISOString()
-          };
-          const sig = pajData.txHash || pajData.signature || pajData.tx_hash;
-          if (sig) patch.signature = sig;
-
-          await supabase.from('p2p_transactions').update(patch).eq('order_id', orderId);
-          reconciled.push({ orderId, status: 'COMPLETED' });
-          console.log(`[Supabase] Reconciled pending order ${orderId} -> COMPLETED`);
-        } else if (['FAILED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(rawStatus)) {
-          await supabase.from('p2p_transactions').update({
-            status: 'ERROR',
-            updated_at: new Date().toISOString()
-          }).eq('order_id', orderId);
-          reconciled.push({ orderId, status: 'ERROR' });
-          console.log(`[Supabase] Reconciled pending order ${orderId} -> ERROR`);
-        }
-      }
-    }
-    return reconciled;
-  } catch (err) {
-    console.warn('[Supabase] reconcilePendingP2PTransactions error:', err.message);
-    return [];
-  }
-}
-
 // ── Cross-device PajCash session helpers ─────────────────────────────────────
 
 /**
@@ -375,7 +265,6 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
  * @param {number} expiryMs      - Expiry timestamp in milliseconds (Date.now() based)
  */
 export async function saveSession(walletAddress, email, token, expiryMs) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress || !token) return;
   const row = {
     wallet_address: walletAddress,
@@ -418,7 +307,6 @@ export async function saveSession(walletAddress, email, token, expiryMs) {
  * @returns {{ email: string, session_token: string, expires_at: string } | null}
  */
 export async function loadSession(walletAddress) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress) return null;
   try {
     // Use array query with limit(1) — never throws on 0 or multiple rows
@@ -461,7 +349,6 @@ export async function loadSession(walletAddress) {
  * @param {string} walletAddress - User's Solana public key (base58)
  */
 export async function deleteSession(walletAddress) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress) return;
   try {
     const { error } = await supabase
@@ -478,7 +365,6 @@ export async function deleteSession(walletAddress) {
  * Get all order IDs and signatures associated with a specific user's wallet address.
  */
 export async function getP2PTransactionIdsByUser(walletAddress) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress) return { orderIds: new Set(), signatures: new Set() };
   try {
     const { data, error } = await supabase
@@ -504,7 +390,6 @@ export async function getP2PTransactionIdsByUser(walletAddress) {
  * Get all full P2P transaction records associated with a specific user's wallet address.
  */
 export async function getP2PTransactionsByUser(walletAddress) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress) return [];
   try {
     const { data, error } = await supabase
@@ -533,7 +418,6 @@ export async function getP2PTransactionsByUser(walletAddress) {
  * Get registered Fiat Tag for a specific wallet address.
  */
 export async function getFiatTagByWallet(walletAddress) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress) return null;
   try {
     const { data, error } = await supabase
@@ -556,7 +440,6 @@ export async function getFiatTagByWallet(walletAddress) {
  * Resolve a Fiat Tag name (e.g. "$johndoe" or "johndoe") to recipient bank details.
  */
 export async function getFiatTagByName(tagName) {
-  const supabase = getSupabase();
   if (!supabase || !tagName) return null;
   try {
     const cleanTag = String(tagName).trim().toLowerCase();
@@ -582,7 +465,6 @@ export async function getFiatTagByName(tagName) {
  * Create or update a user's Fiat Tag and linked bank account details.
  */
 export async function registerFiatTag({ walletAddress, tagName, bankName, bankCode, accountNumber, accountName }) {
-  const supabase = getSupabase();
   if (!supabase || !walletAddress || !tagName || !accountNumber || !bankName) {
     throw new Error('Missing required fields for Fiat Tag registration.');
   }

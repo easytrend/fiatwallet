@@ -1,9 +1,6 @@
 import { useState, useMemo, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
-import { Capacitor, registerPlugin } from '@capacitor/core';
 import { fiatwalletProvider } from '../services/fiatwalletProvider';
-
-const NativeFiatWalletBridge = registerPlugin('FiatWalletBridge');
 
 // Curated list of 16 verified Solana Web3 dApps
 const CURATED_DAPPS = [
@@ -269,25 +266,13 @@ const DAppExplorer = forwardRef(function DAppExplorer({
   const handleOpenDApp = async (dApp) => {
     if (!dApp) return;
     const targetUrl = typeof dApp === 'string' ? dApp : (dApp.url || '');
-    const pubKeyStr = effectivePublicKey ? effectivePublicKey.toBase58() : (typeof localStorage !== 'undefined' ? (localStorage.getItem('fw_wallet_pubkey') || '') : '');
+    const targetTitle = (typeof dApp === 'object' && dApp.name) ? dApp.name : 'dApp';
 
-    // 1. Try Capacitor Native Bridge Plugin (Guaranteed on Android native APK)
-    if (Capacitor?.isNativePlatform && Capacitor.isNativePlatform()) {
-      try {
-        if (NativeFiatWalletBridge && typeof NativeFiatWalletBridge.openDApp === 'function') {
-          await NativeFiatWalletBridge.openDApp({ url: targetUrl, title: targetTitle, publicKey: pubKeyStr });
-          return;
-        }
-      } catch (e) {
-        console.warn('NativeFiatWalletBridge.openDApp error, falling back:', e);
-      }
-    }
-
-    // 2. Try window.FiatWalletBridge (Direct Android JavascriptInterface)
+    // 1. Try window.FiatWalletBridge (Direct Android JavascriptInterface — always available on native)
     if (typeof window !== 'undefined' && window.FiatWalletBridge) {
       try {
         if (typeof window.FiatWalletBridge.openDApp === 'function' || window.FiatWalletBridge.openDApp) {
-          window.FiatWalletBridge.openDApp(targetUrl, targetTitle, pubKeyStr);
+          window.FiatWalletBridge.openDApp(targetUrl, targetTitle);
           return;
         }
       } catch (e) {
@@ -295,7 +280,17 @@ const DAppExplorer = forwardRef(function DAppExplorer({
       }
     }
 
-    // 3. Fallback for Web / PWA browser environment
+    // 2. Try Capacitor Native Bridge Plugin (fallback)
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.FiatWalletBridge?.openDApp) {
+      try {
+        await window.Capacitor.Plugins.FiatWalletBridge.openDApp({ url: targetUrl, title: targetTitle });
+        return;
+      } catch (e) {
+        console.warn('Capacitor FiatWalletBridge error, falling back:', e);
+      }
+    }
+
+    // 3. Last resort: In-app browser state
     setSelectedDApp(typeof dApp === 'object' ? dApp : { id: 'custom', name: targetTitle, url: targetUrl });
     setBrowserUrlInput(targetUrl);
   };
@@ -337,11 +332,12 @@ const DAppExplorer = forwardRef(function DAppExplorer({
       };
       handleOpenDApp(custom);
     } catch {
-      handleOpenDApp({
+      setSelectedDApp({
         id: 'custom-' + Date.now(),
         name: 'dApp',
         url: fullUrl,
       });
+      setBrowserUrlInput(fullUrl);
     }
   };
 

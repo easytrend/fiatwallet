@@ -26,7 +26,7 @@ import {
   getEffectiveRelayerConfigAsync,
 } from '../services/pajcashService';
 import { getQuote, buildSwapTransaction } from '../services/swapService';
-import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
+import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction } from '@solana/web3.js';
 import {
@@ -387,22 +387,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
 
   // ── Env config ──────────────────────────────────────────────────────────
-  const [pajApiKey, setPajApiKey] = useState(() => import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey());
-  const PAJCASH_API_KEY = pajApiKey;
+  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
   const isPajcashLive = !!PAJCASH_API_KEY;
-
-  useEffect(() => {
-    const handleConfig = (e) => {
-      const key = e?.detail?.apiKey || import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
-      if (key) setPajApiKey(key);
-    };
-    window.addEventListener('fiatwallet:remote-config-ready', handleConfig);
-    fetchRemotePajConfig().then(() => {
-      const key = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
-      if (key) setPajApiKey(key);
-    }).catch(() => {});
-    return () => window.removeEventListener('fiatwallet:remote-config-ready', handleConfig);
-  }, []);
 
   // ── Live crypto prices (SOL, USDC, USDT) from CoinGecko / Coinbase / Binance ──
   const { liveRates } = useLiveRates();
@@ -1148,16 +1134,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   // ── Load payout history (Permanent Supabase History + PajCash Live Sync) ──
   const loadPayoutLogs = async () => {
     const walletKey = (publicKey ? publicKey.toBase58() : (manualWalletAddress || guestOnrampWallet)) || localStorage.getItem('paj_manual_wallet');
-    const token = effectiveAuthToken || (await getEffectiveApiKeyAsync());
-    if (!walletKey && !token) return;
+    if (!walletKey && !effectiveAuthToken) return;
     setLoadingLogs(true);
     setLogError(null);
     try {
-      // Proactively check PajCash and reconcile any stuck 'INIT' or 'PENDING' orders
-      if (token) {
-        await reconcilePendingP2PTransactions(walletKey, token).catch(() => []);
-      }
-
       // 1. Fetch user's permanent transaction history from Supabase
       const supabaseTxs = walletKey ? await getP2PTransactionsByUser(walletKey) : [];
 
@@ -2233,7 +2213,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           recipient: recipientAddress,
           chain: 'SOLANA',
           mint: onrampMint,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
         },
         effectiveAuthToken
       );
@@ -2708,7 +2687,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           mint: usdcMint,
           chain: 'SOLANA',
           fee: platformFee,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
+          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || undefined,
         },
         effectiveAuthToken
       );
@@ -2901,7 +2880,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           mint: liveSelectedToken.mint,
           chain: 'SOLANA',
           fee: platformFee,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
+          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || undefined,
         },
         effectiveAuthToken
       );
