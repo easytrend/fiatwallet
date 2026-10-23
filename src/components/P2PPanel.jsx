@@ -387,8 +387,22 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
 
   // ── Env config ──────────────────────────────────────────────────────────
-  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+  const [pajApiKey, setPajApiKey] = useState(() => import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey());
+  const PAJCASH_API_KEY = pajApiKey;
   const isPajcashLive = !!PAJCASH_API_KEY;
+
+  useEffect(() => {
+    const handleConfig = (e) => {
+      const key = e?.detail?.apiKey || import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+      if (key) setPajApiKey(key);
+    };
+    window.addEventListener('fiatwallet:remote-config-ready', handleConfig);
+    fetchRemotePajConfig().then(() => {
+      const key = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+      if (key) setPajApiKey(key);
+    }).catch(() => {});
+    return () => window.removeEventListener('fiatwallet:remote-config-ready', handleConfig);
+  }, []);
 
   // ── Live crypto prices (SOL, USDC, USDT) from CoinGecko / Coinbase / Binance ──
   const { liveRates } = useLiveRates();
@@ -2219,7 +2233,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           recipient: recipientAddress,
           chain: 'SOLANA',
           mint: onrampMint,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || (typeof window !== 'undefined' && !window.location.origin.includes('localhost') ? 'https://fiatwallet.app/api/paj_webhook' : undefined),
+          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
         },
         effectiveAuthToken
       );
@@ -2694,7 +2708,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           mint: usdcMint,
           chain: 'SOLANA',
           fee: platformFee,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || (typeof window !== 'undefined' && !window.location.origin.includes('localhost') ? 'https://fiatwallet.app/api/paj_webhook' : undefined),
+          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
         },
         effectiveAuthToken
       );
@@ -2887,7 +2901,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           mint: liveSelectedToken.mint,
           chain: 'SOLANA',
           fee: platformFee,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || (typeof window !== 'undefined' && !window.location.origin.includes('localhost') ? 'https://fiatwallet.app/api/paj_webhook' : undefined),
+          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
         },
         effectiveAuthToken
       );

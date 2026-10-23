@@ -21,6 +21,7 @@ import {
   getTransaction as sdkGetTransaction,
   Environment
 } from 'paj_ramp';
+import { initSupabase } from './supabase';
 
 export { observeOrder };
 
@@ -83,7 +84,15 @@ export async function fetchRemotePajConfig() {
   if (fetchConfigPromise) return fetchConfigPromise;
 
   fetchConfigPromise = (async () => {
-    const endpoints = ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+    const isNativeOrLocal = typeof window !== 'undefined' && (
+      window.location.origin.includes('localhost') ||
+      window.location.protocol.startsWith('capacitor') ||
+      window.location.protocol.startsWith('file')
+    );
+    const endpoints = isNativeOrLocal
+      ? ['https://fiatwallet.app/api/paj_config', '/api/paj_config']
+      : ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+
     for (const endpoint of endpoints) {
       try {
         const res = await fetch(endpoint, { cache: 'no-store' });
@@ -91,8 +100,10 @@ export async function fetchRemotePajConfig() {
           const data = await res.json();
           if (data?.apiKey) {
             remoteApiKey = data.apiKey;
+            try { localStorage.setItem('cached_paj_api_key', data.apiKey); } catch (e) {}
             if (data?.env) {
               initPajSDK(data.env);
+              try { localStorage.setItem('cached_paj_env', data.env); } catch (e) {}
             }
           }
           if (data?.relayerPublicKey) {
@@ -100,9 +111,25 @@ export async function fetchRemotePajConfig() {
             remoteUseOnrampRelayer = Boolean(data.useOnrampRelayer);
             try {
               localStorage.setItem('relayer_public_key', data.relayerPublicKey);
-              localStorage.setItem('use_onramp_relayer', 'true');
+              localStorage.setItem('use_onramp_relayer', data.useOnrampRelayer ? 'true' : 'false');
             } catch (e) {}
           }
+          if (data?.rpcUrl) {
+            try { localStorage.setItem('cached_rpc_url', data.rpcUrl); } catch (e) {}
+          }
+          if (data?.supabaseUrl && data?.supabaseAnonKey) {
+            try {
+              initSupabase(data.supabaseUrl, data.supabaseAnonKey);
+            } catch (e) {}
+          }
+          if (data?.wcProjectId) {
+            try { localStorage.setItem('cached_wc_project_id', data.wcProjectId); } catch (e) {}
+          }
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('fiatwallet:remote-config-ready', { detail: data }));
+          }
+
           if (remoteApiKey) return remoteApiKey;
         }
       } catch (err) {
@@ -152,7 +179,6 @@ export async function getEffectiveRelayerConfigAsync() {
 }
 
 if (typeof window !== 'undefined') {
-  try { localStorage.removeItem('paj_merchant_api_key'); } catch (e) {}
   fetchRemotePajConfig().catch(() => {});
 }
 
@@ -163,7 +189,20 @@ export function getEffectiveApiKey() {
   return (
     import.meta.env.VITE_PAJCASH_API_KEY ||
     remoteApiKey ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_paj_api_key') : '') ||
     ''
+  );
+}
+
+/**
+ * Resolves the effective Solana RPC URL synchronously.
+ * Uses custom env var, cached remote config from serverless, or high-reliability public node.
+ */
+export function getEffectiveRpcUrl() {
+  return (
+    import.meta.env.VITE_RPC_URL ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '') ||
+    'https://solana-rpc.publicnode.com'
   );
 }
 

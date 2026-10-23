@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { getBanks, resolveBankAccount, initiateSession, verifySession, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
 import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession } from '../services/supabase';
 
-const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
-
 const getBankNameString = (b) => {
   if (!b) return '';
   if (typeof b === 'string') return b;
@@ -121,6 +119,15 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
   const [authStep, setAuthStep] = useState('email'); // 'email' | 'otp'
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  const [, setConfigVersion] = useState(0);
+  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+
+  useEffect(() => {
+    const handleConfig = () => setConfigVersion(v => v + 1);
+    window.addEventListener('fiatwallet:remote-config-ready', handleConfig);
+    return () => window.removeEventListener('fiatwallet:remote-config-ready', handleConfig);
+  }, []);
 
   const isGuestMode = isGuest || !walletAddress;
   const effectiveWallet = (walletAddress || manualTagModalWallet || '').trim();
@@ -259,7 +266,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       });
 
     return () => { isMounted = false; };
-  }, [sessionToken]);
+  }, [sessionToken, PAJCASH_API_KEY]);
 
   // Compute sorted unique bank names
   const allBankNames = useMemo(() => {

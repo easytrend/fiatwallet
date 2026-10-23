@@ -71,6 +71,10 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY || '';
   const env = process.env.VITE_PAJCASH_ENV || process.env.PAJCASH_ENV || 'production';
+  const rpcUrl = process.env.VITE_RPC_URL || process.env.RPC_URL || process.env.HELIUS_RPC_URL || '';
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+  const wcProjectId = process.env.VITE_WC_PROJECT_ID || process.env.WC_PROJECT_ID || '';
 
   let relayerPublicKey = process.env.VITE_RELAYER_PUBLIC_KEY || '';
   if (!relayerPublicKey && process.env.RELAYER_SECRET_KEY) {
@@ -89,6 +93,10 @@ export default async function handler(req, res) {
   return res.status(200).json({
     apiKey,
     env,
+    rpcUrl,
+    supabaseUrl,
+    supabaseAnonKey,
+    wcProjectId,
     relayerPublicKey,
     useOnrampRelayer,
   });

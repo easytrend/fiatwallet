@@ -462,8 +462,20 @@ export default function App() {
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
   // Detect if no private RPC endpoint is configured — user is on the default
   // rate-limited public endpoint. Show a UI warning in this case.
-  const isUsingPublicRpc = !import.meta.env.VITE_RPC_URL;
+  const [isUsingPublicRpc, setIsUsingPublicRpc] = useState(() => {
+    const rpc = import.meta.env.VITE_RPC_URL || (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '');
+    return !rpc;
+  });
   const [rpcWarnDismissed, setRpcWarnDismissed] = useState(false);
+
+  useEffect(() => {
+    const handleConfig = (e) => {
+      const rpc = e?.detail?.rpcUrl || import.meta.env.VITE_RPC_URL || (typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '');
+      setIsUsingPublicRpc(!rpc);
+    };
+    window.addEventListener('fiatwallet:remote-config-ready', handleConfig);
+    return () => window.removeEventListener('fiatwallet:remote-config-ready', handleConfig);
+  }, []);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   // ── App Update Detection ─────────────────────────────────────────────────────────────
@@ -764,10 +776,12 @@ export default function App() {
     setWalletLoading(true);
     setWalletError(null);
 
+    const cachedRpc = typeof localStorage !== 'undefined' ? localStorage.getItem('cached_rpc_url') : '';
     const rpcEndpoints = [
       connection?.rpcEndpoint,
-      'https://api.mainnet-beta.solana.com',
+      cachedRpc,
       'https://solana-rpc.publicnode.com',
+      'https://api.mainnet-beta.solana.com',
     ].filter(Boolean);
     const uniqueRpcs = [...new Set(rpcEndpoints)];
 
