@@ -361,11 +361,11 @@ export default async function handler(req, res) {
 
     console.log(`[relay_onramp_fee] Forwarded ${netAmount} USDC to ${userAddressStr}. Tx: ${sig}`);
 
-    // 6. Update database status to FORWARDED_SUCCESS
+    // 6. Update database status to COMPLETED (matching PajCash developer portal status)
     await supabase
       .from('p2p_transactions')
       .update({
-        status: 'FORWARDED_SUCCESS',
+        status: 'COMPLETED',
         signature: sig,
         deposit_address: null, // Clear error logs if any
         updated_at: new Date().toISOString()

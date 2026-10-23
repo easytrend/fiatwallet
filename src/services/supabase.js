@@ -252,6 +252,80 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
   }
 }
 
+/**
+ * Proactively check Supabase for any P2P orders currently stuck in 'INIT' or 'PENDING',
+ * verify their live status directly with PajCash API, and update Supabase to 'COMPLETED' or 'ERROR'.
+ */
+export async function reconcilePendingP2PTransactions(walletAddress, authToken) {
+  if (!supabase) return [];
+  try {
+    const token = authToken;
+    if (!token) return [];
+
+    let query = supabase
+      .from('p2p_transactions')
+      .select('id, order_id, status, signature, transaction_type, crypto_amount, usd_value')
+      .in('status', ['INIT', 'PENDING'])
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (walletAddress) {
+      query = query.eq('user_address', walletAddress);
+    }
+
+    const { data: pendingOrders, error } = await query;
+    if (error || !pendingOrders || pendingOrders.length === 0) return [];
+
+    const reconciled = [];
+    const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
+
+    for (const row of pendingOrders) {
+      const orderId = row.order_id;
+      if (!orderId) continue;
+
+      let pajData = null;
+      for (const baseUrl of baseUrls) {
+        try {
+          const resp = await fetch(`${baseUrl}/pub/transactions/${orderId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (resp.ok) {
+            pajData = await resp.json();
+            break;
+          }
+        } catch (e) {}
+      }
+
+      if (pajData) {
+        const rawStatus = (pajData.status || pajData.state || '').toUpperCase();
+        if (['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE'].includes(rawStatus)) {
+          const patch = {
+            status: 'COMPLETED',
+            updated_at: new Date().toISOString()
+          };
+          const sig = pajData.txHash || pajData.signature || pajData.tx_hash;
+          if (sig) patch.signature = sig;
+
+          await supabase.from('p2p_transactions').update(patch).eq('order_id', orderId);
+          reconciled.push({ orderId, status: 'COMPLETED' });
+          console.log(`[Supabase] Reconciled pending order ${orderId} -> COMPLETED`);
+        } else if (['FAILED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(rawStatus)) {
+          await supabase.from('p2p_transactions').update({
+            status: 'ERROR',
+            updated_at: new Date().toISOString()
+          }).eq('order_id', orderId);
+          reconciled.push({ orderId, status: 'ERROR' });
+          console.log(`[Supabase] Reconciled pending order ${orderId} -> ERROR`);
+        }
+      }
+    }
+    return reconciled;
+  } catch (err) {
+    console.warn('[Supabase] reconcilePendingP2PTransactions error:', err.message);
+    return [];
+  }
+}
+
 // ── Cross-device PajCash session helpers ─────────────────────────────────────
 
 /**
