@@ -62,4 +62,26 @@ export default defineConfig({
     'process.env': {},
     global: 'globalThis',
   },
+  build: {
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const nid = id.replace(/\\/g, '/');
+          if (nid.includes('node_modules/tesseract.js')) {
+            return 'vendor-ocr';
+          }
+          if (nid.includes('node_modules/@solana/web3.js') || nid.includes('node_modules/@solana/spl-token')) {
+            return 'vendor-solana';
+          }
+          if (nid.includes('node_modules/@walletconnect') || nid.includes('node_modules/@reown')) {
+            return 'vendor-walletconnect';
+          }
+          if (nid.includes('node_modules/@supabase')) {
+            return 'vendor-supabase';
+          }
+        },
+      },
+    },
+  },
 });

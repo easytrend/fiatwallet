@@ -11,6 +11,7 @@ import {
   Keypair,
   PublicKey,
   TransactionInstruction,
+  ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddressSync,
@@ -306,6 +307,13 @@ export default async function handler(req, res) {
 
     // Build standard Transaction
     const transaction = new Transaction();
+
+    // Solana Agave / SIMD-0096: Set compute unit limit and baseline priority fee
+    // Ensures fast validator block inclusion and eliminates dropped forwards during network congestion.
+    transaction.add(
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }),
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 })
+    );
     
     // Rent-funded ATA creation for User if not exists
     transaction.add(

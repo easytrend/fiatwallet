@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, Transaction, SystemProgram, Connection, Keypair, SystemInstruction, TransactionInstruction } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, Connection, Keypair, SystemInstruction, TransactionInstruction, ComputeBudgetProgram } from '@solana/web3.js';
 import { getDomainKeySync, NameRegistryState, performReverseLookup, getPrimaryDomain, getFavoriteDomain, resolve } from '@bonfida/spl-name-service';
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction, AccountLayout } from '@solana/spl-token';
 import logoImg from './assets/logo.png';
@@ -1120,11 +1120,18 @@ export default function App() {
       transaction.feePayer = activeKey;
       transaction.recentBlockhash = latestBlockhash.blockhash;
 
+      // Solana Agave / SIMD-0096: Set compute unit limit and baseline priority fee
+      // This prevents transactions from being dropped during network congestion.
+      transaction.add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 })
+      );
+
       let senderATA = null;
       let needsAtaCreation = false;
       let solTransferLamports = 0n;
       let amountUnits = 0n;
-      let estimatedFee = 5000n;
+      let estimatedFee = 6500n;
 
       if (tokLive.symbol === 'SOL') {
         let lamports = BigInt(Math.round(tokAmt * 1e9));
@@ -1143,13 +1150,17 @@ export default function App() {
           const probeTx = new Transaction();
           probeTx.feePayer = activeKey;
           probeTx.recentBlockhash = latestBlockhash.blockhash;
-          probeTx.add(SystemProgram.transfer({
-            fromPubkey: activeKey,
-            toPubkey: finalRecipient,
-            lamports: Number(1000n)
-          }));
+          probeTx.add(
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }),
+            ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 }),
+            SystemProgram.transfer({
+              fromPubkey: activeKey,
+              toPubkey: finalRecipient,
+              lamports: Number(1000n)
+            })
+          );
 
-          let fee = 5000n;
+          let fee = 6500n;
           try {
             const feeResponse = await probeTx.getEstimatedFee(connection);
             if (feeResponse !== null && feeResponse !== undefined) fee = BigInt(feeResponse);
@@ -1246,8 +1257,9 @@ export default function App() {
         })
       );
 
-      // Instruction injection guard — reject transaction if it has more instructions
-      const expectedMaxInstructions = tokLive.symbol === 'SOL' ? 2 : 3;
+      // Instruction injection guard — reject transaction if it has more instructions.
+      // With ComputeBudget instructions (limit + unit price), expected max is 4 for SOL, 5 for SPL token.
+      const expectedMaxInstructions = tokLive.symbol === 'SOL' ? 4 : 5;
       if (transaction.instructions.length > expectedMaxInstructions) {
         throw new Error(`Transaction has unexpected instructions (${transaction.instructions.length}). Refusing to sign.`);
       }
