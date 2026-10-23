@@ -78,6 +78,56 @@ public class MainActivity extends BridgeActivity {
                 call.reject("Activity unavailable");
             }
         }
+
+        @PluginMethod
+        public void approveConnect(PluginCall call) {
+            String reqId = call.getString("reqId");
+            String pubKey = call.getString("pubKey");
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.bridgeInstance.approveConnect(reqId, pubKey);
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
+
+        @PluginMethod
+        public void rejectConnect(PluginCall call) {
+            String reqId = call.getString("reqId");
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.bridgeInstance.rejectConnect(reqId);
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
+
+        @PluginMethod
+        public void approveSign(PluginCall call) {
+            String reqId = call.getString("reqId");
+            String resultData = call.getString("resultData");
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.bridgeInstance.approveSign(reqId, resultData);
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
+
+        @PluginMethod
+        public void rejectSign(PluginCall call) {
+            String reqId = call.getString("reqId");
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.bridgeInstance.rejectSign(reqId);
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
     }
 
     private ViewGroup dAppContainer = null;
@@ -91,6 +141,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FiatWalletBridgePlugin.class);
         super.onCreate(savedInstanceState);
         setupWebView();
+        // Schedule delayed attempts in case Capacitor attaches the WebView asynchronously
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::setupWebView, 250);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::setupWebView, 1000);
         handleDeepLinkIntent(getIntent());
     }
 
@@ -137,6 +190,12 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        setupWebView();
+    }
+
+    @Override
     public void onBackPressed() {
         if (dAppContainer != null) {
             if (dAppWebView != null && dAppWebView.canGoBack()) {
@@ -150,22 +209,31 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void setupWebView() {
-        if (getBridge() == null) return;
-        WebView webView = getBridge().getWebView();
-        if (webView == null) return;
+        runOnUiThread(() -> {
+            try {
+                if (getBridge() == null) return;
+                WebView webView = getBridge().getWebView();
+                if (webView == null) return;
 
-        String defaultUa = webView.getSettings().getUserAgentString();
-        String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "").replace("Version/4.0 ", "");
-        webView.getSettings().setUserAgentString(cleanUa);
+                String defaultUa = webView.getSettings().getUserAgentString();
+                if (defaultUa != null) {
+                    String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "").replace("Version/4.0 ", "");
+                    webView.getSettings().setUserAgentString(cleanUa);
+                }
 
-        webView.getSettings().setJavaScriptEnabled(true);
-        webView.getSettings().setDomStorageEnabled(true);
-        webView.getSettings().setDatabaseEnabled(true);
-        webView.getSettings().setAllowFileAccess(true);
-        webView.getSettings().setAllowContentAccess(true);
-        webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.getSettings().setDomStorageEnabled(true);
+                webView.getSettings().setDatabaseEnabled(true);
+                webView.getSettings().setAllowFileAccess(true);
+                webView.getSettings().setAllowContentAccess(true);
+                webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
 
-        webView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
+                webView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
+                android.util.Log.i("FiatWallet", "FiatWalletBridge interface attached to main webview");
+            } catch (Exception e) {
+                android.util.Log.w("FiatWallet", "setupWebView warning: " + e.getMessage());
+            }
+        });
     }
 
     private void closeDAppInternal() {
@@ -514,6 +582,22 @@ public class MainActivity extends BridgeActivity {
                 if (dAppWebView != null) dAppWebView.reload();
             });
             header.addView(reloadBtn);
+
+            // Open in external browser button (↗)
+            TextView openExtBtn = new TextView(MainActivity.this);
+            openExtBtn.setText("↗");
+            openExtBtn.setTextColor(Color.parseColor("#a3e635"));
+            openExtBtn.setTextSize(18);
+            openExtBtn.setTypeface(null, Typeface.BOLD);
+            openExtBtn.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
+            openExtBtn.setOnClickListener(v -> {
+                try {
+                    String current = (dAppWebView != null && dAppWebView.getUrl() != null) ? dAppWebView.getUrl() : initialUrl;
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(current));
+                    startActivity(intent);
+                } catch (Exception ignored) {}
+            });
+            header.addView(openExtBtn);
 
             container.addView(header);
 
