@@ -31,11 +31,15 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.app.AlertDialog;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+
+import java.util.HashSet;
+import java.util.Set;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Plugin;
@@ -56,11 +60,29 @@ public class MainActivity extends BridgeActivity {
     @CapacitorPlugin(name = "FiatWalletBridge")
     public static class FiatWalletBridgePlugin extends Plugin {
         @PluginMethod
+        public void setWalletPublicKey(PluginCall call) {
+            String pubKey = call.getString("publicKey");
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                if (pubKey != null && !pubKey.isEmpty()) {
+                    activity.currentPublicKey = pubKey;
+                }
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
+
+        @PluginMethod
         public void openDApp(PluginCall call) {
             String url = call.getString("url");
             String title = call.getString("title");
+            String pubKey = call.getString("publicKey");
             MainActivity activity = (MainActivity) getActivity();
             if (activity != null) {
+                if (pubKey != null && !pubKey.isEmpty()) {
+                    activity.currentPublicKey = pubKey;
+                }
                 activity.runOnUiThread(() -> activity.openDAppNative(url, title));
                 call.resolve();
             } else {
@@ -135,6 +157,8 @@ public class MainActivity extends BridgeActivity {
     private EditText dAppSearchBar = null;
     private ProgressBar dAppProgressBar = null;
     private final FiatWalletBridge bridgeInstance = new FiatWalletBridge();
+    private String currentPublicKey = "";
+    private final Set<String> connectedOrigins = new HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -359,24 +383,33 @@ public class MainActivity extends BridgeActivity {
             "  PublicKey.prototype.toByteArray = function() { return Array.from(this._bytes); };" +
             "  PublicKey.prototype.equals = function(o) { return o && (o.toBase58 ? o.toBase58() === this._bn : String(o) === this._bn); };" +
             "  window.PublicKey = window.PublicKey || PublicKey;" +
+            "  var listeners = {};" +
             "  var provider = {" +
             "    isFiatWallet: true," +
             "    isPhantom: true," +
             "    isConnected: false," +
             "    publicKey: null," +
+            "    on: function(event, cb) {" +
+            "      if (!listeners[event]) listeners[event] = [];" +
+            "      listeners[event].push(cb);" +
+            "      return provider;" +
+            "    }," +
+            "    removeListener: function(event, cb) {" +
+            "      if (!listeners[event]) return provider;" +
+            "      listeners[event] = listeners[event].filter(function(fn) { return fn !== cb; });" +
+            "      return provider;" +
+            "    }," +
+            "    emit: function(event, arg) {" +
+            "      if (!listeners[event]) return;" +
+            "      listeners[event].forEach(function(fn) { try { fn(arg); } catch(e){} });" +
+            "    }," +
             "    connect: function(opts) {" +
+            "      if (provider.isConnected && provider.publicKey) {" +
+            "        return Promise.resolve({ publicKey: provider.publicKey });" +
+            "      }" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
-            "        pendingRequests[reqId] = {" +
-            "          resolve: function(res) {" +
-            "            var pubStr = (res && res.publicKey) ? (typeof res.publicKey === 'string' ? res.publicKey : res.publicKey.toString()) : '';" +
-            "            var pub = pubStr ? new PublicKey(pubStr) : null;" +
-            "            provider.publicKey = pub;" +
-            "            provider.isConnected = true;" +
-            "            resolve({ publicKey: pub });" +
-            "          }," +
-            "          reject: reject" +
-            "        };" +
+            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
             "        if (window.FiatWalletBridge && window.FiatWalletBridge.requestConnect) {" +
             "          window.FiatWalletBridge.requestConnect(reqId, window.location.origin, document.title || 'dApp');" +
             "        } else { reject(new Error('FiatWallet native bridge unavailable')); }" +
@@ -385,6 +418,7 @@ public class MainActivity extends BridgeActivity {
             "    disconnect: function() {" +
             "      provider.isConnected = false;" +
             "      provider.publicKey = null;" +
+            "      try { provider.emit('disconnect'); } catch(e) {}" +
             "      return Promise.resolve();" +
             "    }," +
             "    signTransaction: function(tx) {" +
@@ -406,7 +440,19 @@ public class MainActivity extends BridgeActivity {
             "      return Promise.all(txs.map(function(t) { return provider.signTransaction(t); }));" +
             "    }," +
             "    signAndSendTransaction: function(tx, opts) {" +
-            "      return provider.signTransaction(tx).then(function(res) { return { signature: 'sig_ok' }; });" +
+            "      return new Promise(function(resolve, reject) {" +
+            "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
+            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        var serialized;" +
+            "        try {" +
+            "          if (typeof tx.serialize === 'function') {" +
+            "            serialized = Array.from(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));" +
+            "          } else { serialized = tx; }" +
+            "        } catch(e) { serialized = tx; }" +
+            "        if (window.FiatWalletBridge && window.FiatWalletBridge.requestSignAndSend) {" +
+            "          window.FiatWalletBridge.requestSignAndSend(reqId, JSON.stringify(serialized));" +
+            "        } else { reject(new Error('FiatWallet native bridge unavailable')); }" +
+            "      });" +
             "    }," +
             "    signMessage: function(msg) {" +
             "      return new Promise(function(resolve, reject) {" +
@@ -419,12 +465,18 @@ public class MainActivity extends BridgeActivity {
             "      });" +
             "    }," +
             "    _onConnectApproved: function(reqId, pubKey) {" +
+            "      var pub = pubKey ? new PublicKey(pubKey) : null;" +
+            "      provider.publicKey = pub;" +
+            "      provider.isConnected = !!pub;" +
+            "      try { provider.emit('connect', pub); } catch(e) {}" +
             "      if (pendingRequests[reqId]) {" +
-            "        pendingRequests[reqId].resolve({ publicKey: pubKey });" +
+            "        pendingRequests[reqId].resolve({ publicKey: pub });" +
             "        delete pendingRequests[reqId];" +
             "      }" +
             "    }," +
             "    _onConnectRejected: function(reqId) {" +
+            "      provider.isConnected = false;" +
+            "      try { provider.emit('disconnect'); } catch(e) {}" +
             "      if (pendingRequests[reqId]) {" +
             "        pendingRequests[reqId].reject(new Error('User rejected connection'));" +
             "        delete pendingRequests[reqId];" +
@@ -583,22 +635,6 @@ public class MainActivity extends BridgeActivity {
             });
             header.addView(reloadBtn);
 
-            // Open in external browser button (↗)
-            TextView openExtBtn = new TextView(MainActivity.this);
-            openExtBtn.setText("↗");
-            openExtBtn.setTextColor(Color.parseColor("#a3e635"));
-            openExtBtn.setTextSize(18);
-            openExtBtn.setTypeface(null, Typeface.BOLD);
-            openExtBtn.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
-            openExtBtn.setOnClickListener(v -> {
-                try {
-                    String current = (dAppWebView != null && dAppWebView.getUrl() != null) ? dAppWebView.getUrl() : initialUrl;
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(current));
-                    startActivity(intent);
-                } catch (Exception ignored) {}
-            });
-            header.addView(openExtBtn);
-
             container.addView(header);
 
             // Progress Bar below header
@@ -668,6 +704,7 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
                     super.onPageStarted(view, pageUrl, favicon);
+                    view.evaluateJavascript(providerScript, null);
                     if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
                         dAppSearchBar.setText(pageUrl);
                     }
@@ -724,6 +761,9 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onProgressChanged(WebView view, int newProgress) {
                     super.onProgressChanged(view, newProgress);
+                    if (newProgress >= 15) {
+                        view.evaluateJavascript(providerScript, null);
+                    }
                     if (dAppProgressBar != null) {
                         dAppProgressBar.setProgress(newProgress);
                         dAppProgressBar.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);
@@ -757,10 +797,354 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private void showConnectDialog(String reqId, String origin, String title) {
+        runOnUiThread(() -> {
+            try {
+                if (currentPublicKey == null || currentPublicKey.isEmpty()) {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        getBridge().getWebView().evaluateJavascript(
+                            "(window._fiatWalletPubKey || (window.solana && window.solana.publicKey ? window.solana.publicKey.toString() : ''))",
+                            val -> {
+                                String clean = val != null ? val.replace("\"", "").trim() : "";
+                                if (!clean.isEmpty() && !clean.equals("null")) {
+                                    currentPublicKey = clean;
+                                    showConnectDialog(reqId, origin, title);
+                                } else {
+                                    promptNoWalletDialog(reqId);
+                                }
+                            }
+                        );
+                        return;
+                    } else {
+                        promptNoWalletDialog(reqId);
+                        return;
+                    }
+                }
+
+                String cleanOrigin = origin != null ? origin.replace("https://", "").replace("http://", "").replace("/", "") : "dApp";
+                String shortAddr = currentPublicKey.length() > 10 ?
+                    (currentPublicKey.substring(0, 4) + "..." + currentPublicKey.substring(currentPublicKey.length() - 4)) : currentPublicKey;
+
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+                
+                LinearLayout dialogLayout = new LinearLayout(MainActivity.this);
+                dialogLayout.setOrientation(LinearLayout.VERTICAL);
+                dialogLayout.setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(16));
+                dialogLayout.setBackgroundColor(Color.parseColor("#0a1628"));
+
+                TextView titleView = new TextView(MainActivity.this);
+                titleView.setText("Connect to " + cleanOrigin);
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(18);
+                titleView.setTypeface(null, Typeface.BOLD);
+                dialogLayout.addView(titleView);
+
+                TextView subView = new TextView(MainActivity.this);
+                subView.setText((title != null && !title.isEmpty()) ? title : cleanOrigin);
+                subView.setTextColor(Color.parseColor("#94a3b8"));
+                subView.setTextSize(13);
+                subView.setPadding(0, dpToPx(4), 0, dpToPx(16));
+                dialogLayout.addView(subView);
+
+                LinearLayout addrBox = new LinearLayout(MainActivity.this);
+                addrBox.setOrientation(LinearLayout.HORIZONTAL);
+                addrBox.setBackgroundColor(Color.parseColor("#13233c"));
+                addrBox.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+                GradientDrawable addrGd = new GradientDrawable();
+                addrGd.setColor(Color.parseColor("#13233c"));
+                addrGd.setCornerRadius(dpToPx(8));
+                addrGd.setStroke(dpToPx(1), Color.parseColor("#334155"));
+                addrBox.setBackground(addrGd);
+
+                TextView addrLabel = new TextView(MainActivity.this);
+                addrLabel.setText("Active Wallet: ");
+                addrLabel.setTextColor(Color.parseColor("#94a3b8"));
+                addrLabel.setTextSize(12);
+                addrBox.addView(addrLabel);
+
+                TextView addrVal = new TextView(MainActivity.this);
+                addrVal.setText(shortAddr);
+                addrVal.setTextColor(Color.parseColor("#a3e635"));
+                addrVal.setTextSize(12);
+                addrVal.setTypeface(null, Typeface.BOLD);
+                addrBox.addView(addrVal);
+
+                dialogLayout.addView(addrBox);
+
+                TextView permTitle = new TextView(MainActivity.this);
+                permTitle.setText("Permissions requested:\n• View wallet balance and activity\n• Request transaction approval");
+                permTitle.setTextColor(Color.parseColor("#64748b"));
+                permTitle.setTextSize(12);
+                permTitle.setLineSpacing(dpToPx(2), 1.0f);
+                permTitle.setPadding(0, dpToPx(14), 0, dpToPx(18));
+                dialogLayout.addView(permTitle);
+
+                LinearLayout btnLayout = new LinearLayout(MainActivity.this);
+                btnLayout.setOrientation(LinearLayout.HORIZONTAL);
+                btnLayout.setGravity(Gravity.END);
+
+                builder.setView(dialogLayout);
+                AlertDialog dialog = builder.create();
+                if (dialog.getWindow() != null) {
+                    dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                }
+
+                TextView cancelBtn = new TextView(MainActivity.this);
+                cancelBtn.setText("Cancel");
+                cancelBtn.setTextColor(Color.parseColor("#94a3b8"));
+                cancelBtn.setTextSize(14);
+                cancelBtn.setTypeface(null, Typeface.BOLD);
+                cancelBtn.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10));
+                cancelBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    bridgeInstance.rejectConnect(reqId);
+                });
+                btnLayout.addView(cancelBtn);
+
+                TextView connectBtn = new TextView(MainActivity.this);
+                connectBtn.setText("Connect");
+                connectBtn.setTextColor(Color.parseColor("#0a1628"));
+                connectBtn.setTextSize(14);
+                connectBtn.setTypeface(null, Typeface.BOLD);
+                connectBtn.setPadding(dpToPx(18), dpToPx(10), dpToPx(18), dpToPx(10));
+                GradientDrawable cbg = new GradientDrawable();
+                cbg.setColor(Color.parseColor("#a3e635"));
+                cbg.setCornerRadius(dpToPx(8));
+                connectBtn.setBackground(cbg);
+                connectBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    if (origin != null) connectedOrigins.add(origin);
+                    bridgeInstance.approveConnect(reqId, currentPublicKey);
+                });
+                btnLayout.addView(connectBtn);
+
+                dialogLayout.addView(btnLayout);
+                dialog.setCancelable(false);
+                dialog.show();
+            } catch (Exception e) {
+                android.util.Log.e("FiatWallet", "showConnectDialog error", e);
+                bridgeInstance.approveConnect(reqId, currentPublicKey);
+            }
+        });
+    }
+
+    private void promptNoWalletDialog(String reqId) {
+        runOnUiThread(() -> {
+            try {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+                builder.setTitle("Wallet Required");
+                builder.setMessage("Please unlock or create a wallet in FiatWallet before connecting to dApps.");
+                builder.setPositiveButton("OK", (d, w) -> {
+                    bridgeInstance.rejectConnect(reqId);
+                    closeDAppInternal();
+                });
+                builder.setCancelable(false);
+                builder.show();
+            } catch (Exception ignored) {
+                bridgeInstance.rejectConnect(reqId);
+            }
+        });
+    }
+
+    private void showSignDialog(String reqId, String txData, String type) {
+        runOnUiThread(() -> {
+            try {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+                
+                LinearLayout dialogLayout = new LinearLayout(MainActivity.this);
+                dialogLayout.setOrientation(LinearLayout.VERTICAL);
+                dialogLayout.setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(16));
+                dialogLayout.setBackgroundColor(Color.parseColor("#0a1628"));
+
+                TextView titleView = new TextView(MainActivity.this);
+                titleView.setText("Authorize Transaction");
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(18);
+                titleView.setTypeface(null, Typeface.BOLD);
+                dialogLayout.addView(titleView);
+
+                TextView subView = new TextView(MainActivity.this);
+                subView.setText("The connected dApp requests your authorization to execute a Solana transaction.");
+                subView.setTextColor(Color.parseColor("#94a3b8"));
+                subView.setTextSize(13);
+                subView.setPadding(0, dpToPx(6), 0, dpToPx(16));
+                dialogLayout.addView(subView);
+
+                LinearLayout addrBox = new LinearLayout(MainActivity.this);
+                addrBox.setOrientation(LinearLayout.HORIZONTAL);
+                addrBox.setBackgroundColor(Color.parseColor("#13233c"));
+                addrBox.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+                GradientDrawable addrGd = new GradientDrawable();
+                addrGd.setColor(Color.parseColor("#13233c"));
+                addrGd.setCornerRadius(dpToPx(8));
+                addrGd.setStroke(dpToPx(1), Color.parseColor("#334155"));
+                addrBox.setBackground(addrGd);
+
+                TextView addrLabel = new TextView(MainActivity.this);
+                addrLabel.setText("Signing Wallet: ");
+                addrLabel.setTextColor(Color.parseColor("#94a3b8"));
+                addrLabel.setTextSize(12);
+                addrBox.addView(addrLabel);
+
+                String shortAddr = (currentPublicKey != null && currentPublicKey.length() > 10) ?
+                    (currentPublicKey.substring(0, 4) + "..." + currentPublicKey.substring(currentPublicKey.length() - 4)) : "Active Wallet";
+                TextView addrVal = new TextView(MainActivity.this);
+                addrVal.setText(shortAddr);
+                addrVal.setTextColor(Color.parseColor("#a3e635"));
+                addrVal.setTextSize(12);
+                addrVal.setTypeface(null, Typeface.BOLD);
+                addrBox.addView(addrVal);
+
+                dialogLayout.addView(addrBox);
+
+                LinearLayout btnLayout = new LinearLayout(MainActivity.this);
+                btnLayout.setOrientation(LinearLayout.HORIZONTAL);
+                btnLayout.setGravity(Gravity.END);
+                btnLayout.setPadding(0, dpToPx(18), 0, 0);
+
+                builder.setView(dialogLayout);
+                AlertDialog dialog = builder.create();
+                if (dialog.getWindow() != null) {
+                    dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                }
+
+                TextView rejectBtn = new TextView(MainActivity.this);
+                rejectBtn.setText("Reject");
+                rejectBtn.setTextColor(Color.parseColor("#ef4444"));
+                rejectBtn.setTextSize(14);
+                rejectBtn.setTypeface(null, Typeface.BOLD);
+                rejectBtn.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10));
+                rejectBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    bridgeInstance.rejectSign(reqId);
+                });
+                btnLayout.addView(rejectBtn);
+
+                TextView approveBtn = new TextView(MainActivity.this);
+                approveBtn.setText("Approve");
+                approveBtn.setTextColor(Color.parseColor("#0a1628"));
+                approveBtn.setTextSize(14);
+                approveBtn.setTypeface(null, Typeface.BOLD);
+                approveBtn.setPadding(dpToPx(18), dpToPx(10), dpToPx(18), dpToPx(10));
+                GradientDrawable abg = new GradientDrawable();
+                abg.setColor(Color.parseColor("#a3e635"));
+                abg.setCornerRadius(dpToPx(8));
+                approveBtn.setBackground(abg);
+                approveBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-execute', " +
+                                    "{ detail: { reqId: '" + reqId + "', type: '" + type + "', txData: " + txData + " } }));";
+                        getBridge().getWebView().evaluateJavascript(js, null);
+                    }
+                });
+                btnLayout.addView(approveBtn);
+
+                dialogLayout.addView(btnLayout);
+                dialog.setCancelable(false);
+                dialog.show();
+            } catch (Exception e) {
+                android.util.Log.e("FiatWallet", "showSignDialog error", e);
+                bridgeInstance.rejectSign(reqId);
+            }
+        });
+    }
+
+    private void showSignMessageDialog(String reqId, String message) {
+        runOnUiThread(() -> {
+            try {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert);
+                
+                LinearLayout dialogLayout = new LinearLayout(MainActivity.this);
+                dialogLayout.setOrientation(LinearLayout.VERTICAL);
+                dialogLayout.setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(16));
+                dialogLayout.setBackgroundColor(Color.parseColor("#0a1628"));
+
+                TextView titleView = new TextView(MainActivity.this);
+                titleView.setText("Sign Message");
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(18);
+                titleView.setTypeface(null, Typeface.BOLD);
+                dialogLayout.addView(titleView);
+
+                TextView msgView = new TextView(MainActivity.this);
+                msgView.setText(message);
+                msgView.setTextColor(Color.parseColor("#94a3b8"));
+                msgView.setTextSize(13);
+                msgView.setPadding(0, dpToPx(6), 0, dpToPx(16));
+                dialogLayout.addView(msgView);
+
+                LinearLayout btnLayout = new LinearLayout(MainActivity.this);
+                btnLayout.setOrientation(LinearLayout.HORIZONTAL);
+                btnLayout.setGravity(Gravity.END);
+                btnLayout.setPadding(0, dpToPx(14), 0, 0);
+
+                builder.setView(dialogLayout);
+                AlertDialog dialog = builder.create();
+                if (dialog.getWindow() != null) {
+                    dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                }
+
+                TextView rejectBtn = new TextView(MainActivity.this);
+                rejectBtn.setText("Reject");
+                rejectBtn.setTextColor(Color.parseColor("#ef4444"));
+                rejectBtn.setTextSize(14);
+                rejectBtn.setTypeface(null, Typeface.BOLD);
+                rejectBtn.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10));
+                rejectBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    bridgeInstance.rejectSign(reqId);
+                });
+                btnLayout.addView(rejectBtn);
+
+                TextView approveBtn = new TextView(MainActivity.this);
+                approveBtn.setText("Sign");
+                approveBtn.setTextColor(Color.parseColor("#0a1628"));
+                approveBtn.setTextSize(14);
+                approveBtn.setTypeface(null, Typeface.BOLD);
+                approveBtn.setPadding(dpToPx(18), dpToPx(10), dpToPx(18), dpToPx(10));
+                GradientDrawable abg = new GradientDrawable();
+                abg.setColor(Color.parseColor("#a3e635"));
+                abg.setCornerRadius(dpToPx(8));
+                approveBtn.setBackground(abg);
+                approveBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-execute', " +
+                                    "{ detail: { reqId: '" + reqId + "', type: 'signMessage', message: '" + escapeJs(message) + "' } }));";
+                        getBridge().getWebView().evaluateJavascript(js, null);
+                    }
+                });
+                btnLayout.addView(approveBtn);
+
+                dialogLayout.addView(btnLayout);
+                dialog.setCancelable(false);
+                dialog.show();
+            } catch (Exception e) {
+                bridgeInstance.rejectSign(reqId);
+            }
+        });
+    }
+
     /**
      * Java bridge exposed to JavaScript as window.FiatWalletBridge.
      */
     public class FiatWalletBridge {
+
+        @JavascriptInterface
+        public void setWalletPublicKey(String pubKey) {
+            if (pubKey != null && !pubKey.isEmpty()) {
+                currentPublicKey = pubKey;
+            }
+        }
+
+        @JavascriptInterface
+        public void openDApp(String url, String title, String pubKey) {
+            if (pubKey != null && !pubKey.isEmpty()) {
+                currentPublicKey = pubKey;
+            }
+            runOnUiThread(() -> openDAppNative(url, title));
+        }
 
         @JavascriptInterface
         public void openDApp(String url, String title) {
@@ -785,37 +1169,27 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void requestConnect(String reqId, String origin, String title) {
             runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-connect-request', " +
-                            "{ detail: { reqId: '" + reqId + "', origin: '" + escapeJs(origin) + "', title: '" + escapeJs(title) + "' } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
+                if (origin != null && connectedOrigins.contains(origin) && currentPublicKey != null && !currentPublicKey.isEmpty()) {
+                    approveConnect(reqId, currentPublicKey);
+                    return;
+                }
+                showConnectDialog(reqId, origin, title);
             });
         }
 
         @JavascriptInterface
         public void requestSignTransaction(String reqId, String txData) {
-            runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
-                            "{ detail: { reqId: '" + reqId + "', type: 'signTransaction', txData: " + txData + " } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
-            });
+            runOnUiThread(() -> showSignDialog(reqId, txData, "signTransaction"));
         }
 
         @JavascriptInterface
         public void requestSignAndSend(String reqId, String txData) {
-            runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
-                            "{ detail: { reqId: '" + reqId + "', type: 'signAndSendTransaction', txData: " + txData + " } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
-            });
+            runOnUiThread(() -> showSignDialog(reqId, txData, "signAndSendTransaction"));
         }
 
         @JavascriptInterface
         public void requestSignMessage(String reqId, String message) {
-            runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
-                            "{ detail: { reqId: '" + reqId + "', type: 'signMessage', message: '" + escapeJs(message) + "' } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
-            });
+            runOnUiThread(() -> showSignMessageDialog(reqId, message));
         }
 
         @JavascriptInterface

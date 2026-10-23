@@ -5,23 +5,6 @@ import { fiatwalletProvider } from '../services/fiatwalletProvider';
 
 const NativeFiatWalletBridge = registerPlugin('FiatWalletBridge');
 
-// Domains known to enforce X-Frame-Options: SAMEORIGIN or CSP frame-ancestors 'self'
-const IFRAME_RESTRICTED_DOMAINS = [
-  'jup.ag', 'pump.fun', 'raydium.io', 'magiceden.io', 'kamino.com',
-  'orca.so', 'tensor.trade', 'dexscreener.com', 'birdeye.so',
-  'marginfi.com', 'jito.network', 'marinade.finance', 'meteora.ag', 'sanctum.so'
-];
-
-const isIframeRestricted = (url) => {
-  if (!url) return false;
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
-    return IFRAME_RESTRICTED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
-  } catch {
-    return false;
-  }
-};
-
 // Curated list of 16 verified Solana Web3 dApps
 const CURATED_DAPPS = [
   {
@@ -287,12 +270,13 @@ const DAppExplorer = forwardRef(function DAppExplorer({
     if (!dApp) return;
     const targetUrl = typeof dApp === 'string' ? dApp : (dApp.url || '');
     const targetTitle = (typeof dApp === 'object' && dApp.name) ? dApp.name : 'dApp';
+    const pubKeyStr = effectivePublicKey ? effectivePublicKey.toBase58() : '';
 
     // 1. Try Capacitor Native Bridge Plugin (Guaranteed on Android native APK)
     if (Capacitor?.isNativePlatform && Capacitor.isNativePlatform()) {
       try {
         if (NativeFiatWalletBridge && typeof NativeFiatWalletBridge.openDApp === 'function') {
-          await NativeFiatWalletBridge.openDApp({ url: targetUrl, title: targetTitle });
+          await NativeFiatWalletBridge.openDApp({ url: targetUrl, title: targetTitle, publicKey: pubKeyStr });
           return;
         }
       } catch (e) {
@@ -304,7 +288,7 @@ const DAppExplorer = forwardRef(function DAppExplorer({
     if (typeof window !== 'undefined' && window.FiatWalletBridge) {
       try {
         if (typeof window.FiatWalletBridge.openDApp === 'function' || window.FiatWalletBridge.openDApp) {
-          window.FiatWalletBridge.openDApp(targetUrl, targetTitle);
+          window.FiatWalletBridge.openDApp(targetUrl, targetTitle, pubKeyStr);
           return;
         }
       } catch (e) {
@@ -619,142 +603,26 @@ const DAppExplorer = forwardRef(function DAppExplorer({
             >
               ↻
             </button>
-
-            {/* Open in external browser / new tab */}
-            <button
-              type="button"
-              onClick={() => {
-                const target = browserUrlInput || selectedDApp?.url;
-                if (target) window.open(target, '_blank', 'noopener,noreferrer');
-              }}
-              style={{
-                background: 'rgba(163, 230, 53, 0.15)',
-                border: '1px solid rgba(163, 230, 53, 0.35)',
-                borderRadius: '8px',
-                color: 'var(--lime, #a3e635)',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '700',
-                padding: '6px 10px',
-                flexShrink: 0
-              }}
-              title="Open in new window / external browser"
-            >
-              ↗
-            </button>
           </div>
 
-          {/* Web View or Security Protection Fallback */}
-          {isIframeRestricted(selectedDApp.url) ? (
-            <div style={{
+          {/* Full Screen Web View Iframe */}
+          <iframe
+            ref={iframeRef}
+            key={iframeKey}
+            src={selectedDApp.url}
+            title={selectedDApp.name}
+            onLoad={handleIframeLoad}
+            style={{
               flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '24px',
-              textAlign: 'center',
-              background: '#0a1628',
+              width: '100%',
               height: 'calc(100vh - 50px)',
-              boxSizing: 'border-box'
-            }}>
-              <div style={{
-                maxWidth: '460px',
-                width: '100%',
-                background: 'rgba(19, 35, 60, 0.9)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '16px',
-                padding: '28px 24px',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center'
-              }}>
-                <div style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '14px',
-                  background: 'rgba(163, 230, 53, 0.12)',
-                  border: '1px solid rgba(163, 230, 53, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '16px',
-                  fontSize: '22px',
-                  color: 'var(--lime, #a3e635)',
-                  fontWeight: '800'
-                }}>
-                  ↗
-                </div>
-
-                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#f0f6ff', margin: '0 0 8px' }}>
-                  {selectedDApp.name} Direct Launch
-                </h3>
-
-                <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', margin: '0 0 20px', maxWidth: '380px' }}>
-                  {selectedDApp.name} enforces browser security headers (X-Frame-Options: SAMEORIGIN) to protect against clickjacking. Launch directly in a browser window or use the FiatWallet Android app for native in-app Web3 provider injection.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-                  <button
-                    type="button"
-                    onClick={() => window.open(selectedDApp.url, '_blank', 'noopener,noreferrer')}
-                    style={{
-                      background: 'var(--lime, #a3e635)',
-                      color: '#0a1628',
-                      fontWeight: '800',
-                      fontSize: '14px',
-                      padding: '12px 20px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    Launch {selectedDApp.name} ↗
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDApp(null)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      color: '#94a3b8',
-                      fontWeight: '600',
-                      fontSize: '13px',
-                      padding: '10px 16px',
-                      borderRadius: '10px',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ← Return to Explorer
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <iframe
-              ref={iframeRef}
-              key={iframeKey}
-              src={selectedDApp.url}
-              title={selectedDApp.name}
-              onLoad={handleIframeLoad}
-              style={{
-                flex: 1,
-                width: '100%',
-                height: 'calc(100vh - 50px)',
-                border: 'none',
-                background: '#0a1628',
-                display: 'block'
-              }}
-              allow="clipboard-write; clipboard-read; camera; microphone; payment; geolocation"
-              sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads allow-top-navigation allow-top-navigation-by-user-activation"
-            />
-          )}
+              border: 'none',
+              background: '#0a1628',
+              display: 'block'
+            }}
+            allow="clipboard-write; clipboard-read; camera; microphone; payment; geolocation"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads allow-top-navigation allow-top-navigation-by-user-activation"
+          />
         </div>
       ) : null}
 

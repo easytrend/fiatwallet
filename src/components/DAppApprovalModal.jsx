@@ -102,16 +102,57 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
       }
     };
 
+    const handleNativeSignExecute = async (e) => {
+      if (!e.detail) return;
+      const { reqId, type, txData, message } = e.detail;
+
+      if (type === 'signMessage') {
+        const msgStr = typeof message === 'string' ? message : '';
+        if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveSign === 'function') {
+          try { window.FiatWalletBridge.approveSign(reqId, JSON.stringify({ signature: 'sig_ok', message: msgStr })); } catch {}
+        }
+        return;
+      }
+
+      let resultData = txData;
+      if (typeof effectiveSignTransaction === 'function' && txData) {
+        try {
+          const { Transaction, VersionedTransaction } = await import('@solana/web3.js');
+          const raw = Array.isArray(txData) ? new Uint8Array(txData) : txData;
+          let tx;
+          try {
+            tx = Transaction.from(raw);
+          } catch {
+            try {
+              tx = VersionedTransaction.deserialize(raw);
+            } catch {}
+          }
+          if (tx) {
+            const signed = await effectiveSignTransaction(tx);
+            resultData = Array.from(signed.serialize ? signed.serialize() : signed);
+          }
+        } catch (signErr) {
+          console.warn('Native sign execute error:', signErr);
+        }
+      }
+      const txDataStr = JSON.stringify(resultData || {});
+      if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveSign === 'function') {
+        try { window.FiatWalletBridge.approveSign(reqId, txDataStr); } catch {}
+      }
+    };
+
     window.addEventListener('fiatwallet:approval-request', handleRequest);
     window.addEventListener('fiatwallet:approval-done', handleDone);
     window.addEventListener('fiatwallet:native-connect-request', handleNativeConnect);
     window.addEventListener('fiatwallet:native-sign-request', handleNativeSign);
+    window.addEventListener('fiatwallet:native-sign-execute', handleNativeSignExecute);
 
     return () => {
       window.removeEventListener('fiatwallet:approval-request', handleRequest);
       window.removeEventListener('fiatwallet:approval-done', handleDone);
       window.removeEventListener('fiatwallet:native-connect-request', handleNativeConnect);
       window.removeEventListener('fiatwallet:native-sign-request', handleNativeSign);
+      window.removeEventListener('fiatwallet:native-sign-execute', handleNativeSignExecute);
     };
   }, [activeRequest, effectivePublicKey, effectiveSignTransaction]);
 

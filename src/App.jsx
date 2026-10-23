@@ -382,13 +382,24 @@ export default function App() {
 
   // Sync Injected Web3 Provider State (window.solana, window.fiatwallet, Solana Wallet Standard)
   useEffect(() => {
+    const pubStr = effectivePublicKey ? effectivePublicKey.toBase58() : null;
     fiatwalletProvider.updateWalletState({
-      publicKey: effectivePublicKey ? effectivePublicKey.toBase58() : null,
+      publicKey: pubStr,
       isActive: effectiveConnected,
       signTransaction: effectiveSignTransaction,
       signAllTransactions: effectiveSignAllTransactions,
       sendTransaction: effectiveSendTransaction,
     });
+
+    if (typeof window !== 'undefined') {
+      window._fiatWalletPubKey = pubStr || '';
+      if (window.FiatWalletBridge?.setWalletPublicKey && pubStr) {
+        try { window.FiatWalletBridge.setWalletPublicKey(pubStr); } catch {}
+      }
+      if (window.Capacitor?.Plugins?.FiatWalletBridge?.setWalletPublicKey && pubStr) {
+        try { window.Capacitor.Plugins.FiatWalletBridge.setWalletPublicKey({ publicKey: pubStr }); } catch {}
+      }
+    }
   }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);
 
   // Listen for FiatWallet adapter events and onboarding requests
