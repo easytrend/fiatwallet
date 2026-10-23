@@ -35,8 +35,10 @@ import DAppApprovalModal from './components/DAppApprovalModal';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
 import NativeWalletApprovalModal from './components/NativeWalletApprovalModal';
 import { parseTransactionBreakdown } from './utils/txParser';
+import { registerPlugin } from '@capacitor/core';
 import HistoryPanel from './components/HistoryPanel';
 
+const NativeFiatWalletBridge = registerPlugin('FiatWalletBridge');
 
 
 // SNS_LINK must not embed referral/tracking parameters.
@@ -393,11 +395,13 @@ export default function App() {
 
     if (typeof window !== 'undefined') {
       window._fiatWalletPubKey = pubStr || '';
-      if (window.FiatWalletBridge?.setWalletPublicKey && pubStr) {
-        try { window.FiatWalletBridge.setWalletPublicKey(pubStr); } catch {}
-      }
-      if (window.Capacitor?.Plugins?.FiatWalletBridge?.setWalletPublicKey && pubStr) {
-        try { window.Capacitor.Plugins.FiatWalletBridge.setWalletPublicKey({ publicKey: pubStr }); } catch {}
+      if (pubStr) {
+        if (window.FiatWalletBridge?.setWalletPublicKey) {
+          try { window.FiatWalletBridge.setWalletPublicKey(pubStr); } catch {}
+        }
+        if (NativeFiatWalletBridge && typeof NativeFiatWalletBridge.setWalletPublicKey === 'function') {
+          try { NativeFiatWalletBridge.setWalletPublicKey({ publicKey: pubStr }).catch(() => {}); } catch {}
+        }
       }
     }
   }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);

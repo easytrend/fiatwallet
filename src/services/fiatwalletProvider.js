@@ -254,6 +254,25 @@ class FiatWalletInjectedProvider extends EventEmitter {
     };
   }
 
+  async request(args) {
+    if (!args || !args.method) throw new Error('Invalid request');
+    if (args.method === 'connect') return this.connect(args.params);
+    if (args.method === 'disconnect') return this.disconnect();
+    if (args.method === 'signTransaction') return this.signTransaction(args.params?.transaction || args.params);
+    if (args.method === 'signAllTransactions') return this.signAllTransactions(args.params?.transactions || args.params);
+    if (args.method === 'signAndSendTransaction') return this.signAndSendTransaction(args.params?.transaction || args.params, args.params?.options);
+    if (args.method === 'signMessage') return this.signMessage(args.params?.message || args.params);
+    throw new Error('Method ' + args.method + ' not supported');
+  }
+
+  addListener(event, listener) {
+    return this.on(event, listener);
+  }
+
+  off(event, listener) {
+    return this.removeListener(event, listener);
+  }
+
   _notifyWalletStandard() {
     try {
       window.dispatchEvent(new CustomEvent('fiatwallet:state-change', {
@@ -299,7 +318,19 @@ export function initFiatWalletProvider() {
         features: {
           'standard:connect': {
             version: '1.0.0',
-            connect: async (input) => fiatwalletProvider.connect(input),
+            connect: async (input) => {
+              await fiatwalletProvider.connect(input);
+              const pubStr = fiatwalletProvider.publicKey ? (fiatwalletProvider.publicKey.toBase58 ? fiatwalletProvider.publicKey.toBase58() : String(fiatwalletProvider.publicKey)) : '';
+              const bytes = fiatwalletProvider.publicKey?.toBytes ? fiatwalletProvider.publicKey.toBytes() : (fiatwalletProvider.publicKey?.toByteArray ? new Uint8Array(fiatwalletProvider.publicKey.toByteArray()) : new Uint8Array(32));
+              return {
+                accounts: pubStr ? [{
+                  address: pubStr,
+                  publicKey: bytes,
+                  chains: ['solana:mainnet', 'solana:devnet'],
+                  features: ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage']
+                }] : []
+              };
+            },
           },
           'standard:disconnect': {
             version: '1.0.0',
@@ -332,10 +363,18 @@ export function initFiatWalletProvider() {
           },
         },
         accounts: fiatwalletProvider.publicKey
-          ? [{ address: fiatwalletProvider.publicKey.toBase58(), publicKey: fiatwalletProvider.publicKey }]
+          ? [{ address: fiatwalletProvider.publicKey.toBase58 ? fiatwalletProvider.publicKey.toBase58() : String(fiatwalletProvider.publicKey), publicKey: fiatwalletProvider.publicKey }]
           : [],
       });
     };
+
+    window.addEventListener('wallet-standard:app-ready', (e) => {
+      try {
+        if (e && typeof e.detail === 'function') {
+          e.detail({ register: registerWallet });
+        }
+      } catch (err) {}
+    });
 
     window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', {
       detail: { register: registerWallet }

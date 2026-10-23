@@ -269,8 +269,7 @@ const DAppExplorer = forwardRef(function DAppExplorer({
   const handleOpenDApp = async (dApp) => {
     if (!dApp) return;
     const targetUrl = typeof dApp === 'string' ? dApp : (dApp.url || '');
-    const targetTitle = (typeof dApp === 'object' && dApp.name) ? dApp.name : 'dApp';
-    const pubKeyStr = effectivePublicKey ? effectivePublicKey.toBase58() : '';
+    const pubKeyStr = effectivePublicKey ? effectivePublicKey.toBase58() : (typeof localStorage !== 'undefined' ? (localStorage.getItem('fw_wallet_pubkey') || '') : '');
 
     // 1. Try Capacitor Native Bridge Plugin (Guaranteed on Android native APK)
     if (Capacitor?.isNativePlatform && Capacitor.isNativePlatform()) {

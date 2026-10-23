@@ -38,8 +38,11 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Plugin;
@@ -82,6 +85,16 @@ public class MainActivity extends BridgeActivity {
             if (activity != null) {
                 if (pubKey != null && !pubKey.isEmpty()) {
                     activity.currentPublicKey = pubKey;
+                } else if (activity.currentPublicKey.isEmpty() && activity.getBridge() != null && activity.getBridge().getWebView() != null) {
+                    activity.getBridge().getWebView().evaluateJavascript(
+                        "(window._fiatWalletPubKey || (typeof localStorage !== 'undefined' ? (localStorage.getItem('fw_wallet_pubkey') || '') : ''))",
+                        val -> {
+                            String clean = val != null ? val.replace("\"", "").trim() : "";
+                            if (!clean.isEmpty() && !clean.equals("null") && !clean.equals("undefined")) {
+                                activity.currentPublicKey = clean;
+                            }
+                        }
+                    );
                 }
                 activity.runOnUiThread(() -> activity.openDAppNative(url, title));
                 call.resolve();
@@ -190,8 +203,8 @@ public class MainActivity extends BridgeActivity {
             if (uriString.startsWith("wc:")) {
                 String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-wc', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
                 webView.evaluateJavascript(js, null);
-            } else if (uriString.startsWith("solana-wallet:") || uriString.startsWith("fiatwallet:")) {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-mwa', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
+            } else if (uriString.startsWith("fiatwallet:")) {
+                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-custom', { detail: { uri: '" + escapeJs(uriString) + "' } }));";
                 webView.evaluateJavascript(js, null);
             }
         });
@@ -373,7 +386,7 @@ public class MainActivity extends BridgeActivity {
             "      this._bn = val.toBase58();" +
             "      this._bytes = val.toBytes ? val.toBytes() : (val.toByteArray ? val.toByteArray() : new Uint8Array(val));" +
             "    } else {" +
-            "      this._bn = String(val);" +
+            "      this._bn = String(val || '');" +
             "      this._bytes = new Uint8Array(32);" +
             "    }" +
             "  }" +
@@ -381,12 +394,32 @@ public class MainActivity extends BridgeActivity {
             "  PublicKey.prototype.toString = function() { return this._bn; };" +
             "  PublicKey.prototype.toBytes = function() { return this._bytes; };" +
             "  PublicKey.prototype.toByteArray = function() { return Array.from(this._bytes); };" +
+            "  PublicKey.prototype.toBuffer = function() { return this._bytes; };" +
+            "  PublicKey.prototype.toJSON = function() { return this._bn; };" +
             "  PublicKey.prototype.equals = function(o) { return o && (o.toBase58 ? o.toBase58() === this._bn : String(o) === this._bn); };" +
             "  window.PublicKey = window.PublicKey || PublicKey;" +
+            "  function makePublicKey(val) {" +
+            "    try {" +
+            "      if (window.solanaWeb3 && window.solanaWeb3.PublicKey) {" +
+            "        return new window.solanaWeb3.PublicKey(val);" +
+            "      }" +
+            "    } catch(e) {}" +
+            "    return new PublicKey(val);" +
+            "  }" +
             "  var listeners = {};" +
+            "  var registeredWallet = {" +
+            "    name: 'FiatWallet'," +
+            "    icon: 'https://fiatwallet.pages.dev/logo.jpg'," +
+            "    version: '1.0.0'," +
+            "    chains: ['solana:mainnet', 'solana:devnet']," +
+            "    accounts: []," +
+            "    features: {}" +
+            "  };" +
             "  var provider = {" +
             "    isFiatWallet: true," +
             "    isPhantom: true," +
+            "    isSolflare: true," +
+            "    autoApprove: false," +
             "    isConnected: false," +
             "    publicKey: null," +
             "    on: function(event, cb) {" +
@@ -394,18 +427,26 @@ public class MainActivity extends BridgeActivity {
             "      listeners[event].push(cb);" +
             "      return provider;" +
             "    }," +
+            "    addListener: function(event, cb) { return provider.on(event, cb); }," +
             "    removeListener: function(event, cb) {" +
             "      if (!listeners[event]) return provider;" +
             "      listeners[event] = listeners[event].filter(function(fn) { return fn !== cb; });" +
             "      return provider;" +
             "    }," +
+            "    off: function(event, cb) { return provider.removeListener(event, cb); }," +
             "    emit: function(event, arg) {" +
             "      if (!listeners[event]) return;" +
             "      listeners[event].forEach(function(fn) { try { fn(arg); } catch(e){} });" +
             "    }," +
             "    connect: function(opts) {" +
+            "      if (opts && opts.onlyIfTrusted) {" +
+            "        if (provider.isConnected && provider.publicKey) {" +
+            "          return Promise.resolve({ publicKey: provider.publicKey, accounts: registeredWallet.accounts });" +
+            "        }" +
+            "        return Promise.reject(new Error('User not connected'));" +
+            "      }" +
             "      if (provider.isConnected && provider.publicKey) {" +
-            "        return Promise.resolve({ publicKey: provider.publicKey });" +
+            "        return Promise.resolve({ publicKey: provider.publicKey, accounts: registeredWallet.accounts });" +
             "      }" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
@@ -418,13 +459,15 @@ public class MainActivity extends BridgeActivity {
             "    disconnect: function() {" +
             "      provider.isConnected = false;" +
             "      provider.publicKey = null;" +
+            "      registeredWallet.accounts = [];" +
             "      try { provider.emit('disconnect'); } catch(e) {}" +
+            "      try { provider.emit('change', { accounts: [] }); } catch(e) {}" +
             "      return Promise.resolve();" +
             "    }," +
             "    signTransaction: function(tx) {" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
-            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        pendingRequests[reqId] = { resolve: resolve, reject: reject, tx: tx };" +
             "        var serialized;" +
             "        try {" +
             "          if (typeof tx.serialize === 'function') {" +
@@ -442,7 +485,7 @@ public class MainActivity extends BridgeActivity {
             "    signAndSendTransaction: function(tx, opts) {" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
-            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        pendingRequests[reqId] = { resolve: resolve, reject: reject, tx: tx };" +
             "        var serialized;" +
             "        try {" +
             "          if (typeof tx.serialize === 'function') {" +
@@ -464,13 +507,36 @@ public class MainActivity extends BridgeActivity {
             "        } else { reject(new Error('FiatWallet native bridge unavailable')); }" +
             "      });" +
             "    }," +
+            "    request: function(args) {" +
+            "      if (!args || !args.method) return Promise.reject(new Error('Invalid request'));" +
+            "      if (args.method === 'connect') return provider.connect(args.params);" +
+            "      if (args.method === 'disconnect') return provider.disconnect();" +
+            "      if (args.method === 'signTransaction') return provider.signTransaction(args.params ? (args.params.transaction || args.params) : null);" +
+            "      if (args.method === 'signAllTransactions') return provider.signAllTransactions(args.params ? (args.params.transactions || args.params) : []);" +
+            "      if (args.method === 'signAndSendTransaction') return provider.signAndSendTransaction(args.params ? (args.params.transaction || args.params) : null, args.params ? args.params.options : undefined);" +
+            "      if (args.method === 'signMessage') return provider.signMessage(args.params ? (args.params.message || args.params) : null);" +
+            "      return Promise.reject(new Error('Method ' + args.method + ' not supported'));" +
+            "    }," +
             "    _onConnectApproved: function(reqId, pubKey) {" +
-            "      var pub = pubKey ? new PublicKey(pubKey) : null;" +
+            "      var pub = pubKey ? makePublicKey(pubKey) : null;" +
             "      provider.publicKey = pub;" +
             "      provider.isConnected = !!pub;" +
+            "      if (pubKey) {" +
+            "        var bytes = base58Decode(pubKey);" +
+            "        registeredWallet.accounts = [{" +
+            "          address: pubKey," +
+            "          publicKey: bytes," +
+            "          chains: ['solana:mainnet', 'solana:devnet']," +
+            "          features: ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage']" +
+            "        }];" +
+            "      } else {" +
+            "        registeredWallet.accounts = [];" +
+            "      }" +
             "      try { provider.emit('connect', pub); } catch(e) {}" +
+            "      try { provider.emit('accountChanged', pub); } catch(e) {}" +
+            "      try { provider.emit('change', { accounts: registeredWallet.accounts }); } catch(e) {}" +
             "      if (pendingRequests[reqId]) {" +
-            "        pendingRequests[reqId].resolve({ publicKey: pub });" +
+            "        pendingRequests[reqId].resolve({ publicKey: pub, accounts: registeredWallet.accounts });" +
             "        delete pendingRequests[reqId];" +
             "      }" +
             "    }," +
@@ -484,7 +550,21 @@ public class MainActivity extends BridgeActivity {
             "    }," +
             "    _onSignApproved: function(reqId, result) {" +
             "      if (pendingRequests[reqId]) {" +
-            "        pendingRequests[reqId].resolve(result);" +
+            "        var origTx = pendingRequests[reqId].tx;" +
+            "        var out = result;" +
+            "        if (origTx && Array.isArray(result)) {" +
+            "          try {" +
+            "            var u8 = new Uint8Array(result);" +
+            "            if (window.solanaWeb3) {" +
+            "              if (window.solanaWeb3.Transaction) { try { out = window.solanaWeb3.Transaction.from(u8); } catch(e1) {} }" +
+            "              if (!out && window.solanaWeb3.VersionedTransaction) { try { out = window.solanaWeb3.VersionedTransaction.deserialize(u8); } catch(e2) {} }" +
+            "            }" +
+            "            if (!out && origTx.constructor && typeof origTx.constructor.from === 'function') { try { out = origTx.constructor.from(u8); } catch(e3) {} }" +
+            "            if (!out && origTx.constructor && typeof origTx.constructor.deserialize === 'function') { try { out = origTx.constructor.deserialize(u8); } catch(e4) {} }" +
+            "            if (!out) { out = u8; out.serialize = function() { return u8; }; }" +
+            "          } catch(e) { out = result; }" +
+            "        }" +
+            "        pendingRequests[reqId].resolve(out);" +
             "        delete pendingRequests[reqId];" +
             "      }" +
             "    }," +
@@ -495,25 +575,59 @@ public class MainActivity extends BridgeActivity {
             "      }" +
             "    }" +
             "  };" +
+            "  registeredWallet.features = {" +
+            "    'standard:connect': {" +
+            "      version: '1.0.0'," +
+            "      connect: function(input) {" +
+            "        return provider.connect(input).then(function() {" +
+            "          return { accounts: registeredWallet.accounts };" +
+            "        });" +
+            "      }" +
+            "    }," +
+            "    'standard:disconnect': {" +
+            "      version: '1.0.0'," +
+            "      disconnect: function() { return provider.disconnect(); }" +
+            "    }," +
+            "    'standard:events': {" +
+            "      version: '1.0.0'," +
+            "      on: function(event, cb) { return provider.on(event, cb); }" +
+            "    }," +
+            "    'solana:signTransaction': {" +
+            "      version: '1.0.0'," +
+            "      signTransaction: function(input) {" +
+            "        return provider.signTransaction(input.transaction).then(function(signed) {" +
+            "          var raw = (signed && typeof signed.serialize === 'function') ? signed.serialize() : new Uint8Array(signed);" +
+            "          return [{ signedTransaction: raw }];" +
+            "        });" +
+            "      }" +
+            "    }," +
+            "    'solana:signAndSendTransaction': {" +
+            "      version: '1.0.0'," +
+            "      signAndSendTransaction: function(input) {" +
+            "        return provider.signAndSendTransaction(input.transaction, input.options).then(function(res) {" +
+            "          return [{ signature: res.signature || res }];" +
+            "        });" +
+            "      }" +
+            "    }," +
+            "    'solana:signMessage': {" +
+            "      version: '1.0.0'," +
+            "      signMessage: function(input) {" +
+            "        return provider.signMessage(input.message).then(function(res) {" +
+            "          return [{ signedMessage: input.message, signature: (res && res.signature) ? res.signature : new Uint8Array(64) }];" +
+            "        });" +
+            "      }" +
+            "    }" +
+            "  };" +
             "  window.solana = provider;" +
             "  window.fiatwallet = provider;" +
-            "  window.phantom = { solana: provider };" +
+            "  window.phantom = window.phantom || {};" +
+            "  window.phantom.solana = provider;" +
             "  window.solflare = provider;" +
             "  try {" +
-            "    var reg = function(register) {" +
-            "      register({" +
-            "        name: 'FiatWallet'," +
-            "        icon: 'https://fiatwallet.pages.dev/logo.jpg'," +
-            "        version: '1.0.0'," +
-            "        chains: ['solana:mainnet', 'solana:devnet']," +
-            "        features: {" +
-            "          'standard:connect': { version: '1.0.0', connect: provider.connect }," +
-            "          'standard:disconnect': { version: '1.0.0', disconnect: provider.disconnect }," +
-            "          'solana:signTransaction': { version: '1.0.0', signTransaction: provider.signTransaction }," +
-            "          'solana:signMessage': { version: '1.0.0', signMessage: provider.signMessage }" +
-            "        }" +
-            "      });" +
-            "    };" +
+            "    var reg = function(register) { register(registeredWallet); };" +
+            "    window.addEventListener('wallet-standard:app-ready', function(e) {" +
+            "      try { if (e && typeof e.detail === 'function') e.detail({ register: reg }); } catch(err) {}" +
+            "    });" +
             "    window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', { detail: { register: reg } }));" +
             "  } catch(e) {}" +
             "})();";
@@ -700,6 +814,14 @@ public class MainActivity extends BridgeActivity {
 
             final String providerScript = getProviderInjectionScript();
 
+            try {
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                    WebViewCompat.addDocumentStartJavaScript(dAppWebView, providerScript, Collections.singleton("*"));
+                }
+            } catch (Exception e) {
+                android.util.Log.w("FiatWallet", "addDocumentStartJavaScript warning: " + e.getMessage());
+            }
+
             dAppWebView.setWebViewClient(new WebViewClient() {
                 @Override
                 public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
@@ -803,10 +925,10 @@ public class MainActivity extends BridgeActivity {
                 if (currentPublicKey == null || currentPublicKey.isEmpty()) {
                     if (getBridge() != null && getBridge().getWebView() != null) {
                         getBridge().getWebView().evaluateJavascript(
-                            "(window._fiatWalletPubKey || (window.solana && window.solana.publicKey ? window.solana.publicKey.toString() : ''))",
+                            "(window._fiatWalletPubKey || (typeof localStorage !== 'undefined' ? (localStorage.getItem('fw_wallet_pubkey') || '') : '') || (window.solana && window.solana.publicKey ? window.solana.publicKey.toString() : ''))",
                             val -> {
                                 String clean = val != null ? val.replace("\"", "").trim() : "";
-                                if (!clean.isEmpty() && !clean.equals("null")) {
+                                if (!clean.isEmpty() && !clean.equals("null") && !clean.equals("undefined")) {
                                     currentPublicKey = clean;
                                     showConnectDialog(reqId, origin, title);
                                 } else {
@@ -1142,6 +1264,16 @@ public class MainActivity extends BridgeActivity {
         public void openDApp(String url, String title, String pubKey) {
             if (pubKey != null && !pubKey.isEmpty()) {
                 currentPublicKey = pubKey;
+            } else if (currentPublicKey.isEmpty() && getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript(
+                    "(window._fiatWalletPubKey || (typeof localStorage !== 'undefined' ? (localStorage.getItem('fw_wallet_pubkey') || '') : ''))",
+                    val -> {
+                        String clean = val != null ? val.replace("\"", "").trim() : "";
+                        if (!clean.isEmpty() && !clean.equals("null") && !clean.equals("undefined")) {
+                            currentPublicKey = clean;
+                        }
+                    }
+                );
             }
             runOnUiThread(() -> openDAppNative(url, title));
         }
