@@ -30,7 +30,7 @@ initFiatWalletProvider();
 import { fetchRemotePajConfig } from './services/pajcashService';
 fetchRemotePajConfig().catch(() => {});
 
-import React, { useMemo, useCallback, Component } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -176,9 +176,25 @@ import App from './App';
 import './App.css';
 
 function Root() {
-  // Use an environment variable for your premium RPC (like Helius) to prevent CORS and 403 errors.
-  // Fallback to the placeholder if the env variable isn't set yet.
-  const endpoint = useMemo(() => import.meta.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com', []);
+  // Use an environment variable or remotely fetched/cached RPC (like Helius) for reliable operations.
+  const [endpoint, setEndpoint] = useState(() => {
+    return (
+      import.meta.env.VITE_RPC_URL ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null) ||
+      'https://api.mainnet-beta.solana.com'
+    );
+  });
+
+  useEffect(() => {
+    const handleConfig = (e) => {
+      const url = e?.detail?.rpcUrl || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
+      if (url && url !== endpoint) {
+        setEndpoint(url);
+      }
+    };
+    window.addEventListener('fiatwallet:config_updated', handleConfig);
+    return () => window.removeEventListener('fiatwallet:config_updated', handleConfig);
+  }, [endpoint]);
   const wallets = useMemo(() => [
     new FiatWalletAdapter(),
     new SolanaMobileWalletAdapter({

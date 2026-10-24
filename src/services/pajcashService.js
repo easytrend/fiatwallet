@@ -83,7 +83,18 @@ export async function fetchRemotePajConfig() {
   if (fetchConfigPromise) return fetchConfigPromise;
 
   fetchConfigPromise = (async () => {
-    const endpoints = ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+    const isCapacitorOrLocal = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'ionic:' ||
+      window.location.protocol === 'file:' ||
+      Boolean(window.Capacitor?.isNativePlatform?.()) ||
+      Boolean(window.AndroidBridge)
+    );
+    const endpoints = isCapacitorOrLocal
+      ? ['https://fiatwallet.app/api/paj_config', '/api/paj_config']
+      : ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
     for (const endpoint of endpoints) {
       try {
         const res = await fetch(endpoint, { cache: 'no-store' });
@@ -91,9 +102,13 @@ export async function fetchRemotePajConfig() {
           const data = await res.json();
           if (data?.apiKey) {
             remoteApiKey = data.apiKey;
+            try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
             if (data?.env) {
               initPajSDK(data.env);
             }
+          }
+          if (data?.rpcUrl) {
+            try { localStorage.setItem('fiatwallet_rpc_url', data.rpcUrl); } catch (e) {}
           }
           if (data?.relayerPublicKey) {
             remoteRelayerPublicKey = data.relayerPublicKey;
@@ -103,13 +118,19 @@ export async function fetchRemotePajConfig() {
               localStorage.setItem('use_onramp_relayer', 'true');
             } catch (e) {}
           }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('fiatwallet:config_updated', {
+              detail: { apiKey: remoteApiKey, rpcUrl: data?.rpcUrl }
+            }));
+          }
           if (remoteApiKey) return remoteApiKey;
         }
       } catch (err) {
         // Proceed to next endpoint
       }
     }
-    return remoteApiKey || null;
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null;
+    return cached || remoteApiKey || null;
   })();
 
   try {
@@ -152,7 +173,6 @@ export async function getEffectiveRelayerConfigAsync() {
 }
 
 if (typeof window !== 'undefined') {
-  try { localStorage.removeItem('paj_merchant_api_key'); } catch (e) {}
   fetchRemotePajConfig().catch(() => {});
 }
 
@@ -163,6 +183,7 @@ export function getEffectiveApiKey() {
   return (
     import.meta.env.VITE_PAJCASH_API_KEY ||
     remoteApiKey ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null) ||
     ''
   );
 }
@@ -172,7 +193,7 @@ export function getEffectiveApiKey() {
  */
 export async function getEffectiveApiKeyAsync() {
   let key = getEffectiveApiKey();
-  if (key && getEffectiveRelayerPublicKey()) return key;
+  if (key) return key;
   key = await fetchRemotePajConfig();
   return key || getEffectiveApiKey();
 }

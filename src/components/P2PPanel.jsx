@@ -387,7 +387,25 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
 
   // ── Env config ──────────────────────────────────────────────────────────
-  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+  const [pajApiKey, setPajApiKey] = useState(() => getEffectiveApiKey());
+
+  useEffect(() => {
+    const handleConfigUpdate = (e) => {
+      const key = e?.detail?.apiKey || getEffectiveApiKey();
+      if (key) setPajApiKey(key);
+    };
+    if (!pajApiKey) {
+      getEffectiveApiKeyAsync()
+        .then((k) => {
+          if (k) setPajApiKey(k);
+        })
+        .catch(() => {});
+    }
+    window.addEventListener('fiatwallet:config_updated', handleConfigUpdate);
+    return () => window.removeEventListener('fiatwallet:config_updated', handleConfigUpdate);
+  }, [pajApiKey]);
+
+  const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || pajApiKey || getEffectiveApiKey();
   const isPajcashLive = !!PAJCASH_API_KEY;
 
   // ── Live crypto prices (SOL, USDC, USDT) from CoinGecko / Coinbase / Binance ──
@@ -836,11 +854,45 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── API Key verification warning ──
   useEffect(() => {
+    let cancelled = false;
     if (isLiveRoute && !PAJCASH_API_KEY) {
-      setApiError('VITE_PAJCASH_API_KEY is not configured. Please add VITE_PAJCASH_API_KEY to your .env file to enable live settlements.');
+      getEffectiveApiKeyAsync()
+        .then((key) => {
+          if (cancelled) return;
+          if (key) {
+            setPajApiKey(key);
+            setApiError(null);
+          } else {
+            const isNative = typeof window !== 'undefined' && Boolean(
+              window.Capacitor?.isNativePlatform?.() ||
+              window.location.protocol === 'capacitor:' ||
+              window.location.protocol === 'ionic:' ||
+              window.location.protocol === 'file:' ||
+              Boolean(window.AndroidBridge)
+            );
+            if (!isNative) {
+              setApiError('VITE_PAJCASH_API_KEY is not configured. Please add VITE_PAJCASH_API_KEY to your .env file to enable live settlements.');
+            }
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            const isNative = typeof window !== 'undefined' && Boolean(
+              window.Capacitor?.isNativePlatform?.() ||
+              window.location.protocol === 'capacitor:' ||
+              window.location.protocol === 'ionic:' ||
+              window.location.protocol === 'file:' ||
+              Boolean(window.AndroidBridge)
+            );
+            if (!isNative) {
+              setApiError('VITE_PAJCASH_API_KEY is not configured. Please add VITE_PAJCASH_API_KEY to your .env file to enable live settlements.');
+            }
+          }
+        });
     } else {
       setApiError(null);
     }
+    return () => { cancelled = true; };
   }, [isLiveRoute, PAJCASH_API_KEY]);
 
   // ── Restore session: localStorage (same device, instant) → Supabase (any device) ──

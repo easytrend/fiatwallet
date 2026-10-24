@@ -446,8 +446,33 @@ export default function App() {
 
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
   // Detect if no private RPC endpoint is configured — user is on the default
-  // rate-limited public endpoint. Show a UI warning in this case.
-  const isUsingPublicRpc = !import.meta.env.VITE_RPC_URL;
+  // rate-limited public endpoint. Only show warning in web development environments,
+  // never in mobile APK or when custom RPC is cached/fetched from fiatwallet.app.
+  const [isUsingPublicRpc, setIsUsingPublicRpc] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const isMobileApp = Boolean(
+      window.Capacitor?.isNativePlatform?.() ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:' ||
+      navigator?.userAgent?.includes('Solana Mobile Web Shell') ||
+      navigator?.userAgent?.includes('wv')
+    );
+    if (isMobileApp) return false;
+    const cachedRpc = typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null;
+    return !import.meta.env.VITE_RPC_URL && !cachedRpc;
+  });
+
+  useEffect(() => {
+    const handleConfig = (e) => {
+      const rpc = e?.detail?.rpcUrl || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
+      if (rpc || import.meta.env.VITE_RPC_URL) {
+        setIsUsingPublicRpc(false);
+      }
+    };
+    window.addEventListener('fiatwallet:config_updated', handleConfig);
+    return () => window.removeEventListener('fiatwallet:config_updated', handleConfig);
+  }, []);
+
   const [rpcWarnDismissed, setRpcWarnDismissed] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
