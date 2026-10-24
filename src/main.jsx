@@ -178,7 +178,11 @@ import './App.css';
 function Root() {
   // Use an environment variable for your premium RPC (like Helius) to prevent CORS and 403 errors.
   // Fallback to the placeholder if the env variable isn't set yet.
-  const endpoint = useMemo(() => import.meta.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com', []);
+  const endpoint = useMemo(() =>
+    import.meta.env.VITE_RPC_URL ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('fiatwallet_rpc_url')) ||
+    'https://api.mainnet-beta.solana.com',
+  []);
   const wallets = useMemo(() => [
     new FiatWalletAdapter(),
     new SolanaMobileWalletAdapter({

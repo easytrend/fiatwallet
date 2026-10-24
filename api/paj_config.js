@@ -86,9 +86,12 @@ export default async function handler(req, res) {
     ? false
     : Boolean(relayerPublicKey);
 
+  const rpcUrl = process.env.HELIUS_RPC_URL || process.env.VITE_RPC_URL || process.env.RPC_URL || '';
+
   return res.status(200).json({
     apiKey,
     env,
+    rpcUrl,
     relayerPublicKey,
     useOnrampRelayer,
   });
