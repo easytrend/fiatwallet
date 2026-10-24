@@ -428,13 +428,26 @@ export async function loadSession(walletAddress) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress) return null;
   try {
-    // Use array query with limit(1) — never throws on 0 or multiple rows
-    const { data, error } = await client
+    // 1. Try exact match first
+    let { data, error } = await client
       .from('paj_sessions')
       .select('email, session_token, expires_at')
       .eq('wallet_address', walletAddress)
       .order('updated_at', { ascending: false })
       .limit(1);
+
+    // 2. Fallback to case-insensitive match (handles minor casing differences)
+    if (!data || data.length === 0) {
+      const ilikeRes = await client
+        .from('paj_sessions')
+        .select('email, session_token, expires_at')
+        .ilike('wallet_address', walletAddress)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (ilikeRes.data && ilikeRes.data.length > 0) {
+        data = ilikeRes.data;
+      }
+    }
 
     if (error) {
       console.warn('[Supabase] loadSession query error:', error.message);
@@ -474,7 +487,7 @@ export async function deleteSession(walletAddress) {
     const { error } = await client
       .from('paj_sessions')
       .delete()
-      .eq('wallet_address', walletAddress);
+      .ilike('wallet_address', walletAddress);
     if (error) console.warn('[Supabase] deleteSession failed:', error.message);
   } catch (err) {
     console.warn('[Supabase] deleteSession error:', err.message);
@@ -543,11 +556,22 @@ export async function getFiatTagByWallet(walletAddress) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress) return null;
   try {
-    const { data, error } = await client
+    let { data, error } = await client
       .from('fiat_tags')
       .select('*')
       .eq('wallet_address', walletAddress)
       .maybeSingle();
+
+    if (!data) {
+      const ilikeRes = await client
+        .from('fiat_tags')
+        .select('*')
+        .ilike('wallet_address', walletAddress)
+        .maybeSingle();
+      if (ilikeRes.data) {
+        data = ilikeRes.data;
+      }
+    }
 
     if (error && error.code !== 'PGRST116') {
       console.warn('[Supabase] getFiatTagByWallet warning:', error.message);
@@ -599,7 +623,7 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
 
   // 1. Check if tag is already taken by another wallet
   const existing = await getFiatTagByName(formattedTag);
-  if (existing && existing.wallet_address !== walletAddress) {
+  if (existing && existing.wallet_address?.toLowerCase() !== walletAddress?.toLowerCase()) {
     throw new Error(`Tag ${formattedTag} is already taken by another user. Please choose a different tag.`);
   }
 
@@ -614,11 +638,22 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
   };
 
   // 2. If this wallet already has a tag, update it; otherwise insert a new one.
-  const { data: existingOwn } = await client
+  let { data: existingOwn } = await client
     .from('fiat_tags')
     .select('id')
     .eq('wallet_address', walletAddress)
     .maybeSingle();
+
+  if (!existingOwn?.id) {
+    const ilikeOwn = await client
+      .from('fiat_tags')
+      .select('id')
+      .ilike('wallet_address', walletAddress)
+      .maybeSingle();
+    if (ilikeOwn.data?.id) {
+      existingOwn = ilikeOwn.data;
+    }
+  }
 
   let data, error;
 
@@ -627,7 +662,7 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
     ({ data, error } = await client
       .from('fiat_tags')
       .update(payload)
-      .eq('wallet_address', walletAddress)
+      .eq('id', existingOwn.id)
       .select()
       .single());
   } else {

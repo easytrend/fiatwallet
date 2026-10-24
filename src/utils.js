@@ -56,9 +56,9 @@ export function dlTemplate() {
 // Removed hardcoded Helius API key — credential leak.
 // Only free, keyless public endpoints remain.
 export const RPC_LIST = [
-  "https://api.mainnet-beta.solana.com",
-  "https://rpc.ankr.com/solana",
   "https://solana-rpc.publicnode.com",
+  "https://rpc.ankr.com/solana",
+  "https://api.mainnet-beta.solana.com",
 ];
 
 export async function rpcFetch(method, params) {
@@ -83,39 +83,29 @@ export async function rpcFetch(method, params) {
   throw new Error("All RPC nodes failed:\n" + errors.join("\n"));
 }
 
-// robustResolve accepts an optional wallet-adapter `connection` and tries it
-// first before falling back to the internal RPC list. The fallback to public
-// RPCs is ONLY used when no connection object is passed (e.g. during bulk CSV
-// import preview before a wallet is connected). If a connection IS provided
-// but fails, we throw immediately — silently routing the query through Ankr or
-// PublicNode would leak domain lookups for users who configured a private RPC.
 export async function robustResolve(domain, walletConnection) {
-  // Try the wallet-adapter connection first (trusted, user-configured endpoint)
+  // Try the wallet-adapter connection first
   if (walletConnection) {
     try {
       const addr = await Promise.race([
         resolve(walletConnection, domain),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 6000))
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 5000))
       ]);
       if (addr) return addr;
     } catch (e) {
-      // A walletConnection was provided but failed — do NOT fall back to public
-      // RPCs. Doing so would expose the domain query to third-party infrastructure
-      // for users who deliberately configured a private endpoint.
-      throw new Error(`Failed to resolve domain: ${domain}`);
+      // Primary connection encountered network, 403, or rate limit; fall through to public RPCs
     }
   }
 
-  // No walletConnection available — fall back to public RPCs.
-  // This path is taken during bulk CSV import preview only.
+  // Fallback to public CORS-enabled RPC endpoints
   const RESOLVE_RPCS = [
-    'https://api.mainnet-beta.solana.com',
+    'https://solana-rpc.publicnode.com',
     'https://rpc.ankr.com/solana',
-    'https://solana-rpc.publicnode.com'
+    'https://api.mainnet-beta.solana.com'
   ];
   for (const rpcUrl of RESOLVE_RPCS) {
     try {
-      const conn = new Connection(rpcUrl);
+      const conn = new Connection(rpcUrl, 'confirmed');
       const addr = await Promise.race([
         resolve(conn, domain),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 4000))
@@ -129,16 +119,26 @@ export async function robustResolve(domain, walletConnection) {
 }
 
 export async function robustReverseLookup(connection, publicKeyObj) {
-  // Use only the provided connection. Do not fall back to public RPC endpoints
-  // for reverse lookups — the wallet address being looked up is sensitive; leaking
-  // it to Ankr/PublicNode undermines users who configured a private RPC for privacy.
+  if (connection) {
+    try {
+      const primary = await getPrimaryDomain(connection, publicKeyObj).catch(() => null);
+      if (primary && primary.reverse) return primary.reverse + '.sol';
+      const reverse = await performReverseLookup(connection, publicKeyObj).catch(() => null);
+      if (reverse) return reverse + '.sol';
+    } catch (e) {
+      
+    }
+  }
+
+  // Fallback to publicnode Connection
   try {
-    const primary = await getPrimaryDomain(connection, publicKeyObj).catch(() => null);
+    const fallbackConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
+    const primary = await getPrimaryDomain(fallbackConn, publicKeyObj).catch(() => null);
     if (primary && primary.reverse) return primary.reverse + '.sol';
-    const reverse = await performReverseLookup(connection, publicKeyObj).catch(() => null);
+    const reverse = await performReverseLookup(fallbackConn, publicKeyObj).catch(() => null);
     if (reverse) return reverse + '.sol';
   } catch (e) {
-    
+
   }
   return null;
 }

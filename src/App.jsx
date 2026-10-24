@@ -19,7 +19,7 @@ import FloatClaimWidget from './components/FloatClaimWidget';
 import SwapWidget from './components/SwapWidget';
 import P2PPanel from './components/P2PPanel';
 import SupportChat from './components/SupportChat';
-import { logTransaction } from './services/supabase';
+import { logTransaction, getFiatTagByWallet } from './services/supabase';
 import WalletOnboard from './components/WalletOnboard';
 import WalletUnlock from './components/WalletUnlock';
 import { useInternalWallet } from './hooks/useInternalWallet';
@@ -776,8 +776,9 @@ export default function App() {
 
     const rpcEndpoints = [
       connection?.rpcEndpoint,
-      'https://api.mainnet-beta.solana.com',
       'https://solana-rpc.publicnode.com',
+      'https://rpc.ankr.com/solana',
+      'https://api.mainnet-beta.solana.com',
     ].filter(Boolean);
     const uniqueRpcs = [...new Set(rpcEndpoints)];
 
@@ -1022,18 +1023,48 @@ export default function App() {
 
       const lookupDomain = async () => {
         try {
-          const apiPromise = fetch(`https://sns-sdk-proxy.bonfida.workers.dev/reverse-lookup/${pubkeyStr}`)
-            .then(r => r.json())
-            .then(j => j.domain ? j.domain + '.sol' : Promise.reject())
+          // 1. Check live Bonfida v2 API (favorite domains first, then owned domains)
+          const apiPromise = fetch(`https://sns-api.bonfida.com/v2/user/fav-domains/${pubkeyStr}`)
+            .then(r => (r.ok ? r.json() : Promise.reject()))
+            .then(data => {
+              const fav = data?.[pubkeyStr];
+              if (fav) return fav.endsWith('.sol') ? fav : `${fav}.sol`;
+              return fetch(`https://sns-api.bonfida.com/v2/user/domains/${pubkeyStr}`)
+                .then(r => (r.ok ? r.json() : Promise.reject()))
+                .then(d2 => {
+                  const list = d2?.[pubkeyStr];
+                  if (list && list.length > 0) {
+                    const first = list[0];
+                    return first.endsWith('.sol') ? first : `${first}.sol`;
+                  }
+                  return Promise.reject();
+                });
+            })
             .catch(() => Promise.reject());
 
+          // 2. On-chain reverse lookup
           const rpcPromise = (async () => {
             const domain = await robustReverseLookup(connection, effectivePublicKey);
             if (domain) return domain;
             throw new Error('Not found');
           })();
 
-          const winner = await Promise.any([apiPromise, rpcPromise]).catch(() => null);
+          // 3. Resolve SNS first
+          let winner = await Promise.any([apiPromise, rpcPromise]).catch(() => null);
+
+          // 4. Fall back to user's registered Fiat Tag (e.g. $easytrend) if no .sol domain
+          if (!winner) {
+            try {
+              const tagData = await getFiatTagByWallet(pubkeyStr);
+              if (tagData?.tag_name) {
+                const tag = tagData.tag_name.trim();
+                winner = tag.startsWith('$') ? tag : `$${tag}`;
+              }
+            } catch (tagErr) {
+              // Supabase tag lookup failed or table empty
+            }
+          }
+
           if (winner) {
             setWalletDomain(winner);
             sessionStorage.setItem(`sns_${pubkeyStr}`, JSON.stringify({ domain: winner, ts: Date.now() }));

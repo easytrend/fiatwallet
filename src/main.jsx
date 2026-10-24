@@ -176,18 +176,26 @@ import App from './App';
 import './App.css';
 
 function Root() {
-  // Use an environment variable or remotely fetched/cached RPC (like Helius) for reliable operations.
+  // Use an environment variable or remotely fetched/cached RPC for reliable operations.
+  // Defaults to a public, CORS-enabled RPC (solana-rpc.publicnode.com) to prevent HTTP 403 on WebView/Capacitor.
   const [endpoint, setEndpoint] = useState(() => {
-    return (
-      import.meta.env.VITE_RPC_URL ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null) ||
-      'https://api.mainnet-beta.solana.com'
-    );
+    const custom = (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
+    if (custom && !custom.includes('api.mainnet-beta.solana.com')) {
+      return custom;
+    }
+    const envUrl = import.meta.env.VITE_RPC_URL;
+    if (envUrl && !envUrl.includes('api.mainnet-beta.solana.com')) {
+      return envUrl;
+    }
+    return 'https://solana-rpc.publicnode.com';
   });
 
   useEffect(() => {
     const handleConfig = (e) => {
-      const url = e?.detail?.rpcUrl || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
+      let url = e?.detail?.rpcUrl || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
+      if (url && url.includes('api.mainnet-beta.solana.com')) {
+        url = 'https://solana-rpc.publicnode.com';
+      }
       if (url && url !== endpoint) {
         setEndpoint(url);
       }
