@@ -371,6 +371,17 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       const vault = await encryptVault(secretMaterial, pin);
       saveVaultToStorage(vault);
       saveWalletMeta(pendingPublicKey, pendingSource);
+      try {
+        loadSession(pendingPublicKey).then(row => {
+          if (row && row.session_token) {
+            localStorage.setItem(`paj_sessionToken_${pendingPublicKey}`, row.session_token);
+            if (row.email) localStorage.setItem(`paj_sessionEmail_${pendingPublicKey}`, row.email);
+            if (row.expires_at) {
+              localStorage.setItem(`paj_sessionExpiry_${pendingPublicKey}`, String(new Date(row.expires_at).getTime()));
+            }
+          }
+        }).catch(() => {});
+      } catch (e) {}
       onWalletReady({
         publicKey: pendingPublicKey,
         secretKey: pendingSecretKey,

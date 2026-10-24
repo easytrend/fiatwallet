@@ -954,6 +954,30 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       });
   }, [publicKey]);
 
+  // Re-check Supabase session when dynamic remote config arrives if not already logged in
+  useEffect(() => {
+    const handleConfig = () => {
+      if (publicKey && authStep !== 'logged_in') {
+        const key = publicKey.toBase58();
+        loadSession(key).then(row => {
+          if (row && row.session_token) {
+            const expiryMs = new Date(row.expires_at).getTime();
+            setSessionToken(row.session_token);
+            setSessionEmail(row.email);
+            setEmailInput(row.email);
+            setAuthStep('logged_in');
+            localStorage.setItem(`paj_sessionToken_${key}`, row.session_token);
+            localStorage.setItem(`paj_sessionEmail_${key}`, row.email);
+            localStorage.setItem(`paj_sessionExpiry_${key}`, String(expiryMs));
+            loadPayoutLogs();
+          }
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('fiatwallet:config_updated', handleConfig);
+    return () => window.removeEventListener('fiatwallet:config_updated', handleConfig);
+  }, [publicKey, authStep]);
+
   // ── Manual Offramp 30-minute countdown timer ─────────────────────────────
   useEffect(() => {
     if (!manualOrder || manualOrderStatus !== 'WAITING') return;

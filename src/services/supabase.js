@@ -1,20 +1,59 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchRemotePajConfig } from './pajcashService';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let activeSupabase = null;
 
-export const supabase = (supabaseUrl && supabaseAnonKey)
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export function getSupabase() {
+  if (activeSupabase) return activeSupabase;
+  const url = import.meta.env.VITE_SUPABASE_URL || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_supabase_url') : null);
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_supabase_anon_key') : null);
+  if (url && key) {
+    try {
+      activeSupabase = createClient(url, key);
+    } catch (e) {
+      console.warn('Failed to initialize Supabase client:', e);
+    }
+  }
+  return activeSupabase;
+}
+
+export async function getSupabaseAsync() {
+  let client = getSupabase();
+  if (client) return client;
+  try {
+    await fetchRemotePajConfig();
+  } catch (e) {}
+  return getSupabase();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('fiatwallet:config_updated', (e) => {
+    if (e.detail?.supabaseUrl && e.detail?.supabaseAnonKey) {
+      try {
+        activeSupabase = createClient(e.detail.supabaseUrl, e.detail.supabaseAnonKey);
+      } catch (err) {}
+    }
+  });
+}
+
+export const supabase = new Proxy({}, {
+  get(target, prop) {
+    const client = getSupabase();
+    if (!client) return undefined;
+    const val = client[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  }
+});
 
 /**
  * Log a general on-chain transaction (send, swap, bulk_send, claims).
  */
 export async function logTransaction({ signature, userAddress, type, symbol, tokenAmount, usdValue }) {
-  if (!supabase || !signature) return;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !signature) return;
 
   try {
-    const { error } = await supabase
+    const { error } = await client
       .from('transactions')
       .upsert(
         {
@@ -68,7 +107,8 @@ export async function logP2PTransaction({
   recipientTag,
   type = 'p2p_offramp',
 }) {
-  if (!supabase || !orderId) return;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !orderId) return;
 
   const actualSignature = signature || `pending_${type}_${orderId}`;
 
@@ -95,7 +135,7 @@ export async function logP2PTransaction({
   try {
     // --- p2p_transactions ---
     // Check if a record with this order_id already exists; update it, otherwise insert fresh.
-    const { data: existingP2P } = await supabase
+    const { data: existingP2P } = await client
       .from('p2p_transactions')
       .select('id')
       .eq('order_id', String(orderId))
@@ -103,12 +143,12 @@ export async function logP2PTransaction({
 
     let p2pError;
     if (existingP2P?.id) {
-      ({ error: p2pError } = await supabase
+      ({ error: p2pError } = await client
         .from('p2p_transactions')
         .update(payload)
         .eq('order_id', String(orderId)));
     } else {
-      ({ error: p2pError } = await supabase
+      ({ error: p2pError } = await client
         .from('p2p_transactions')
         .insert(payload));
     }
@@ -122,7 +162,7 @@ export async function logP2PTransaction({
       token_amount: parseFloat(cryptoAmount) || 0,
       usd_value: parseFloat(usdValue) || 0,
     };
-    const { data: existingTx } = await supabase
+    const { data: existingTx } = await client
       .from('transactions')
       .select('id')
       .eq('signature', actualSignature)
@@ -130,12 +170,12 @@ export async function logP2PTransaction({
 
     let txError;
     if (existingTx?.id) {
-      ({ error: txError } = await supabase
+      ({ error: txError } = await client
         .from('transactions')
         .update(txPayload)
         .eq('signature', actualSignature));
     } else {
-      ({ error: txError } = await supabase
+      ({ error: txError } = await client
         .from('transactions')
         .insert(txPayload));
     }
@@ -152,10 +192,11 @@ export async function logP2PTransaction({
  * Update P2P transaction status (and optional actual signature) in Supabase.
  */
 export async function updateP2PTransactionStatus(orderId, status, signature = null) {
-  if (!supabase || !orderId) return;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !orderId) return;
   try {
     // Guard against overwriting terminal forwarded status
-    const { data: current } = await supabase
+    const { data: current } = await client
       .from('p2p_transactions')
       .select('status')
       .eq('order_id', String(orderId))
@@ -173,7 +214,7 @@ export async function updateP2PTransactionStatus(orderId, status, signature = nu
       patch.signature = signature;
     }
 
-    const { error } = await supabase
+    const { error } = await client
       .from('p2p_transactions')
       .update(patch)
       .eq('order_id', String(orderId));
@@ -188,7 +229,8 @@ export async function updateP2PTransactionStatus(orderId, status, signature = nu
  * Sync PajCash API status back to Supabase for tracked P2P orders.
  */
 export async function syncP2PTransactionStatuses(orders = [], walletAddress = null) {
-  if (!supabase || !Array.isArray(orders) || orders.length === 0) return;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !Array.isArray(orders) || orders.length === 0) return;
 
   try {
     for (const order of orders) {
@@ -201,7 +243,7 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
       const userAddr = order.userAddress || order.user_address || walletAddress || null;
 
       // Check if order already exists in Supabase
-      const { data: existing } = await supabase
+      const { data: existing } = await client
         .from('p2p_transactions')
         .select('id, status, signature')
         .eq('order_id', orderId)
@@ -218,7 +260,7 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
         }
         if (Object.keys(patch).length > 0) {
           patch.updated_at = new Date().toISOString();
-          await supabase.from('p2p_transactions').update(patch).eq('order_id', orderId);
+          await client.from('p2p_transactions').update(patch).eq('order_id', orderId);
         }
       } else if (userAddr) {
         // Order is missing from Supabase! Auto-backfill/insert it now.
@@ -243,7 +285,7 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
           updated_at: new Date().toISOString(),
         };
 
-        await supabase.from('p2p_transactions').insert(payload);
+        await client.from('p2p_transactions').insert(payload);
         console.log(`[Supabase] Auto-backfilled missing historical order ${orderId} into p2p_transactions`);
       }
     }
@@ -257,12 +299,13 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
  * verify their live status directly with PajCash API, and update Supabase to 'COMPLETED' or 'ERROR'.
  */
 export async function reconcilePendingP2PTransactions(walletAddress, authToken) {
-  if (!supabase) return [];
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client) return [];
   try {
     const token = authToken;
     if (!token) return [];
 
-    let query = supabase
+    let query = client
       .from('p2p_transactions')
       .select('id, order_id, status, signature, transaction_type, crypto_amount, usd_value')
       .in('status', ['INIT', 'PENDING'])
@@ -306,11 +349,11 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
           const sig = pajData.txHash || pajData.signature || pajData.tx_hash;
           if (sig) patch.signature = sig;
 
-          await supabase.from('p2p_transactions').update(patch).eq('order_id', orderId);
+          await client.from('p2p_transactions').update(patch).eq('order_id', orderId);
           reconciled.push({ orderId, status: 'COMPLETED' });
           console.log(`[Supabase] Reconciled pending order ${orderId} -> COMPLETED`);
         } else if (['FAILED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(rawStatus)) {
-          await supabase.from('p2p_transactions').update({
+          await client.from('p2p_transactions').update({
             status: 'ERROR',
             updated_at: new Date().toISOString()
           }).eq('order_id', orderId);
@@ -339,7 +382,8 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
  * @param {number} expiryMs      - Expiry timestamp in milliseconds (Date.now() based)
  */
 export async function saveSession(walletAddress, email, token, expiryMs) {
-  if (!supabase || !walletAddress || !token) return;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress || !token) return;
   const row = {
     wallet_address: walletAddress,
     email,
@@ -349,7 +393,7 @@ export async function saveSession(walletAddress, email, token, expiryMs) {
   };
   try {
     // Strategy 1: upsert (works if wallet_address has a UNIQUE constraint)
-    const { error: upsertErr } = await supabase
+    const { error: upsertErr } = await client
       .from('paj_sessions')
       .upsert(row, { onConflict: 'wallet_address' });
 
@@ -360,8 +404,8 @@ export async function saveSession(walletAddress, email, token, expiryMs) {
     console.warn('[Supabase] saveSession: upsert failed, trying delete+insert:', upsertErr.message);
 
     // Strategy 2: delete all old rows then insert fresh (works if NO unique constraint)
-    await supabase.from('paj_sessions').delete().eq('wallet_address', walletAddress);
-    const { error: insertErr } = await supabase.from('paj_sessions').insert(row);
+    await client.from('paj_sessions').delete().eq('wallet_address', walletAddress);
+    const { error: insertErr } = await client.from('paj_sessions').insert(row);
     if (insertErr) {
       console.warn('[Supabase] saveSession: insert also failed:', insertErr.message);
     } else {
@@ -381,10 +425,11 @@ export async function saveSession(walletAddress, email, token, expiryMs) {
  * @returns {{ email: string, session_token: string, expires_at: string } | null}
  */
 export async function loadSession(walletAddress) {
-  if (!supabase || !walletAddress) return null;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return null;
   try {
     // Use array query with limit(1) — never throws on 0 or multiple rows
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('paj_sessions')
       .select('email, session_token, expires_at')
       .eq('wallet_address', walletAddress)
@@ -423,9 +468,10 @@ export async function loadSession(walletAddress) {
  * @param {string} walletAddress - User's Solana public key (base58)
  */
 export async function deleteSession(walletAddress) {
-  if (!supabase || !walletAddress) return;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return;
   try {
-    const { error } = await supabase
+    const { error } = await client
       .from('paj_sessions')
       .delete()
       .eq('wallet_address', walletAddress);
@@ -439,9 +485,10 @@ export async function deleteSession(walletAddress) {
  * Get all order IDs and signatures associated with a specific user's wallet address.
  */
 export async function getP2PTransactionIdsByUser(walletAddress) {
-  if (!supabase || !walletAddress) return { orderIds: new Set(), signatures: new Set() };
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return { orderIds: new Set(), signatures: new Set() };
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('p2p_transactions')
       .select('order_id, signature')
       .eq('user_address', walletAddress);
@@ -464,9 +511,10 @@ export async function getP2PTransactionIdsByUser(walletAddress) {
  * Get all full P2P transaction records associated with a specific user's wallet address.
  */
 export async function getP2PTransactionsByUser(walletAddress) {
-  if (!supabase || !walletAddress) return [];
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return [];
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('p2p_transactions')
       .select('*')
       .eq('user_address', walletAddress)
@@ -492,9 +540,10 @@ export async function getP2PTransactionsByUser(walletAddress) {
  * Get registered Fiat Tag for a specific wallet address.
  */
 export async function getFiatTagByWallet(walletAddress) {
-  if (!supabase || !walletAddress) return null;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return null;
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('fiat_tags')
       .select('*')
       .eq('wallet_address', walletAddress)
@@ -514,12 +563,13 @@ export async function getFiatTagByWallet(walletAddress) {
  * Resolve a Fiat Tag name (e.g. "$johndoe" or "johndoe") to recipient bank details.
  */
 export async function getFiatTagByName(tagName) {
-  if (!supabase || !tagName) return null;
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !tagName) return null;
   try {
     const cleanTag = String(tagName).trim().toLowerCase();
     const formattedTag = cleanTag.startsWith('$') ? cleanTag : `$${cleanTag}`;
 
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('fiat_tags')
       .select('*')
       .or(`tag_name.eq.${formattedTag},tag_name.eq.${cleanTag}`)
@@ -539,7 +589,8 @@ export async function getFiatTagByName(tagName) {
  * Create or update a user's Fiat Tag and linked bank account details.
  */
 export async function registerFiatTag({ walletAddress, tagName, bankName, bankCode, accountNumber, accountName }) {
-  if (!supabase || !walletAddress || !tagName || !accountNumber || !bankName) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress || !tagName || !accountNumber || !bankName) {
     throw new Error('Missing required fields for Fiat Tag registration.');
   }
 
@@ -563,9 +614,7 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
   };
 
   // 2. If this wallet already has a tag, update it; otherwise insert a new one.
-  //    We avoid .upsert() with onConflict because it requires a unique constraint
-  //    to exist on the DB column — which may not yet be present.
-  const { data: existingOwn } = await supabase
+  const { data: existingOwn } = await client
     .from('fiat_tags')
     .select('id')
     .eq('wallet_address', walletAddress)
@@ -575,7 +624,7 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
 
   if (existingOwn?.id) {
     // UPDATE the existing row for this wallet
-    ({ data, error } = await supabase
+    ({ data, error } = await client
       .from('fiat_tags')
       .update(payload)
       .eq('wallet_address', walletAddress)
@@ -583,7 +632,7 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
       .single());
   } else {
     // INSERT a brand new row
-    ({ data, error } = await supabase
+    ({ data, error } = await client
       .from('fiat_tags')
       .insert(payload)
       .select()

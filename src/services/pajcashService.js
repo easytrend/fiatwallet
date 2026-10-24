@@ -110,6 +110,12 @@ export async function fetchRemotePajConfig() {
           if (data?.rpcUrl) {
             try { localStorage.setItem('fiatwallet_rpc_url', data.rpcUrl); } catch (e) {}
           }
+          if (data?.supabaseUrl && data?.supabaseAnonKey) {
+            try {
+              localStorage.setItem('fiatwallet_supabase_url', data.supabaseUrl);
+              localStorage.setItem('fiatwallet_supabase_anon_key', data.supabaseAnonKey);
+            } catch (e) {}
+          }
           if (data?.relayerPublicKey) {
             remoteRelayerPublicKey = data.relayerPublicKey;
             remoteUseOnrampRelayer = Boolean(data.useOnrampRelayer);
@@ -120,7 +126,12 @@ export async function fetchRemotePajConfig() {
           }
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('fiatwallet:config_updated', {
-              detail: { apiKey: remoteApiKey, rpcUrl: data?.rpcUrl }
+              detail: {
+                apiKey: remoteApiKey,
+                rpcUrl: data?.rpcUrl,
+                supabaseUrl: data?.supabaseUrl,
+                supabaseAnonKey: data?.supabaseAnonKey
+              }
             }));
           }
           if (remoteApiKey) return remoteApiKey;
