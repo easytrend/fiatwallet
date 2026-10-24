@@ -91,13 +91,9 @@ export async function fetchRemotePajConfig() {
           const data = await res.json();
           if (data?.apiKey) {
             remoteApiKey = data.apiKey;
-            try { localStorage.setItem('paj_merchant_api_key', data.apiKey); } catch (e) {}
             if (data?.env) {
               initPajSDK(data.env);
             }
-          }
-          if (data?.rpcUrl) {
-            try { localStorage.setItem('fiatwallet_rpc_url', data.rpcUrl); } catch (e) {}
           }
           if (data?.relayerPublicKey) {
             remoteRelayerPublicKey = data.relayerPublicKey;
@@ -113,8 +109,7 @@ export async function fetchRemotePajConfig() {
         // Proceed to next endpoint
       }
     }
-    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null;
-    return cached || remoteApiKey || null;
+    return remoteApiKey || null;
   })();
 
   try {
@@ -157,6 +152,7 @@ export async function getEffectiveRelayerConfigAsync() {
 }
 
 if (typeof window !== 'undefined') {
+  try { localStorage.removeItem('paj_merchant_api_key'); } catch (e) {}
   fetchRemotePajConfig().catch(() => {});
 }
 
@@ -167,7 +163,6 @@ export function getEffectiveApiKey() {
   return (
     import.meta.env.VITE_PAJCASH_API_KEY ||
     remoteApiKey ||
-    (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_merchant_api_key') : null) ||
     ''
   );
 }
@@ -177,7 +172,7 @@ export function getEffectiveApiKey() {
  */
 export async function getEffectiveApiKeyAsync() {
   let key = getEffectiveApiKey();
-  if (key) return key;
+  if (key && getEffectiveRelayerPublicKey()) return key;
   key = await fetchRemotePajConfig();
   return key || getEffectiveApiKey();
 }

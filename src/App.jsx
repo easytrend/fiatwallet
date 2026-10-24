@@ -447,7 +447,7 @@ export default function App() {
   const [inputMode, setInputMode] = useState('fiat'); // fiat or crypto
   // Detect if no private RPC endpoint is configured — user is on the default
   // rate-limited public endpoint. Show a UI warning in this case.
-  const isUsingPublicRpc = !import.meta.env.VITE_RPC_URL && !(typeof localStorage !== 'undefined' && localStorage.getItem('fiatwallet_rpc_url'));
+  const isUsingPublicRpc = !import.meta.env.VITE_RPC_URL;
   const [rpcWarnDismissed, setRpcWarnDismissed] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
