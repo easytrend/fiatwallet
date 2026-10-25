@@ -11,30 +11,42 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
         const { Transaction, VersionedTransaction } = await import('@solana/web3.js');
         const raw = Array.isArray(txData) ? new Uint8Array(txData) : txData;
         let tx;
-        try {
-          tx = Transaction.from(raw);
-        } catch {
+        if (type === 'signMessage') {
+          const msgBytes = typeof txData === 'string' ? new TextEncoder().encode(txData) : new Uint8Array(txData);
+          let sigBytes = new Uint8Array(64);
           try {
-            tx = VersionedTransaction.deserialize(raw);
-          } catch {}
-        }
-        if (tx && typeof effectiveSignTransaction === 'function') {
-          const signed = await effectiveSignTransaction(tx);
-          if (type === 'signAndSendTransaction') {
-            const rawSigned = signed.serialize ? signed.serialize() : signed;
-            let sig;
-            if (typeof effectiveSendTransaction === 'function') {
-              sig = await effectiveSendTransaction(signed, connection);
-            } else if (connection && typeof connection.sendRawTransaction === 'function') {
-              sig = await connection.sendRawTransaction(rawSigned, { skipPreflight: false, maxRetries: 3 });
-            } else {
-              const { Connection } = await import('@solana/web3.js');
-              const fallbackConn = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
-              sig = await fallbackConn.sendRawTransaction(rawSigned, { skipPreflight: false, maxRetries: 3 });
+            if (window.fiatwallet?.signMessage) {
+              const res = await window.fiatwallet.signMessage(msgBytes);
+              sigBytes = res.signature || sigBytes;
             }
-            resultData = { signature: typeof sig === 'string' ? sig : (sig && sig.signature ? sig.signature : String(sig)) };
-          } else {
-            resultData = Array.from(signed.serialize ? signed.serialize() : signed);
+          } catch {}
+          resultData = { signature: Array.from(sigBytes), publicKey: effectivePublicKey ? effectivePublicKey.toBase58() : '' };
+        } else {
+          try {
+            tx = Transaction.from(raw);
+          } catch {
+            try {
+              tx = VersionedTransaction.deserialize(raw);
+            } catch {}
+          }
+          if (tx && typeof effectiveSignTransaction === 'function') {
+            const signed = await effectiveSignTransaction(tx);
+            if (type === 'signAndSendTransaction') {
+              const rawSigned = signed.serialize ? signed.serialize() : signed;
+              let sig;
+              if (typeof effectiveSendTransaction === 'function') {
+                sig = await effectiveSendTransaction(signed, connection);
+              } else if (connection && typeof connection.sendRawTransaction === 'function') {
+                sig = await connection.sendRawTransaction(rawSigned, { skipPreflight: false, maxRetries: 3 });
+              } else {
+                const { Connection } = await import('@solana/web3.js');
+                const fallbackConn = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+                sig = await fallbackConn.sendRawTransaction(rawSigned, { skipPreflight: false, maxRetries: 3 });
+              }
+              resultData = { signature: typeof sig === 'string' ? sig : (sig && sig.signature ? sig.signature : String(sig)) };
+            } else {
+              resultData = Array.from(signed.serialize ? signed.serialize() : signed);
+            }
           }
         }
       } catch (signErr) {

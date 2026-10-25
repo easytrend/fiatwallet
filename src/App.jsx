@@ -395,12 +395,14 @@ export default function App() {
   // This is read by MainActivity.java showNativeConnectDialog() to populate
   // the native Android connect dialog that appears on top of the dApp WebView.
   useEffect(() => {
-    if (effectivePublicKey && effectiveConnected) {
-      localStorage.setItem('fw_wallet_pubkey', effectivePublicKey.toBase58());
-    } else {
-      localStorage.removeItem('fw_wallet_pubkey');
+    const key = effectivePublicKey?.toBase58?.() ||
+                (typeof effectivePublicKey === 'string' ? effectivePublicKey : null) ||
+                internalWallet?.publicKey ||
+                internalWallet?.walletMeta?.publicKey;
+    if (key) {
+      localStorage.setItem('fw_wallet_pubkey', key);
     }
-  }, [effectivePublicKey, effectiveConnected]);
+  }, [effectivePublicKey, internalWallet?.publicKey, internalWallet?.walletMeta?.publicKey]);
 
   // Listen for FiatWallet adapter events and onboarding requests
   useEffect(() => {
