@@ -24,6 +24,39 @@ if (typeof navigator !== 'undefined') {
   } catch (e) {}
 }
 
+// Hook window.location.assign and window.open for MWA on native Android WebView
+if (typeof window !== 'undefined') {
+  try {
+    const origAssign = window.location.assign.bind(window.location);
+    window.location.assign = function(url) {
+      const urlStr = typeof url === 'string' ? url : (url && url.toString ? url.toString() : '');
+      if (urlStr.startsWith('solana-wallet:')) {
+        if (window.FiatWalletBridge && typeof window.FiatWalletBridge.launchIntent === 'function') {
+          window.FiatWalletBridge.launchIntent(urlStr);
+          window.dispatchEvent(new Event('blur'));
+          return;
+        }
+      }
+      return origAssign(url);
+    };
+
+    const origOpen = window.open.bind(window);
+    window.open = function(url, target, features) {
+      const urlStr = typeof url === 'string' ? url : (url && url.toString ? url.toString() : '');
+      if (urlStr.startsWith('solana-wallet:')) {
+        if (window.FiatWalletBridge && typeof window.FiatWalletBridge.launchIntent === 'function') {
+          window.FiatWalletBridge.launchIntent(urlStr);
+          window.dispatchEvent(new Event('blur'));
+          return null;
+        }
+      }
+      return origOpen(url, target, features);
+    };
+  } catch (e) {
+    console.warn('MWA native intent hook error:', e);
+  }
+}
+
 import { initFiatWalletProvider } from './services/fiatwalletProvider';
 initFiatWalletProvider();
 

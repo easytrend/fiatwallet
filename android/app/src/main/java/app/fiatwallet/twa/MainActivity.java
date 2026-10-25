@@ -891,6 +891,19 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void launchIntent(String url) {
+            runOnUiThread(() -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    android.util.Log.e("FiatWallet", "Failed to launch external intent: " + url, e);
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void requestConnect(String reqId, String origin, String title) {
             runOnUiThread(() -> {
                 if (dAppContainer != null) {
