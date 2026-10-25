@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
 import android.net.http.SslError;
+import android.app.AlertDialog;
 import android.os.Bundle;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -433,6 +434,44 @@ public class MainActivity extends BridgeActivity {
             "})();";
     }
 
+
+
+    /**
+     * Shows a native Android AlertDialog on top of the open dApp WebView to ask the
+     * user to approve or reject a wallet connection from the dApp.
+     * Required because when the native dApp WebView is overlaying the screen, any React
+     * modals in the Capacitor WebView are completely invisible — they only appear AFTER
+     * the user closes the dApp (the behaviour seen in Images 3 and 4).
+     */
+    private void showNativeConnectDialog(final String reqId, final String origin, final String dAppTitle) {
+        getBridge().getWebView().evaluateJavascript(
+            "(function(){ return localStorage.getItem('fw_wallet_pubkey') || ''; })()",
+            pubKeyRaw -> {
+                final String pubKey = pubKeyRaw != null
+                    ? pubKeyRaw.replace("\"", "").replace("null", "").trim()
+                    : "";
+                runOnUiThread(() -> {
+                    String shortKey = pubKey.length() > 12
+                        ? pubKey.substring(0, 6) + "..." + pubKey.substring(pubKey.length() - 6)
+                        : (pubKey.isEmpty() ? "Wallet not available" : pubKey);
+                    AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
+                    b.setTitle("Connect to FiatWallet");
+                    b.setMessage(dAppTitle + " is requesting to connect to your wallet.\n\nOrigin: "
+                        + origin + "\nWallet: " + shortKey + "\nNetwork: Solana Mainnet");
+                    b.setCancelable(false);
+                    b.setPositiveButton("Connect", (d, w) -> {
+                        d.dismiss();
+                        if (!pubKey.isEmpty()) bridgeInstance.approveConnect(reqId, pubKey);
+                    });
+                    b.setNegativeButton("Reject", (d, w) -> {
+                        d.dismiss();
+                        bridgeInstance.rejectConnect(reqId);
+                    });
+                    b.create().show();
+                });
+            }
+        );
+    }
     public void openDAppNative(String url, String title) {
         try {
             if (dAppContainer != null) {
@@ -618,6 +657,11 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
                     super.onPageStarted(view, pageUrl, favicon);
+                    // Inject provider BEFORE the dApp's own scripts run.
+                    // This prevents MWA "We can't find a wallet" dialogs on Jupiter,
+                    // Raydium, etc. â€” they will detect window.solana (our provider)
+                    // immediately and skip the MWA fallback entirely.
+                    view.evaluateJavascript(providerScript, null);
                     if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
                         dAppSearchBar.setText(pageUrl);
                     }
@@ -758,9 +802,17 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void requestConnect(String reqId, String origin, String title) {
             runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-connect-request', " +
-                            "{ detail: { reqId: '" + reqId + "', origin: '" + escapeJs(origin) + "', title: '" + escapeJs(title) + "' } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
+                if (dAppContainer != null) {
+                    // dApp WebView is open and overlays the Capacitor WebView.
+                    // Show a native Android dialog ON TOP of the dApp so the user
+                    // sees the prompt immediately without having to close the dApp.
+                    showNativeConnectDialog(reqId, origin, title);
+                } else {
+                    // No dApp overlay — use the React DAppApprovalModal in the Capacitor WebView.
+                    String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-connect-request', " +
+                                "{ detail: { reqId: '" + reqId + "', origin: '" + escapeJs(origin) + "', title: '" + escapeJs(title) + "' } }));";
+                    getBridge().getWebView().evaluateJavascript(js, null);
+                }
             });
         }
 
