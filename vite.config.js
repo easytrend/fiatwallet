@@ -29,20 +29,39 @@ function patchMwaPlugin() {
     transform(code, id) {
       let modified = code;
       let changed = false;
+
+      // 1. Patch @solana-mobile/wallet-standard-mobile
       if (id.includes('wallet-standard-mobile')) {
         if (modified.includes('currentConnectionGeneration) await new Promise')) {
           modified = modified.replace(/if\s*\(this\.#connectionGeneration\s*!==\s*currentConnectionGeneration\)\s*await\s+new\s+Promise\(\(\)\s*=>\s*\{\}\);/g, 'if (this.#connectionGeneration !== currentConnectionGeneration) return;');
           changed = true;
         }
-        if (modified.includes('window.addEventListener("load", this.close);') && !modified.includes('focus-fast-cancel')) {
-          modified = modified.replace('window.addEventListener("load", this.close);', 'window.addEventListener("load", this.close); /* focus-fast-cancel */ if (typeof window !== "undefined") window.addEventListener("focus", () => { setTimeout(() => { if (document.visibilityState === "visible") this.close(new Event("close")); }, 600); });');
+      }
+
+      // 2. Patch @solana-mobile/mobile-wallet-adapter-protocol
+      if (id.includes('mobile-wallet-adapter-protocol')) {
+        // Direct intent launch via native FiatWalletBridge
+        if (modified.includes('async function launchAssociation(associationUrl) {') && !modified.includes('FiatWalletBridge.launchIntent')) {
+          modified = modified.replace(
+            'async function launchAssociation(associationUrl) {',
+            'async function launchAssociation(associationUrl) {\n\tif (typeof window !== "undefined" && window.FiatWalletBridge && window.FiatWalletBridge.launchIntent) {\n\t\twindow.FiatWalletBridge.launchIntent(associationUrl.toString());\n\t\treturn;\n\t}'
+          );
+          changed = true;
+        }
+
+        // Prevent premature timeout rejection on Android WebView where blur is not fired on Activity transition
+        if (modified.includes('cleanup();') && (modified.includes('reject();') || modified.includes('3e3') || modified.includes('800'))) {
+          modified = modified.replace(/cleanup\(\);\s*reject\(\);\s*\}\s*,\s*(3e3|800)\);/g, 'cleanup(); resolve(); }, 15000);');
+          changed = true;
+        }
+
+        // Use 127.0.0.1 loopback
+        if (modified.includes('ws://localhost:')) {
+          modified = modified.replace(/ws:\/\/localhost:/g, 'ws://127.0.0.1:');
           changed = true;
         }
       }
-      if (id.includes('mobile-wallet-adapter-protocol') && modified.includes('reject(); }, 3e3);')) {
-        modified = modified.replace(/reject\(\);\s*\}\s*,\s*3e3\);/g, 'reject(); }, 800);');
-        changed = true;
-      }
+
       return changed ? { code: modified, map: null } : null;
     }
   };

@@ -144,6 +144,32 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onPause() {
+        super.onPause();
+        runOnUiThread(() -> {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('blur'));", null);
+            }
+            if (dAppWebView != null) {
+                dAppWebView.evaluateJavascript("window.dispatchEvent(new Event('blur'));", null);
+            }
+        });
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        runOnUiThread(() -> {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new Event('focus'));", null);
+            }
+            if (dAppWebView != null) {
+                dAppWebView.evaluateJavascript("window.dispatchEvent(new Event('focus'));", null);
+            }
+        });
+    }
+
+    @Override
     public void onBackPressed() {
         if (dAppContainer != null) {
             if (dAppWebView != null && dAppWebView.canGoBack()) {
@@ -171,6 +197,7 @@ public class MainActivity extends BridgeActivity {
         webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().setAllowContentAccess(true);
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+        webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
     }

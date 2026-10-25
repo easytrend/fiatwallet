@@ -1,34 +1,54 @@
 const fs = require('fs');
 const path = require('path');
 
-// 1. Patch @solana-mobile/wallet-standard-mobile
-const targetDir = path.join(__dirname, '..', 'node_modules', '@solana-mobile', 'wallet-standard-mobile', 'lib');
-if (fs.existsSync(targetDir)) {
-  const files = [];
-  function getFiles(dir) {
-    fs.readdirSync(dir).forEach(file => {
-      const full = path.join(dir, file);
-      if (fs.statSync(full).isDirectory()) getFiles(full);
-      else if (full.endsWith('.js')) files.push(full);
-    });
-  }
-  getFiles(targetDir);
+function walkAndPatch(dir) {
+  if (!fs.existsSync(dir)) return;
+  fs.readdirSync(dir).forEach(file => {
+    const full = path.join(dir, file);
+    if (fs.statSync(full).isDirectory()) {
+      walkAndPatch(full);
+    } else if (file.endsWith('.js') || file.endsWith('.mjs')) {
+      let content = fs.readFileSync(full, 'utf8');
+      let changed = false;
 
-  let patchedCount = 0;
-  files.forEach(f => {
-    let content = fs.readFileSync(f, 'utf8');
-    let changed = false;
-    // Clean up connection generation if needed
-    if (content.includes('currentConnectionGeneration) await new Promise')) {
-      content = content.replace(/if\s*\(this\.#connectionGeneration\s*!==\s*currentConnectionGeneration\)\s*await\s+new\s+Promise\(\(\)\s*=>\s*\{\}\);/g, 'if (this.#connectionGeneration !== currentConnectionGeneration) return;');
-      changed = true;
-    }
-    if (changed) {
-      fs.writeFileSync(f, content, 'utf8');
-      patchedCount++;
+      // 1. Connection generation fix
+      if (content.includes('currentConnectionGeneration) await new Promise')) {
+        content = content.replace(/if\s*\(this\.#connectionGeneration\s*!==\s*currentConnectionGeneration\)\s*await\s+new\s+Promise\(\(\)\s*=>\s*\{\}\);/g, 'if (this.#connectionGeneration !== currentConnectionGeneration) return;');
+        changed = true;
+      }
+
+      // 2. Direct intent launch via FiatWalletBridge
+      if (content.includes('async function launchAssociation(associationUrl) {') && !content.includes('FiatWalletBridge.launchIntent')) {
+        content = content.replace(
+          'async function launchAssociation(associationUrl) {',
+          'async function launchAssociation(associationUrl) {\n\tif (typeof window !== "undefined" && window.FiatWalletBridge && window.FiatWalletBridge.launchIntent) {\n\t\twindow.FiatWalletBridge.launchIntent(associationUrl.toString());\n\t\treturn;\n\t}'
+        );
+        changed = true;
+      }
+
+      // 3. Prevent premature timeout rejection in getDetectionPromise
+      if (content.includes('cleanup();') && content.includes('reject();') && content.includes('3e3')) {
+        content = content.replace(/cleanup\(\);\s*reject\(\);\s*\}\s*,\s*3e3\);/g, 'cleanup(); resolve(); }, 15000);');
+        changed = true;
+      }
+
+      // 4. Use 127.0.0.1 for direct loopback WebSocket URL
+      if (content.includes('ws://localhost:')) {
+        content = content.replace(/ws:\/\/localhost:/g, 'ws://127.0.0.1:');
+        changed = true;
+      }
+
+      if (changed) {
+        fs.writeFileSync(full, content, 'utf8');
+        console.log('[patch-mwa] Patched:', path.relative(path.join(__dirname, '..'), full));
+      }
     }
   });
-  if (patchedCount > 0) {
-    console.log('[patch-mwa] Patched', patchedCount, 'files in @solana-mobile/wallet-standard-mobile');
-  }
+}
+
+const targetBase = path.join(__dirname, '..', 'node_modules', '@solana-mobile');
+if (fs.existsSync(targetBase)) {
+  console.log('[patch-mwa] Scanning and patching all @solana-mobile packages...');
+  walkAndPatch(targetBase);
+  console.log('[patch-mwa] Completed patching @solana-mobile packages.');
 }
