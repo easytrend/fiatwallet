@@ -437,6 +437,85 @@ public class MainActivity extends BridgeActivity {
             "      window.FiatWalletBridge.requestConnect(reqId, e.detail.data && e.detail.data.origin ? e.detail.data.origin : window.location.origin, document.title || 'dApp');" +
             "    }" +
             "  });" +
+            "// ---- MWA SUPPRESSION -----------------------------------------------" +
+            "// @solana-mobile/wallet-adapter-mobile always adds 'Mobile Wallet Adapter'" +
+            "// on Android. When clicked, it fires solana-wallet:// deeplinks that fail" +
+            "// because we are already inside the wallet. Suppress this in three ways:" +
+            "// 1) Intercept the deeplink at JS level and call window.solana.connect()" +
+            "// 2) Auto-close the 'We can't find a wallet' error dialog via MutationObserver" +
+            "// 3) Hide 'Mobile Wallet Adapter' from wallet selection lists via CSS + DOM" +
+            "(function() {" +
+            "  try {" +
+            "    var _origOpen = window.open;" +
+            "    window.open = function(url, t, f) {" +
+            "      if (typeof url === 'string' && url.startsWith('solana-wallet://')) {" +
+            "        setTimeout(function() { if (window.solana && window.solana.connect) window.solana.connect().catch(function(){}); }, 120);" +
+            "        return null;" +
+            "      }" +
+            "      return _origOpen ? _origOpen.call(window, url, t, f) : null;" +
+            "    };" +
+            "    var _lDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');" +
+            "    if (_lDesc && _lDesc.set) {" +
+            "      var _origSet = _lDesc.set;" +
+            "      Object.defineProperty(Location.prototype, 'href', {" +
+            "        set: function(url) {" +
+            "          if (typeof url === 'string' && url.startsWith('solana-wallet://')) {" +
+            "            setTimeout(function() { if (window.solana && window.solana.connect) window.solana.connect().catch(function(){}); }, 120);" +
+            "            return;" +
+            "          }" +
+            "          _origSet.call(this, url);" +
+            "        }," +
+            "        get: _lDesc.get, configurable: true" +
+            "      });" +
+            "    }" +
+            "  } catch(e) {}" +
+            "  function _closeMwaDialog() {" +
+            "    var cb = document.querySelector('.wallet-adapter-modal-button-close, [aria-label=\"Close\"], [aria-label=\"Dismiss\"]');" +
+            "    if (cb) { cb.click(); return; }" +
+            "    var dialogs = document.querySelectorAll('[role=\"dialog\"], [class*=\"modal\"], [class*=\"overlay\"]');" +
+            "    for (var i = 0; i < dialogs.length; i++) {" +
+            "      var d = dialogs[i];" +
+            "      if ((d.textContent || '').indexOf(\"can't find a wallet\") > -1) {" +
+            "        var btn = d.querySelector('button'); if (btn) btn.click();" +
+            "      }" +
+            "    }" +
+            "  }" +
+            "  function _hideMwaListItem(root) {" +
+            "    var imgs = (root || document).querySelectorAll('[alt=\"Mobile Wallet Adapter\"]');" +
+            "    for (var i = 0; i < imgs.length; i++) {" +
+            "      var li = imgs[i].closest('li, [role=\"listitem\"], [role=\"option\"]');" +
+            "      if (li) li.style.display = 'none';" +
+            "    }" +
+            "    var btns = (root || document).querySelectorAll('button, li');" +
+            "    for (var j = 0; j < btns.length; j++) {" +
+            "      if ((btns[j].textContent || '').trim() === 'Mobile Wallet Adapter') btns[j].style.display = 'none';" +
+            "    }" +
+            "  }" +
+            "  var _obs = new MutationObserver(function(muts) {" +
+            "    for (var i = 0; i < muts.length; i++) {" +
+            "      var added = muts[i].addedNodes;" +
+            "      for (var j = 0; j < added.length; j++) {" +
+            "        var n = added[j]; if (n.nodeType !== 1) continue;" +
+            "        var txt = n.textContent || '';" +
+            "        if (txt.indexOf(\"can't find a wallet\") > -1 || txt.indexOf('cannot find a wallet') > -1) {" +
+            "          (function(){ setTimeout(_closeMwaDialog, 40); })();" +
+            "        }" +
+            "        _hideMwaListItem(n);" +
+            "      }" +
+            "    }" +
+            "  });" +
+            "  function _startObs() {" +
+            "    if (document.body) {" +
+            "      _obs.observe(document.body, { childList: true, subtree: true });" +
+            "      _hideMwaListItem(document);" +
+            "    }" +
+            "  }" +
+            "  if (document.body) { _startObs(); }" +
+            "  else { document.addEventListener('DOMContentLoaded', _startObs); }" +
+            "  var _style = document.createElement('style');" +
+            "  _style.textContent = '.wallet-adapter-modal-list li:has([alt=\"Mobile Wallet Adapter\"]) { display:none!important } .wallet-adapter-modal-list li:has(button[title=\"Mobile Wallet Adapter\"]) { display:none!important }';" +
+            "  (document.head || document.documentElement || document.body).appendChild(_style);" +
+            "})();" +
             "})();";
     }
 
