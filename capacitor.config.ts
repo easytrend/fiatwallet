@@ -5,14 +5,12 @@ const config: CapacitorConfig = {
   appName: 'FiatWallet',
   webDir: 'dist',
   server: {
-    // For production: load bundled web assets from dist/
-    // For development: uncomment the line below to use live Vite server
-    // url: 'http://10.0.2.2:5173',
-    // cleartext: true,
+    androidScheme: 'https',
+    hostname: 'fiatwallet.app',
   },
   android: {
-    // Allow the WebView to load https:// URLs
-    allowMixedContent: false,
+    // Allow the WebView to load mixed content / local sockets
+    allowMixedContent: true,
     // Enable hardware acceleration
     hardwareAccelerated: true,
     // Minimum target SDK
