@@ -360,7 +360,11 @@ public class MainActivity extends BridgeActivity {
             "        var serialized;" +
             "        try {" +
             "          if (typeof tx.serialize === 'function') {" +
-            "            serialized = Array.from(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));" +
+            "            try {" +
+            "              serialized = Array.from(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));" +
+            "            } catch(e) {" +
+            "              serialized = Array.from(tx.serialize());" +
+            "            }" +
             "          } else { serialized = tx; }" +
             "        } catch(e) { serialized = tx; }" +
             "        if (window.FiatWalletBridge && window.FiatWalletBridge.requestSignTransaction) {" +
@@ -372,7 +376,23 @@ public class MainActivity extends BridgeActivity {
             "      return Promise.all(txs.map(function(t) { return provider.signTransaction(t); }));" +
             "    }," +
             "    signAndSendTransaction: function(tx, opts) {" +
-            "      return provider.signTransaction(tx).then(function(res) { return { signature: 'sig_ok' }; });" +
+            "      return new Promise(function(resolve, reject) {" +
+            "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
+            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        var serialized;" +
+            "        try {" +
+            "          if (typeof tx.serialize === 'function') {" +
+            "            try {" +
+            "              serialized = Array.from(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));" +
+            "            } catch(e) {" +
+            "              serialized = Array.from(tx.serialize());" +
+            "            }" +
+            "          } else { serialized = tx; }" +
+            "        } catch(e) { serialized = tx; }" +
+            "        if (window.FiatWalletBridge && window.FiatWalletBridge.requestSignAndSend) {" +
+            "          window.FiatWalletBridge.requestSignAndSend(reqId, JSON.stringify(serialized));" +
+            "        } else { reject(new Error('FiatWallet native bridge unavailable')); }" +
+            "      });" +
             "    }," +
             "    signMessage: function(msg) {" +
             "      return new Promise(function(resolve, reject) {" +
@@ -584,6 +604,45 @@ public class MainActivity extends BridgeActivity {
             }
         );
     }
+
+    private void showNativeSignDialog(final String reqId, final String type, final String txData, final String origin) {
+        runOnUiThread(() -> {
+            String title;
+            String actionDesc;
+            if ("signAndSendTransaction".equals(type)) {
+                title = "Approve & Send Transaction";
+                actionDesc = "Send Transaction";
+            } else if ("signMessage".equals(type)) {
+                title = "Approve Message Signature";
+                actionDesc = "Sign Message";
+            } else {
+                title = "Approve Transaction";
+                actionDesc = "Sign Transaction";
+            }
+            AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
+            b.setTitle(title);
+            b.setMessage("Request from: " + (origin != null && !origin.isEmpty() ? origin : "Solana dApp")
+                + "\n\nAction: " + actionDesc
+                + "\nNetwork: Solana Mainnet"
+                + "\nEstimated Fee: ~0.000005 SOL\n\n"
+                + "Do you authorize this request?");
+            b.setCancelable(false);
+            b.setPositiveButton("Approve", (d, w) -> {
+                d.dismiss();
+                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-execute', " +
+                            "{ detail: { reqId: '" + reqId + "', type: '" + type + "', txData: " + txData + " } }));";
+                if (getBridge() != null && getBridge().getWebView() != null) {
+                    getBridge().getWebView().evaluateJavascript(js, null);
+                }
+            });
+            b.setNegativeButton("Reject", (d, w) -> {
+                d.dismiss();
+                bridgeInstance.rejectSign(reqId);
+            });
+            b.create().show();
+        });
+    }
+
     public void openDAppNative(String url, String title) {
         try {
             if (dAppContainer != null) {
@@ -950,27 +1009,42 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void requestSignTransaction(String reqId, String txData) {
             runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
-                            "{ detail: { reqId: '" + reqId + "', type: 'signTransaction', txData: " + txData + " } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
+                if (dAppContainer != null) {
+                    String origin = dAppWebView != null ? dAppWebView.getUrl() : "Solana dApp";
+                    showNativeSignDialog(reqId, "signTransaction", txData, origin);
+                } else {
+                    String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
+                                "{ detail: { reqId: '" + reqId + "', type: 'signTransaction', txData: " + txData + " } }));";
+                    getBridge().getWebView().evaluateJavascript(js, null);
+                }
             });
         }
 
         @JavascriptInterface
         public void requestSignAndSend(String reqId, String txData) {
             runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
-                            "{ detail: { reqId: '" + reqId + "', type: 'signAndSendTransaction', txData: " + txData + " } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
+                if (dAppContainer != null) {
+                    String origin = dAppWebView != null ? dAppWebView.getUrl() : "Solana dApp";
+                    showNativeSignDialog(reqId, "signAndSendTransaction", txData, origin);
+                } else {
+                    String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
+                                "{ detail: { reqId: '" + reqId + "', type: 'signAndSendTransaction', txData: " + txData + " } }));";
+                    getBridge().getWebView().evaluateJavascript(js, null);
+                }
             });
         }
 
         @JavascriptInterface
         public void requestSignMessage(String reqId, String message) {
             runOnUiThread(() -> {
-                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
-                            "{ detail: { reqId: '" + reqId + "', type: 'signMessage', message: '" + escapeJs(message) + "' } }));";
-                getBridge().getWebView().evaluateJavascript(js, null);
+                if (dAppContainer != null) {
+                    String origin = dAppWebView != null ? dAppWebView.getUrl() : "Solana dApp";
+                    showNativeSignDialog(reqId, "signMessage", message, origin);
+                } else {
+                    String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-sign-request', " +
+                                "{ detail: { reqId: '" + reqId + "', type: 'signMessage', message: '" + escapeJs(message) + "' } }));";
+                    getBridge().getWebView().evaluateJavascript(js, null);
+                }
             });
         }
 

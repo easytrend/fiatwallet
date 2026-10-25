@@ -1,9 +1,59 @@
 import { useState, useEffect } from 'react';
 
-export default function DAppApprovalModal({ effectivePublicKey, solBalance, effectiveSignTransaction }) {
+export default function DAppApprovalModal({ effectivePublicKey, solBalance, effectiveSignTransaction, effectiveSendTransaction, connection }) {
   const [activeRequest, setActiveRequest] = useState(null);
 
   useEffect(() => {
+    // Helper to sign or sign & send
+    const processTransactionExecution = async (reqId, type, txData) => {
+      let resultData = txData;
+      try {
+        const { Transaction, VersionedTransaction } = await import('@solana/web3.js');
+        const raw = Array.isArray(txData) ? new Uint8Array(txData) : txData;
+        let tx;
+        try {
+          tx = Transaction.from(raw);
+        } catch {
+          try {
+            tx = VersionedTransaction.deserialize(raw);
+          } catch {}
+        }
+        if (tx && typeof effectiveSignTransaction === 'function') {
+          const signed = await effectiveSignTransaction(tx);
+          if (type === 'signAndSendTransaction') {
+            const rawSigned = signed.serialize ? signed.serialize() : signed;
+            let sig;
+            if (typeof effectiveSendTransaction === 'function') {
+              sig = await effectiveSendTransaction(signed, connection);
+            } else if (connection && typeof connection.sendRawTransaction === 'function') {
+              sig = await connection.sendRawTransaction(rawSigned, { skipPreflight: false, maxRetries: 3 });
+            } else {
+              const { Connection } = await import('@solana/web3.js');
+              const fallbackConn = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+              sig = await fallbackConn.sendRawTransaction(rawSigned, { skipPreflight: false, maxRetries: 3 });
+            }
+            resultData = { signature: typeof sig === 'string' ? sig : (sig && sig.signature ? sig.signature : String(sig)) };
+          } else {
+            resultData = Array.from(signed.serialize ? signed.serialize() : signed);
+          }
+        }
+      } catch (signErr) {
+        console.warn('Signing execution error:', signErr);
+        if (window.FiatWalletBridge && typeof window.FiatWalletBridge.rejectSign === 'function') {
+          try { window.FiatWalletBridge.rejectSign(reqId); } catch {}
+        }
+        return;
+      }
+
+      const txDataStr = JSON.stringify(resultData || {});
+      if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveSign === 'function') {
+        try { window.FiatWalletBridge.approveSign(reqId, txDataStr); } catch {}
+      }
+      if (window.fiatwallet?._onSignApproved) {
+        window.fiatwallet._onSignApproved(reqId, resultData);
+      }
+    };
+
     // Standard Injected Provider Approval Request
     const handleRequest = (e) => {
       if (e.detail) {
@@ -49,6 +99,7 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
       }
     };
 
+    // Native sign request (for PWA / web mode where React modal shows)
     const handleNativeSign = async (e) => {
       if (e.detail) {
         setActiveRequest({
@@ -61,34 +112,7 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
           },
           isNative: true,
           resolve: async () => {
-            let resultData = e.detail.txData;
-            if (typeof effectiveSignTransaction === 'function' && e.detail.txData) {
-              try {
-                const { Transaction, VersionedTransaction } = await import('@solana/web3.js');
-                const raw = Array.isArray(e.detail.txData) ? new Uint8Array(e.detail.txData) : e.detail.txData;
-                let tx;
-                try {
-                  tx = Transaction.from(raw);
-                } catch {
-                  try {
-                    tx = VersionedTransaction.deserialize(raw);
-                  } catch {}
-                }
-                if (tx) {
-                  const signed = await effectiveSignTransaction(tx);
-                  resultData = Array.from(signed.serialize ? signed.serialize() : signed);
-                }
-              } catch (signErr) {
-                console.warn('Signing error:', signErr);
-              }
-            }
-            const txDataStr = JSON.stringify(resultData || {});
-            if (window.FiatWalletBridge && typeof window.FiatWalletBridge.approveSign === 'function') {
-              try { window.FiatWalletBridge.approveSign(e.detail.reqId, txDataStr); } catch {}
-            }
-            if (window.fiatwallet?._onSignApproved) {
-              window.fiatwallet._onSignApproved(e.detail.reqId, resultData);
-            }
+            await processTransactionExecution(e.detail.reqId, e.detail.type || 'signTransaction', e.detail.txData);
           },
           reject: () => {
             if (window.FiatWalletBridge && typeof window.FiatWalletBridge.rejectSign === 'function') {
@@ -102,18 +126,27 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
       }
     };
 
+    // Native sign execution (triggered directly by user clicking "Approve" on Android dialog)
+    const handleNativeSignExecute = async (e) => {
+      if (e.detail && e.detail.reqId) {
+        await processTransactionExecution(e.detail.reqId, e.detail.type || 'signTransaction', e.detail.txData);
+      }
+    };
+
     window.addEventListener('fiatwallet:approval-request', handleRequest);
     window.addEventListener('fiatwallet:approval-done', handleDone);
     window.addEventListener('fiatwallet:native-connect-request', handleNativeConnect);
     window.addEventListener('fiatwallet:native-sign-request', handleNativeSign);
+    window.addEventListener('fiatwallet:native-sign-execute', handleNativeSignExecute);
 
     return () => {
       window.removeEventListener('fiatwallet:approval-request', handleRequest);
       window.removeEventListener('fiatwallet:approval-done', handleDone);
       window.removeEventListener('fiatwallet:native-connect-request', handleNativeConnect);
       window.removeEventListener('fiatwallet:native-sign-request', handleNativeSign);
+      window.removeEventListener('fiatwallet:native-sign-execute', handleNativeSignExecute);
     };
-  }, [activeRequest, effectivePublicKey, effectiveSignTransaction]);
+  }, [activeRequest, effectivePublicKey, effectiveSignTransaction, effectiveSendTransaction, connection]);
 
   if (!activeRequest) return null;
 

@@ -2670,6 +2670,8 @@ export default function App() {
         effectivePublicKey={effectivePublicKey}
         solBalance={solBalance}
         effectiveSignTransaction={effectiveSignTransaction}
+        effectiveSendTransaction={effectiveSendTransaction}
+        connection={connection}
       />
     </div>
   );
