@@ -911,6 +911,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     const key = publicKey.toBase58();
+
+    // Auto-fill bank account details and fiat tag instantly from localStorage
+    const savedAcct = localStorage.getItem(`paj_account_number_${key}`) ||
+                      localStorage.getItem(`paj_account_number_default`);
+    const savedBank = localStorage.getItem(`paj_bank_name_${key}`) ||
+                      localStorage.getItem(`paj_bank_name_default`);
+    const savedName = localStorage.getItem(`paj_account_name_${key}`) ||
+                      localStorage.getItem(`paj_account_name_default`);
+    const savedTag = localStorage.getItem(`paj_user_tag_${key}`) ||
+                     localStorage.getItem(`fw_fiat_tag`);
+
+    if (savedAcct) setAccountNumber(savedAcct);
+    if (savedBank && savedBank !== 'Choose Bank') setSelectedBank(savedBank);
+    if (savedName) setAccountName(savedName);
+    if (savedTag) {
+      setUserTagData(prev => prev || { tag_name: savedTag.replace(/^\$/, '') });
+    }
+
     const cachedToken  = localStorage.getItem(`paj_sessionToken_${key}`);
     const cachedEmail  = localStorage.getItem(`paj_sessionEmail_${key}`);
     const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
@@ -1563,10 +1581,33 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       return;
     }
     const walletAddr = publicKey.toBase58();
+
+    // Check cached tag from localStorage first for 0ms instant display!
+    const cachedTag = localStorage.getItem(`paj_user_tag_${walletAddr}`) || localStorage.getItem('fw_fiat_tag');
+    if (cachedTag) {
+      setUserTagData(prev => prev || { tag_name: cachedTag.replace(/^\$/, '') });
+    }
+
     getFiatTagByWallet(walletAddr)
       .then(tag => {
         if (tag) {
           setUserTagData(tag);
+          if (tag.tag_name) {
+            localStorage.setItem(`paj_user_tag_${walletAddr}`, tag.tag_name);
+            localStorage.setItem('fw_fiat_tag', tag.tag_name);
+          }
+          if (tag.bank_name) {
+            setSelectedBank(prev => (prev === 'Choose Bank' ? tag.bank_name : prev));
+            localStorage.setItem(`paj_bank_name_${walletAddr}`, tag.bank_name);
+          }
+          if (tag.account_number) {
+            setAccountNumber(prev => (!prev ? tag.account_number : prev));
+            localStorage.setItem(`paj_account_number_${walletAddr}`, tag.account_number);
+          }
+          if (tag.account_name) {
+            setAccountName(prev => (!prev ? tag.account_name : prev));
+            localStorage.setItem(`paj_account_name_${walletAddr}`, tag.account_name);
+          }
           setTagModalInput(tag.tag_name || '');
           setTagModalBank(tag.bank_name || 'Choose Bank');
           setTagModalAcctNumber(tag.account_number || '');
@@ -1575,7 +1616,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setUserTagData(null);
         }
       })
-      .catch(() => setUserTagData(null));
+      .catch(() => {});
   }, [publicKey, sessionToken]);
 
   // ── Real-time resolution of recipient Tag in standard and tag offramp ───

@@ -323,6 +323,7 @@ public class MainActivity extends BridgeActivity {
             "  PublicKey.prototype.toString = function() { return this._bn; };" +
             "  PublicKey.prototype.toBytes = function() { return this._bytes; };" +
             "  PublicKey.prototype.toByteArray = function() { return Array.from(this._bytes); };" +
+            "  PublicKey.prototype.toBuffer = function() { return this._bytes; };" +
             "  PublicKey.prototype.equals = function(o) { return o && (o.toBase58 ? o.toBase58() === this._bn : String(o) === this._bn); };" +
             "  window.PublicKey = window.PublicKey || PublicKey;" +
             "  var _evs = {};" +
@@ -546,30 +547,37 @@ public class MainActivity extends BridgeActivity {
             "      if ((btns[j].textContent || '').trim() === 'Mobile Wallet Adapter') btns[j].style.display = 'none';" +
             "    }" +
             "  }" +
-            "  var _obs = new MutationObserver(function(muts) {" +
-            "    for (var i = 0; i < muts.length; i++) {" +
-            "      var added = muts[i].addedNodes;" +
-            "      for (var j = 0; j < added.length; j++) {" +
-            "        var n = added[j]; if (n.nodeType !== 1) continue;" +
-            "        var txt = n.textContent || '';" +
-            "        if (txt.indexOf(\"can't find a wallet\") > -1 || txt.indexOf('cannot find a wallet') > -1) {" +
-            "          setTimeout(_closeMwaDialog, 40);" +
+            "  if (!window._fwMwaObsStarted) {" +
+            "    window._fwMwaObsStarted = true;" +
+            "    var _obs = new MutationObserver(function(muts) {" +
+            "      for (var i = 0; i < muts.length; i++) {" +
+            "        var added = muts[i].addedNodes;" +
+            "        for (var j = 0; j < added.length; j++) {" +
+            "          var n = added[j]; if (n.nodeType !== 1) continue;" +
+            "          var txt = n.textContent || '';" +
+            "          if (txt.indexOf(\"can't find a wallet\") > -1 || txt.indexOf('cannot find a wallet') > -1) {" +
+            "            setTimeout(_closeMwaDialog, 40);" +
+            "          }" +
+            "          _hideMwaListItem(n);" +
             "        }" +
-            "        _hideMwaListItem(n);" +
+            "      }" +
+            "    });" +
+            "    function _startObs() {" +
+            "      if (document.body) {" +
+            "        _obs.observe(document.body, { childList: true, subtree: true });" +
+            "        _hideMwaListItem(document);" +
             "      }" +
             "    }" +
-            "  });" +
-            "  function _startObs() {" +
-            "    if (document.body) {" +
-            "      _obs.observe(document.body, { childList: true, subtree: true });" +
-            "      _hideMwaListItem(document);" +
-            "    }" +
+            "    if (document.body) { _startObs(); }" +
+            "    else { document.addEventListener('DOMContentLoaded', _startObs); }" +
             "  }" +
-            "  if (document.body) { _startObs(); }" +
-            "  else { document.addEventListener('DOMContentLoaded', _startObs); }" +
-            "  var _style = document.createElement('style');" +
-            "  _style.textContent = '.wallet-adapter-modal-list li:has([alt=\"Mobile Wallet Adapter\"]) { display:none!important } .wallet-adapter-modal-list li:has(button[title=\"Mobile Wallet Adapter\"]) { display:none!important }';" +
-            "  (document.head || document.documentElement || document.body).appendChild(_style);" +
+            "  try {" +
+            "    var _style = document.createElement('style');" +
+            "    _style.textContent = '.wallet-adapter-modal-list li:has([alt=\"Mobile Wallet Adapter\"]) { display:none!important } .wallet-adapter-modal-list li:has(button[title=\"Mobile Wallet Adapter\"]) { display:none!important }';" +
+            "    var _target = document.head || document.documentElement || document.body;" +
+            "    if (_target) { _target.appendChild(_style); }" +
+            "    else { document.addEventListener('DOMContentLoaded', function() { (document.head || document.documentElement || document.body).appendChild(_style); }); }" +
+            "  } catch(e) {}" +
             "})();";
     }
 
@@ -697,9 +705,8 @@ public class MainActivity extends BridgeActivity {
             );
             container.setLayoutParams(layoutParams);
             container.setElevation(dpToPx(50));
-            container.setClickable(true);
-            container.setFocusable(true);
-            container.setFocusableInTouchMode(true);
+            container.setClickable(false);
+            container.setFocusable(false);
 
             // Sleek in-app browser header
             LinearLayout header = new LinearLayout(MainActivity.this);
@@ -845,6 +852,9 @@ public class MainActivity extends BridgeActivity {
             s.setCacheMode(WebSettings.LOAD_DEFAULT);
             s.setBuiltInZoomControls(false);
             s.setDisplayZoomControls(false);
+            dAppWebView.setFocusable(true);
+            dAppWebView.setFocusableInTouchMode(true);
+            dAppWebView.requestFocus();
 
             // Enable third-party cookies for Cloudflare Turnstile, Solana auth:
             CookieManager cookieManager = CookieManager.getInstance();
@@ -915,7 +925,6 @@ public class MainActivity extends BridgeActivity {
                                         title = view.getTitle();
                                     }
                                     showNativeConnectDialog("mwa_" + System.currentTimeMillis(), origin, title);
-                                    view.evaluateJavascript("if (window.solana && window.solana.connect) { window.solana.connect().catch(function(){}); }", null);
                                 });
                                 return true; // consumed — do not let Android handle it externally
                             }
@@ -944,9 +953,6 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onProgressChanged(WebView view, int newProgress) {
                     super.onProgressChanged(view, newProgress);
-                    if (newProgress >= 20 && newProgress <= 40) {
-                        view.evaluateJavascript(providerScript, null);
-                    }
                     if (dAppProgressBar != null) {
                         dAppProgressBar.setProgress(newProgress);
                         dAppProgressBar.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);

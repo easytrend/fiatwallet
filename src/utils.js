@@ -83,62 +83,92 @@ export async function rpcFetch(method, params) {
   throw new Error("All RPC nodes failed:\n" + errors.join("\n"));
 }
 
+const domainResolveCache = new Map();
+const domainReverseCache = new Map();
+
 export async function robustResolve(domain, walletConnection) {
-  // Try the wallet-adapter connection first
-  if (walletConnection) {
-    try {
-      const addr = await Promise.race([
-        resolve(walletConnection, domain),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 5000))
-      ]);
-      if (addr) return addr;
-    } catch (e) {
-      // Primary connection encountered network, 403, or rate limit; fall through to public RPCs
-    }
+  if (!domain) throw new Error('Invalid domain');
+  const clean = domain.trim().toLowerCase();
+  if (domainResolveCache.has(clean)) {
+    return domainResolveCache.get(clean);
   }
 
-  // Fallback to public CORS-enabled RPC endpoints
+  const queries = [];
+  if (walletConnection) {
+    queries.push(
+      Promise.race([
+        resolve(walletConnection, clean),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2500))
+      ])
+    );
+  }
+
   const RESOLVE_RPCS = [
     'https://solana-rpc.publicnode.com',
     'https://rpc.ankr.com/solana',
     'https://api.mainnet-beta.solana.com'
   ];
   for (const rpcUrl of RESOLVE_RPCS) {
-    try {
-      const conn = new Connection(rpcUrl, 'confirmed');
-      const addr = await Promise.race([
-        resolve(conn, domain),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 4000))
-      ]);
-      if (addr) return addr;
-    } catch (e) {
-      
-    }
+    queries.push(
+      (async () => {
+        const conn = new Connection(rpcUrl, 'confirmed');
+        return Promise.race([
+          resolve(conn, clean),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2500))
+        ]);
+      })()
+    );
   }
+
+  try {
+    const addr = await Promise.any(queries);
+    if (addr) {
+      domainResolveCache.set(clean, addr);
+      return addr;
+    }
+  } catch (err) {}
+
   throw new Error(`Failed to resolve domain: ${domain}`);
 }
 
 export async function robustReverseLookup(connection, publicKeyObj) {
+  if (!publicKeyObj) return null;
+  const keyStr = publicKeyObj.toBase58 ? publicKeyObj.toBase58() : String(publicKeyObj);
+  if (domainReverseCache.has(keyStr)) {
+    return domainReverseCache.get(keyStr);
+  }
+
+  const queries = [];
   if (connection) {
-    try {
-      const primary = await getPrimaryDomain(connection, publicKeyObj).catch(() => null);
+    queries.push(
+      (async () => {
+        const primary = await getPrimaryDomain(connection, publicKeyObj).catch(() => null);
+        if (primary && primary.reverse) return primary.reverse + '.sol';
+        const reverse = await performReverseLookup(connection, publicKeyObj).catch(() => null);
+        if (reverse) return reverse + '.sol';
+        throw new Error('Not found');
+      })()
+    );
+  }
+
+  queries.push(
+    (async () => {
+      const fallbackConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
+      const primary = await getPrimaryDomain(fallbackConn, publicKeyObj).catch(() => null);
       if (primary && primary.reverse) return primary.reverse + '.sol';
-      const reverse = await performReverseLookup(connection, publicKeyObj).catch(() => null);
+      const reverse = await performReverseLookup(fallbackConn, publicKeyObj).catch(() => null);
       if (reverse) return reverse + '.sol';
-    } catch (e) {
-      
-    }
-  }
+      throw new Error('Not found');
+    })()
+  );
 
-  // Fallback to publicnode Connection
   try {
-    const fallbackConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
-    const primary = await getPrimaryDomain(fallbackConn, publicKeyObj).catch(() => null);
-    if (primary && primary.reverse) return primary.reverse + '.sol';
-    const reverse = await performReverseLookup(fallbackConn, publicKeyObj).catch(() => null);
-    if (reverse) return reverse + '.sol';
-  } catch (e) {
+    const winner = await Promise.any(queries);
+    if (winner) {
+      domainReverseCache.set(keyStr, winner);
+      return winner;
+    }
+  } catch (e) {}
 
-  }
   return null;
 }

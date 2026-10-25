@@ -657,8 +657,7 @@ export default function App() {
   // Detect stale rates — warn user if rates are older than RATE_STALENESS_MS
   const ratesAreStale = ratesTimestamp != null && (Date.now() - ratesTimestamp) > RATE_STALENESS_MS;
 
-  // Resolve .sol domains with on-chain ownership re-verification via NameRegistryState.
-  // Raw addresses now validated with new PublicKey() + isOnCurve() — garbage strings rejected.
+  // Resolve .sol domains with fast multi-RPC resolution and on-chain ownership re-verification
   useEffect(() => {
     let cancelled = false;
     async function checkDomain() {
@@ -671,7 +670,8 @@ export default function App() {
           if (cancelled) return;
           // Secondary on-chain ownership verification to prevent MITM substitution
           try {
-            const { pubkey: domainKey } = getDomainKeySync(recipient);
+            const cleanDomain = recipient.replace(/\.sol$/, '').trim();
+            const { pubkey: domainKey } = getDomainKeySync(cleanDomain);
             const registry = await NameRegistryState.retrieve(connection, domainKey);
             if (cancelled) return;
             const resolvedBase58 = address.toBase58();
@@ -682,8 +682,7 @@ export default function App() {
               return;
             }
           } catch (verifyErr) {
-            // Registry verification unavailable — still proceed but note it
-            
+            // Registry verification unavailable — still proceed
           }
           if (!cancelled) setResolvedAddress(address.toBase58());
         } catch (err) {
@@ -712,7 +711,7 @@ export default function App() {
         setResolveError(null);
       }
     }
-    const t = setTimeout(checkDomain, 500);
+    const t = setTimeout(checkDomain, 200);
     return () => { cancelled = true; clearTimeout(t); };
   }, [recipient, connection]);
 
@@ -1059,6 +1058,15 @@ export default function App() {
   useEffect(() => {
     if (effectiveConnected && effectivePublicKey) {
       const pubkeyStr = effectivePublicKey.toBase58();
+      // Check cached domain or tag from localStorage immediately for 0ms instant display on connect!
+      const cachedDomain = localStorage.getItem('fw_domain');
+      const cachedTag = localStorage.getItem('fw_fiat_tag');
+      if (cachedDomain) {
+        setWalletDomain(cachedDomain.endsWith('.sol') ? cachedDomain : `${cachedDomain}.sol`);
+      } else if (cachedTag) {
+        setWalletDomain(cachedTag.startsWith('$') ? cachedTag : `$${cachedTag}`);
+      }
+
       // Use sessionStorage (tab-scoped) with a 1-hour TTL to limit persistence.
       const TTL_MS = 60 * 60 * 1000; // 1 hour
       try {
