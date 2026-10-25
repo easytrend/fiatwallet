@@ -391,6 +391,17 @@ export default function App() {
     });
   }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);
 
+  // Keep fw_wallet_pubkey in localStorage in sync with the active wallet.
+  // This is read by MainActivity.java showNativeConnectDialog() to populate
+  // the native Android connect dialog that appears on top of the dApp WebView.
+  useEffect(() => {
+    if (effectivePublicKey && effectiveConnected) {
+      localStorage.setItem('fw_wallet_pubkey', effectivePublicKey.toBase58());
+    } else {
+      localStorage.removeItem('fw_wallet_pubkey');
+    }
+  }, [effectivePublicKey, effectiveConnected]);
+
   // Listen for FiatWallet adapter events and onboarding requests
   useEffect(() => {
     // Legacy manual-flow events (still used by other code paths)
@@ -1109,6 +1120,14 @@ export default function App() {
           if (winner) {
             setWalletDomain(winner);
             sessionStorage.setItem(`sns_${pubkeyStr}`, JSON.stringify({ domain: winner, ts: Date.now() }));
+            // Persist for native connect dialog (showNativeConnectDialog in MainActivity.java)
+            if (winner.startsWith('$')) {
+              localStorage.setItem('fw_fiat_tag', winner.slice(1));
+              localStorage.removeItem('fw_domain');
+            } else {
+              localStorage.setItem('fw_domain', winner.replace(/\.sol$/, ''));
+              localStorage.removeItem('fw_fiat_tag');
+            }
           }
         } catch (e) {
           
@@ -1129,6 +1148,9 @@ export default function App() {
     if (internalWallet.isActive) {
       internalWallet.lock();
     }
+    localStorage.removeItem('fw_wallet_pubkey');
+    localStorage.removeItem('fw_fiat_tag');
+    localStorage.removeItem('fw_domain');
     setGuestBypass(false);
     setIsGuestMode(false);
   }
