@@ -44,6 +44,12 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+
+import java.util.Arrays;
+import java.util.HashSet;
+
 /**
  * FiatWallet MainActivity
  *
@@ -440,7 +446,7 @@ public class MainActivity extends BridgeActivity {
      * Shows a native Android AlertDialog on top of the open dApp WebView to ask the
      * user to approve or reject a wallet connection from the dApp.
      * Required because when the native dApp WebView is overlaying the screen, any React
-     * modals in the Capacitor WebView are completely invisible — they only appear AFTER
+     * modals in the Capacitor WebView are completely invisible ï¿½ they only appear AFTER
      * the user closes the dApp (the behaviour seen in Images 3 and 4).
      */
     private void showNativeConnectDialog(final String reqId, final String origin, final String dAppTitle) {
@@ -657,11 +663,6 @@ public class MainActivity extends BridgeActivity {
                 @Override
                 public void onPageStarted(WebView view, String pageUrl, Bitmap favicon) {
                     super.onPageStarted(view, pageUrl, favicon);
-                    // Inject provider BEFORE the dApp's own scripts run.
-                    // This prevents MWA "We can't find a wallet" dialogs on Jupiter,
-                    // Raydium, etc. â€” they will detect window.solana (our provider)
-                    // immediately and skip the MWA fallback entirely.
-                    view.evaluateJavascript(providerScript, null);
                     if (dAppSearchBar != null && !dAppSearchBar.hasFocus()) {
                         dAppSearchBar.setText(pageUrl);
                     }
@@ -670,7 +671,6 @@ public class MainActivity extends BridgeActivity {
                         dAppProgressBar.setProgress(15);
                     }
                 }
-
                 @Override
                 public void onPageFinished(WebView view, String pageUrl) {
                     super.onPageFinished(view, pageUrl);
@@ -768,6 +768,18 @@ public class MainActivity extends BridgeActivity {
             rootView.requestLayout();
             rootView.invalidate();
 
+            // Register provider script to run at DOCUMENT START â€” before ANY page scripts.
+            // This is the only reliable way to inject window.solana before Jupiter/Raydium
+            // initialise their wallet adapters. onPageStarted/onPageFinished injection runs
+            // AFTER page scripts and causes the MWA "We can't find a wallet" error.
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                WebViewCompat.addDocumentStartJavaScript(
+                    dAppWebView,
+                    providerScript,
+                    new HashSet<>(Arrays.asList("*"))
+                );
+            }
+
             dAppWebView.loadUrl(initialUrl);
         } catch (Exception e) {
             e.printStackTrace();
@@ -808,7 +820,7 @@ public class MainActivity extends BridgeActivity {
                     // sees the prompt immediately without having to close the dApp.
                     showNativeConnectDialog(reqId, origin, title);
                 } else {
-                    // No dApp overlay — use the React DAppApprovalModal in the Capacitor WebView.
+                    // No dApp overlay ï¿½ use the React DAppApprovalModal in the Capacitor WebView.
                     String js = "window.dispatchEvent(new CustomEvent('fiatwallet:native-connect-request', " +
                                 "{ detail: { reqId: '" + reqId + "', origin: '" + escapeJs(origin) + "', title: '" + escapeJs(title) + "' } }));";
                     getBridge().getWebView().evaluateJavascript(js, null);
