@@ -396,6 +396,40 @@ public class MainActivity extends BridgeActivity {
             "    };" +
             "    window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', { detail: { register: reg } }));" +
             "  } catch(e) {}" +
+            // Relay adapter events fired by the dApp's own FiatWalletAdapter instance back to the
+            // parent Capacitor WebView so unlock/onboard UI can be shown. Without this, clicking
+            // "FiatWallet" in an external dApp's wallet modal silently returns to the onboarding
+            // page (Image 2 -> Image 3) because the parent never sees the adapter-needs-* events.
+            "  window.addEventListener('fiatwallet:adapter-needs-unlock', function() {" +
+            "    if (window.FiatWalletBridge && window.FiatWalletBridge.requestConnect) {" +
+            "      var reqId = 'unlock_' + Date.now();" +
+            "      window.FiatWalletBridge.requestConnect(reqId, window.location.origin, document.title || 'dApp');" +
+            "    }" +
+            "  });" +
+            "  window.addEventListener('fiatwallet:adapter-needs-onboard', function() {" +
+            "    if (window.FiatWalletBridge && window.FiatWalletBridge.requestConnect) {" +
+            "      var reqId = 'onboard_' + Date.now();" +
+            "      window.FiatWalletBridge.requestConnect(reqId, window.location.origin, document.title || 'dApp');" +
+            "    }" +
+            "  });" +
+            // Intercept the dApp's own fiatwallet:approval-request events (from its own injected
+            // provider in fiatwalletProvider.js) and immediately resolve them by calling
+            // provider.connect() via our bridge — this lets the dApp's React wallet adapter
+            // think the connection succeeded without showing a second approval overlay in the dApp.
+            "  window.addEventListener('fiatwallet:approval-request', function(e) {" +
+            "    if (!e.detail || e.detail.type !== 'connect') return;" +
+            "    if (window.FiatWalletBridge && window.FiatWalletBridge.requestConnect) {" +
+            "      var reqId = e.detail.reqId || ('apr_' + Date.now());" +
+            "      pendingRequests[reqId] = {" +
+            "        resolve: function(res) {" +
+            "          var pub = res && res.publicKey ? (typeof res.publicKey === 'string' ? res.publicKey : res.publicKey.toString()) : '';" +
+            "          if (pub && e.detail.resolve) { e.detail.resolve({ publicKey: new PublicKey(pub) }); }" +
+            "        }," +
+            "        reject: function(err) { if (e.detail.reject) { e.detail.reject(err); } }" +
+            "      };" +
+            "      window.FiatWalletBridge.requestConnect(reqId, e.detail.data && e.detail.data.origin ? e.detail.data.origin : window.location.origin, document.title || 'dApp');" +
+            "    }" +
+            "  });" +
             "})();";
     }
 
@@ -624,7 +658,30 @@ public class MainActivity extends BridgeActivity {
                     Uri reqUri = request.getUrl();
                     if (reqUri != null) {
                         String scheme = reqUri.getScheme();
-                        if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
+                        if (scheme != null) {
+                            // Intercept MWA and FiatWallet deeplinks internally — send to Capacitor
+                            // WebView as a custom event instead of starting an external Android
+                            // activity (which causes the Android "Open with" chooser and the MWA
+                            // "We can't find a wallet" error dialog).
+                            if (scheme.equalsIgnoreCase("solana-wallet") || scheme.equalsIgnoreCase("fiatwallet")) {
+                                String uriStr = escapeJs(reqUri.toString());
+                                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-mwa', " +
+                                            "{ detail: { uri: '" + uriStr + "', origin: '" + escapeJs(view.getUrl() != null ? view.getUrl() : "") + "' } }));";
+                                if (getBridge() != null && getBridge().getWebView() != null) {
+                                    getBridge().getWebView().evaluateJavascript(js, null);
+                                }
+                                return true; // consumed — do not let Android handle it externally
+                            }
+                            // wc:// and other non-http schemes: forward to Capacitor WebView event bus
+                            if (scheme.equalsIgnoreCase("wc")) {
+                                String js = "window.dispatchEvent(new CustomEvent('fiatwallet:deep-link-wc', " +
+                                            "{ detail: { uri: '" + escapeJs(reqUri.toString()) + "' } }));";
+                                if (getBridge() != null && getBridge().getWebView() != null) {
+                                    getBridge().getWebView().evaluateJavascript(js, null);
+                                }
+                                return true;
+                            }
+                            // All other non-http(s) schemes: let Android handle them
                             try {
                                 Intent intent = new Intent(Intent.ACTION_VIEW, reqUri);
                                 startActivity(intent);

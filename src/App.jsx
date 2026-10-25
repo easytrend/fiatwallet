@@ -423,19 +423,60 @@ export default function App() {
       setShowApkInstallModal(true);
     };
 
+    // Handle MWA solana-wallet:// deeplinks routed back from the native dApp WebView.
+    // When a dApp inside the DApp Explorer fires a MWA connection request, MainActivity.java
+    // intercepts the solana-wallet:// URI and dispatches this event to the Capacitor WebView.
+    // We respond by showing the connection approval modal directly inside the app.
+    const handleMwaDeepLink = (e) => {
+      const uri = e.detail?.uri || '';
+      const origin = e.detail?.origin || 'Solana dApp (in-app browser)';
+      // Extract a human-readable dApp name from the origin URL if available
+      let dAppTitle = 'Solana dApp';
+      try {
+        const host = new URL(origin).hostname.replace(/^www\./, '');
+        dAppTitle = host.split('.')[0];
+        dAppTitle = dAppTitle.charAt(0).toUpperCase() + dAppTitle.slice(1);
+      } catch {}
+
+      // If wallet is not active, prompt unlock/onboard first
+      if (!effectiveConnected) {
+        if (internalWallet.hasVault) {
+          // Has vault — just show the unlock screen; after unlocking the dApp will still be open
+          setVisible(false);
+          setShowOnboardModal(null);
+          setGuestBypass(false);
+        } else {
+          setVisible(true); // Open external wallet connect modal
+        }
+        return;
+      }
+
+      // Wallet is active — dispatch a native connect request approval event
+      // so DAppApprovalModal shows and the user can approve/reject
+      window.dispatchEvent(new CustomEvent('fiatwallet:native-connect-request', {
+        detail: {
+          reqId: 'mwa_' + Date.now(),
+          origin,
+          title: dAppTitle + ' (Mobile Wallet Adapter)',
+        }
+      }));
+    };
+
     window.addEventListener('fiatwallet:open-onboard', handleOpenOnboard);
     window.addEventListener('fiatwallet:open-unlock', handleOpenUnlock);
     window.addEventListener('fiatwallet:adapter-needs-unlock', handleAdapterNeedsUnlock);
     window.addEventListener('fiatwallet:adapter-needs-onboard', handleAdapterNeedsOnboard);
     window.addEventListener('fiatwallet:adapter-needs-install', handleAdapterNeedsInstall);
+    window.addEventListener('fiatwallet:deep-link-mwa', handleMwaDeepLink);
     return () => {
       window.removeEventListener('fiatwallet:open-onboard', handleOpenOnboard);
       window.removeEventListener('fiatwallet:open-unlock', handleOpenUnlock);
       window.removeEventListener('fiatwallet:adapter-needs-unlock', handleAdapterNeedsUnlock);
       window.removeEventListener('fiatwallet:adapter-needs-onboard', handleAdapterNeedsOnboard);
       window.removeEventListener('fiatwallet:adapter-needs-install', handleAdapterNeedsInstall);
+      window.removeEventListener('fiatwallet:deep-link-mwa', handleMwaDeepLink);
     };
-  }, [setVisible]);
+  }, [setVisible, effectiveConnected, internalWallet.hasVault]);
 
   // Gate flags (evaluated at render time at the bottom of the component — NEVER return early before hooks!)
   // Only show full-screen unlock if the user already has a saved encrypted vault on this device and hasn't bypassed.

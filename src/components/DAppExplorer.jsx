@@ -206,45 +206,94 @@ const DAppExplorer = forwardRef(function DAppExplorer({
     }
   }, [selectedDApp]);
 
-  // Attempt to inject provider and notify on iframe load
+  // Send wallet state to dApp iframe via postMessage on load
   const handleIframeLoad = () => {
     try {
       const cw = iframeRef.current?.contentWindow;
-      if (cw) {
-        try {
-          cw.solana = window.solana || fiatwalletProvider;
-          cw.fiatwallet = window.fiatwallet || fiatwalletProvider;
-          cw.phantom = { solana: window.solana || fiatwalletProvider };
-          cw.solflare = window.solana || fiatwalletProvider;
-        } catch {}
-        cw.postMessage({
-          type: 'fiatwallet:wallet-ready',
-          publicKey: effectivePublicKey ? effectivePublicKey.toBase58() : null,
-        }, '*');
-      }
-    } catch (err) {
-      // Cross-origin SOP may restrict direct assignment; postMessage bridge handles message requests
-    }
+      if (!cw) return;
+
+      // Try direct injection (works if same-origin)
+      try {
+        cw.solana = window.solana || fiatwalletProvider;
+        cw.fiatwallet = window.fiatwallet || fiatwalletProvider;
+        cw.phantom = { solana: window.solana || fiatwalletProvider };
+        cw.solflare = window.solana || fiatwalletProvider;
+      } catch {}
+
+      // Announce wallet-ready with public key so the dApp's wallet-standard
+      // listener and any custom fiatwallet:wallet-ready handler can react
+      const pubKeyStr = effectivePublicKey ? effectivePublicKey.toBase58() : null;
+      cw.postMessage({ type: 'fiatwallet:wallet-ready', publicKey: pubKeyStr }, '*');
+      // Also send in solana-standard format that @solana/wallet-adapter dApps expect
+      cw.postMessage({ type: 'solana:wallet-ready', publicKey: pubKeyStr }, '*');
+    } catch {}
   };
 
-  // Listen for message events from dApps inside iframe
+  // Listen for message events from dApps inside the iframe (cross-origin postMessage bridge)
   useEffect(() => {
     const handleWindowMessage = (event) => {
       const { data, source } = event || {};
       if (!data || typeof data !== 'object') return;
+      // Only accept messages from our own iframe
+      if (iframeRef.current && source !== iframeRef.current.contentWindow) return;
 
-      if (data.type === 'fiatwallet:request' || data.type === 'solana:request' || data.method === 'connect') {
-        if (!effectivePublicKey) return;
+      const msgType = data.type || data.method || data.action || '';
+      const isConnectRequest =
+        data.target === 'fiatwallet-inpage-request' ||
+        msgType === 'fiatwallet:request' ||
+        msgType === 'solana:request' ||
+        msgType === 'solana-wallet-adapter-connect' ||
+        msgType === 'connect' ||
+        data.method === 'connect' ||
+        (data.jsonrpc === '2.0' && typeof data.method === 'string' && data.method.includes('connect'));
+
+      if (!isConnectRequest) return;
+
+      // If no wallet is active, tell the parent app to prompt unlock or connect
+      if (!effectivePublicKey || !effectiveConnected) {
+        // Fire the same events FiatWalletAdapter fires so App.jsx shows the right UI
+        window.dispatchEvent(new CustomEvent(
+          (typeof localStorage !== 'undefined' && localStorage.getItem('fw_vault_v1'))
+            ? 'fiatwallet:adapter-needs-unlock'
+            : 'fiatwallet:adapter-needs-onboard'
+        ));
+        // Reply with a temporary pending status so the dApp does not time out immediately
         source?.postMessage({
+          target: 'fiatwallet-inpage-response',
+          id: data.id,
+          error: 'Wallet locked — please unlock FiatWallet first.',
+        }, '*');
+        return;
+      }
+
+      // Wallet is active — show the DApp approval modal via fiatwalletProvider
+      fiatwalletProvider._requestApproval('connect', {
+        origin: event.origin || 'Solana dApp',
+        title: selectedDApp?.name || 'dApp',
+      }).then(() => {
+        // Approved — reply with public key in both response formats
+        const pubKeyStr = effectivePublicKey.toBase58();
+        source?.postMessage({
+          target: 'fiatwallet-inpage-response',
           type: 'solana:response',
           id: data.id,
-          result: { publicKey: effectivePublicKey.toBase58() }
+          result: { publicKey: pubKeyStr },
         }, '*');
-      }
+        // Also re-send wallet-ready in case the dApp is polling
+        source?.postMessage({ type: 'fiatwallet:wallet-ready', publicKey: pubKeyStr }, '*');
+        source?.postMessage({ type: 'solana:wallet-ready', publicKey: pubKeyStr }, '*');
+      }).catch((err) => {
+        source?.postMessage({
+          target: 'fiatwallet-inpage-response',
+          id: data.id,
+          error: err?.message || 'User rejected connection',
+        }, '*');
+      });
     };
+
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
-  }, [effectivePublicKey]);
+  }, [effectivePublicKey, effectiveConnected, selectedDApp?.name]);
 
   // Filtered dApps
   const filteredDApps = useMemo(() => {
