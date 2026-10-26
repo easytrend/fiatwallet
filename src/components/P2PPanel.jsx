@@ -1930,9 +1930,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   useEffect(() => {
     if (mode === 'sell') {
       const available = selectableTokens.some(t => t.symbol === selectedToken.symbol || t.mint === selectedToken.mint);
-      const isLiveToken = isManualOfframp
-        ? (selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT')
-        : (selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT' || selectedToken.symbol === 'SOL');
+      const isLiveToken = selectedToken.symbol === 'USDC' || selectedToken.symbol === 'USDT' || selectedToken.symbol === 'SOL';
       if ((!available || !isLiveToken) && selectableTokens.length > 0) {
         const usdc = selectableTokens.find(t => t.symbol === 'USDC') || selectableTokens[0];
         setSelectedToken(usdc);
@@ -2151,7 +2149,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   const displayOnrampAmount = useMemo(() => {
     if (parsedOnrampAmt <= 0) return 0;
-    if (liveSelectedToken.symbol === 'USDC') {
+    if (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') {
       return netOnrampCrypto; // Net amount received after 0.4% platform fee deduction
     }
     if (jupiterQuote && jupiterQuote.outAmount) {
@@ -2161,7 +2159,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   }, [parsedOnrampAmt, liveSelectedToken, netOnrampCrypto, jupiterQuote]);
 
   const displayOnrampRate = useMemo(() => {
-    if (liveSelectedToken.symbol === 'USDC') {
+    if (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') {
       return onrampNgnRate;
     }
     if (displayOnrampAmount > 0) {
@@ -2569,7 +2567,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       }
 
       const rawTx = Uint8Array.from(atob(base64Tx), c => c.charCodeAt(0));
-      const signedTx = await signTransaction(transaction, {
+      const deserializedTx = VersionedTransaction.deserialize(rawTx);
+      const signedTx = await signTransaction(deserializedTx, {
         action: 'Swap',
         inputSymbol: liveSelectedToken?.symbol,
         outputSymbol: 'USDC',
@@ -2800,15 +2799,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const bankObj = apiBanks.find(b => getBankNameString(b) === effectiveBankName);
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
 
-      // Create PajCash off-ramp order using USDC mint
-      const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+      // Create PajCash off-ramp order using selected token mint
+      const selectedMint = liveSelectedToken.mint || (liveSelectedToken.symbol === 'USDT' ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
       const order = await createOfframpOrder(
         {
           bank: bankId,
           accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
           currency: selectedCountry.currency,
           fiatAmount: parsedAmt,
-          mint: usdcMint,
+          amount: liveSelectedToken.symbol === 'SOL' ? estCryptoAmount : undefined,
+          mint: selectedMint,
           chain: 'SOLANA',
           fee: platformFee,
           webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
@@ -2821,9 +2821,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
 
       // Ensure protocol fee is always intact and included
-      const finalCryptoAmount = order?.amount && Number(order.amount) >= baseCryptoAmount
-        ? Number(order.amount)
-        : baseCryptoAmount;
+      // For SOL (or non-1:1 stables), order.amount is in USD and must never overwrite baseCryptoAmount in SOL
+      const finalCryptoAmount = (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT')
+        && order?.amount && Number(order.amount) >= baseCryptoAmount
+          ? Number(order.amount)
+          : baseCryptoAmount;
 
       // Net crypto converted to fiat payout (gross crypto minus platform fee)
       // Ensures usd_value in Supabase accurately reflects the net amount actually offramped
@@ -2834,7 +2836,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       logP2PTransaction({
         userAddress: effectiveUserWallet,
         orderId: order.id,
-        tokenSymbol: 'USDC',
+        tokenSymbol: liveSelectedToken.symbol,
         cryptoAmount: finalCryptoAmount,
         fiatCurrency: selectedCountry.currency,
         fiatAmount: parsedAmt,
@@ -2854,7 +2856,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         cryptoAmount: finalCryptoAmount,
         fiatAmount: parsedAmt,
         fiatText: fiatAmountText,
-        tokenSymbol: 'USDC',
+        tokenSymbol: liveSelectedToken.symbol,
         bankName: effectiveBankName,
         accountNumber: effectiveAcctNumber,
         accountName: effectiveAcctName,
@@ -2888,6 +2890,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           fiatAmount: parsedAmt,
           fiatText: fiatAmountText,
           cryptoAmount: finalCryptoAmount,
+          tokenSymbol: liveSelectedToken.symbol,
           recipientTag: recipientTagInput || (resolvedTagData?.tag_name) || null,
           date: new Date(),
           txSignature: txSig || null,
@@ -2933,7 +2936,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       if (manualPollingTimerRef.current) clearInterval(manualPollingTimerRef.current);
       manualPollingTimerRef.current = setInterval(async () => {
         try {
-          const res = await getTransaction(sessionToken, order.id);
+          const res = await getTransaction(effectiveAuthToken, order.id);
           const data = res?.data || res;
           const st = (data?.status || '').toUpperCase();
           if (st === 'COMPLETED' || st === 'SUCCESSFUL' || st === 'CONFIRMED') {
@@ -3001,6 +3004,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
           currency: selectedCountry.currency,
           fiatAmount: parsedAmt,
+          amount: liveSelectedToken.symbol === 'SOL' ? estCryptoAmount : undefined,
           mint: liveSelectedToken.mint,
           chain: 'SOLANA',
           fee: platformFee,
@@ -3034,9 +3038,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const depositPubkey = new PublicKey(order.address);
 
       // Ensure protocol fee is always intact and included
-      const finalSendAmount = order?.amount && Number(order.amount) >= baseCryptoAmount
-        ? Number(order.amount)
-        : baseCryptoAmount;
+      // For SOL (or non-1:1 stables), order.amount is in USD and must never overwrite baseCryptoAmount in SOL
+      const finalSendAmount = (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT')
+        && order?.amount && Number(order.amount) >= baseCryptoAmount
+          ? Number(order.amount)
+          : baseCryptoAmount;
 
       if (liveSelectedToken.symbol === 'SOL') {
         const lamports = Math.round(finalSendAmount * 1e9);
@@ -4466,7 +4472,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                       >
                         ✕
                       </button>
-                      fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.4% platform fee</strong> (min 0.10 USDC) on every offramp to serve you better.
+                      fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.4% platform fee</strong> (min $0.10) on every offramp to serve you better.
                     </div>
                   )}
                 </div>
@@ -4545,14 +4551,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
                     {tokenOpen && (
                       <div className="drop-menu" style={{ right: 0, minWidth: '220px', zIndex: 100 }}>
-                        {selectableTokens.filter(t => isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL')).map(t => {
-                          const isLiveToken = isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL');
+                        {selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL').map(t => {
+                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL';
                           return (
                             <div
                               key={t.mint || t.symbol}
                               className={`drop-item ${liveSelectedToken.symbol === t.symbol ? 'sel' : ''}`}
                               onClick={() => {
-                                if (!isLiveToken) return; // block non-stables
+                                if (!isLiveToken) return;
                                 setSelectedToken(t);
                                 setTokenOpen(false);
                               }}
@@ -4638,10 +4644,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                             const feeInToken = tokenPriceUsd > 0 ? estimatedFeeUsdc / tokenPriceUsd : estimatedFeeUsdc;
                             rawMaxCrypto = Math.max(0, balance - feeInToken);
                           } else {
-                            // 0.10 USDC minimum floor applies
+                            // 0.10 USD minimum floor applies
                             const feeInToken = tokenPriceUsd > 0 ? 0.10 / tokenPriceUsd : 0.10;
                             rawMaxCrypto = Math.max(0, balance - feeInToken);
                           }
+                          // Reserve gas buffer for native SOL so simulation never fails on rent/fees
+                          const gasReserve = liveSelectedToken.symbol === 'SOL' ? 0.005 : 0;
+                          rawMaxCrypto = Math.max(0, rawMaxCrypto - gasReserve);
                           if (offrampInputMode === 'crypto') {
                             const maxCrypto = Math.floor(rawMaxCrypto * 10000) / 10000;
                             setAmount(maxCrypto > 0 ? maxCrypto.toString() : '0');
@@ -4682,10 +4691,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 <div style={{ marginTop: '6px', fontSize: '11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: 'rgba(255,255,255,0.38)' }}>
                     1 {liveSelectedToken.symbol} = {selectedCountry.symbol}{ngnRate.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {liveSelectedToken.symbol === 'SOL' && (
+                      <span style={{ marginLeft: '4px', color: 'var(--lime)', fontSize: '10px' }}>(Live Rate)</span>
+                    )}
                   </span>
                   <span style={{ color: 'rgba(255,255,255,0.38)', fontWeight: '500' }}>
                     Limit: $0.6 - $5,000
                   </span>
+                </div>
+              )}
+              {liveSelectedToken.symbol === 'SOL' && (
+                <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.3' }}>
+                  • SOL price updates in real-time and locks upon order placement.
                 </div>
               )}
             </div>
@@ -4774,7 +4791,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   : (amount && Number(amount) > 0 && baseCryptoAmount > 0
                     ? (offrampInputMode === 'crypto'
                         ? `SEND ${selectedCountry.symbol}${parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : `SEND ${baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} ${isManualOfframp ? 'USDC' : liveSelectedToken.symbol}`
+                        : `SEND ${baseCryptoAmount.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} ${liveSelectedToken.symbol}`
                       )
                     : 'Send'
                   )
@@ -4830,7 +4847,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     >
                       ✕
                     </button>
-                    fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.4% platform fee</strong> (min 0.10 USDC) on every onramp to serve you better.
+                    fiatwallet takes a <strong style={{ color: 'var(--lime)' }}>0.4% platform fee</strong> (min $0.10) on every onramp to serve you better.
                   </div>
                 )}
               </div>
@@ -4955,8 +4972,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                           ))
                         )
                       ) : (
-                        selectableTokens.filter(t => isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL')).map(t => {
-                          const isLiveToken = isManualOfframp ? (t.symbol === 'USDC' || t.symbol === 'USDT') : (t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL');
+                        selectableTokens.filter(t => t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL').map(t => {
+                          const isLiveToken = t.symbol === 'USDC' || t.symbol === 'USDT' || t.symbol === 'SOL';
                           return (
                             <div
                               key={t.mint || t.symbol}
@@ -6252,14 +6269,29 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             {/* Header */}
             <div style={{ textAlign: 'center' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', margin: '0 0 4px 0' }}>
-                {manualOrderStatus === 'CONFIRMED' ? 'Transfer Confirmed' : 'Send USDC Deposit'}
+                {manualOrderStatus === 'CONFIRMED' ? 'Transfer Confirmed' : `Send ${manualOrder.tokenSymbol || 'USDC'} Deposit`}
               </h3>
               <p style={{ fontSize: '11.5px', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.4' }}>
                 {manualOrderStatus === 'CONFIRMED'
                   ? `₦${manualOrder.fiatText} has been transferred to your bank.`
-                  : `Transfer exactly ${Number(Number(manualOrder.cryptoAmount).toFixed(6))} USDC on the Solana network to deposit.`}
+                  : `Transfer exactly ${Number(Number(manualOrder.cryptoAmount).toFixed(6))} ${manualOrder.tokenSymbol || 'USDC'} on the Solana network to deposit.`}
               </p>
             </div>
+
+            {manualOrder.tokenSymbol === 'SOL' && manualOrderStatus !== 'CONFIRMED' && (
+              <div style={{
+                background: 'rgba(234, 179, 8, 0.08)',
+                border: '1px solid rgba(234, 179, 8, 0.25)',
+                borderRadius: '10px',
+                padding: '8px 10px',
+                fontSize: '11px',
+                color: '#facc15',
+                lineHeight: '1.4',
+                textAlign: 'center'
+              }}>
+                • SOL exchange rate is locked for this order. Complete the transfer before the countdown expires to ensure your exact payout.
+              </div>
+            )}
 
             {/* Amount Box */}
             <div style={{
@@ -6276,7 +6308,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   Amount to send
                 </div>
                 <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--lime)', fontFamily: 'var(--mono)' }}>
-                  {Number(Number(manualOrder.cryptoAmount).toFixed(6))} <span style={{ fontSize: '14px' }}>USDC</span>
+                  {Number(Number(manualOrder.cryptoAmount).toFixed(6))} <span style={{ fontSize: '14px' }}>{manualOrder.tokenSymbol || 'USDC'}</span>
                 </div>
               </div>
               <button
@@ -6335,7 +6367,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>
                   Deposit Address (Solana)
                 </span>
-                <span style={{ fontSize: '10px', color: 'var(--lime)', fontWeight: '600' }}>USDC Only</span>
+                <span style={{ fontSize: '10px', color: 'var(--lime)', fontWeight: '600' }}>{manualOrder.tokenSymbol || 'USDC'} Only</span>
               </div>
               <div style={{
                 fontSize: '12px',
@@ -6407,7 +6439,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   ? 'Crypto deposit detected on Solana! PajCash is now processing the payout to your bank account.'
                   : manualOrderStatus === 'EXPIRED'
                   ? 'The 30-minute deposit window has expired. Please cancel and create a fresh order.'
-                  : 'Waiting for you to transfer USDC to the address above. This card will update live once detected.'}
+                  : `Waiting for you to transfer ${manualOrder.tokenSymbol || 'USDC'} to the address above. This card will update live once detected.`}
               </div>
             </div>
 
@@ -6539,7 +6571,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 ₦{Number(manualConfirmCard.fiatAmount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </div>
               <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', marginTop: '4px' }}>
-                ≈ {Number(Number(manualConfirmCard.cryptoAmount).toFixed(6))} USDC
+                ≈ {Number(Number(manualConfirmCard.cryptoAmount).toFixed(6))} {manualConfirmCard.tokenSymbol || 'USDC'}
               </div>
             </div>
 
