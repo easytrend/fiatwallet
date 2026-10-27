@@ -2149,7 +2149,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   const displayOnrampAmount = useMemo(() => {
     if (parsedOnrampAmt <= 0) return 0;
-    if (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') {
+    if (liveSelectedToken.symbol === 'USDC') {
       return netOnrampCrypto; // Net amount received after 0.4% platform fee deduction
     }
     if (jupiterQuote && jupiterQuote.outAmount) {
@@ -2159,7 +2159,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   }, [parsedOnrampAmt, liveSelectedToken, netOnrampCrypto, jupiterQuote]);
 
   const displayOnrampRate = useMemo(() => {
-    if (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') {
+    if (liveSelectedToken.symbol === 'USDC') {
       return onrampNgnRate;
     }
     if (displayOnrampAmount > 0) {
@@ -2469,8 +2469,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const signedTx = await signTransaction(transaction, {
         action: 'Swap',
-        inputSymbol: liveSelectedToken?.symbol,
-        outputSymbol: 'USDC',
+        inputSymbol: 'USDC',
+        outputSymbol: liveSelectedToken?.symbol,
       });
 
       if (relayerPayer) {
@@ -2644,10 +2644,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
-      // Onramp only: autoswap USDC → target when user buys a non-stable (e.g. SOL). Stables stay as USDC from PajCash.
-      const isOnrampStable =
-        liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT';
-      if (!isOnrampStable && publicKey && !isManualOfframp) {
+      // Onramp: autoswap USDC → target for any token except USDC
+      const isUsdc = liveSelectedToken.symbol === 'USDC';
+      if (!isUsdc && publicKey && !isManualOfframp) {
         step = 'swapping';
         setOnrampStatus('swapping');
         await triggerJupiterSwap();
