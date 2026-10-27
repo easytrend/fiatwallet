@@ -281,8 +281,8 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
               </p>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                 <span style={{ color: 'var(--text3, #64748b)' }}>Fee Payer:</span>
-                <span style={{ fontFamily: 'var(--mono, monospace)', color: isGasless ? 'var(--lime, #a3e635)' : 'white', fontWeight: '700' }}>
-                  {isGasless ? 'FiatWallet Relayer (Gasless ✓)' : `${pubKeyStr.slice(0, 6)}...${pubKeyStr.slice(-6)}`}
+                <span style={{ fontFamily: 'var(--mono, monospace)', color: 'white', fontWeight: '700' }}>
+                  {pubKeyStr.slice(0, 6)}...{pubKeyStr.slice(-6)}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -292,34 +292,18 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
                   fontWeight: '700',
                   fontFamily: 'var(--mono, monospace)'
                 }}>
-                  {isGasless ? '0 SOL (Sponsored • Free)' : '~0.000005 SOL'}
+                  {isGasless ? '0 SOL' : '~0.000005 SOL'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text3, #64748b)' }}>Your Balance:</span>
-                <span style={{ color: (!isGasless && (solBalance || 0) < 0.005) ? '#f87171' : 'white', fontWeight: '700' }}>
+                <span style={{ color: 'white', fontWeight: '700' }}>
                   {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
                 </span>
               </div>
             </div>
           )}
         </div>
-
-        {/* Warning if balance is low for transactions (only when user must pay gas) */}
-        {!isConnect && !isGasless && (solBalance || 0) < 0.005 && (
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '10px',
-            padding: '8px 12px',
-            color: '#f87171',
-            fontSize: '11px',
-            marginBottom: '16px',
-            lineHeight: '1.4'
-          }}>
-            Low SOL balance ({Number(solBalance || 0).toFixed(4)} SOL). You may need more SOL for transaction gas and token accounts.
-          </div>
-        )}
 
         {/* Action Buttons */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>

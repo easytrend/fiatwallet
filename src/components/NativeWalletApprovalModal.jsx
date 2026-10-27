@@ -54,8 +54,6 @@ export default function NativeWalletApprovalModal({
   const fiatAmount = meta?.fiatAmount;
   const fiatSymbol = meta?.fiatSymbol || '$';
 
-  const isLowBalance = !isGasless && (solBalance || 0) < 0.003;
-
   return (
     <div style={{
       position: 'fixed',
@@ -123,28 +121,26 @@ export default function NativeWalletApprovalModal({
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{
                 fontFamily: 'var(--mono, monospace)',
-                color: isGasless ? 'var(--lime, #a3e635)' : 'white',
+                color: 'white',
                 fontWeight: '700'
               }}>
-                {isGasless ? 'FiatWallet Relayer (Gasless ✓)' : shortAddr}
+                {shortAddr}
               </span>
-              {!isGasless && (
-                <button
-                  type="button"
-                  onClick={handleCopyAddr}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: copied ? 'var(--lime)' : 'var(--cyan)',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    padding: 0,
-                    fontWeight: '600',
-                  }}
-                >
-                  {copied ? '✓' : 'Copy'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleCopyAddr}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: copied ? 'var(--lime)' : 'var(--cyan)',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontWeight: '600',
+                }}
+              >
+                {copied ? '✓' : 'Copy'}
+              </button>
             </div>
           </div>
 
@@ -155,37 +151,17 @@ export default function NativeWalletApprovalModal({
               fontWeight: '700',
               fontFamily: 'var(--mono, monospace)'
             }}>
-              {isGasless ? '0 SOL (Sponsored • Free)' : '~0.000005 SOL'}
+              {isGasless ? '0 SOL' : '~0.000005 SOL'}
             </span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Wallet Balance:</span>
-            <span style={{ color: (!isGasless && isLowBalance) ? '#f87171' : 'white', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
+            <span style={{ color: 'white', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
               {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
             </span>
           </div>
         </div>
-
-        {/* Gasless Relayer Banner */}
-        {isGasless && (
-          <div style={{
-            background: 'rgba(163, 230, 53, 0.08)',
-            border: '1px solid rgba(163, 230, 53, 0.25)',
-            borderRadius: '10px',
-            padding: '7px 12px',
-            color: 'var(--lime, #a3e635)',
-            fontSize: '11px',
-            marginBottom: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontWeight: '600',
-          }}>
-            <span>✓</span>
-            <span>Network gas sponsored by FiatWallet Relayer (Zero SOL fee)</span>
-          </div>
-        )}
 
         {/* Transaction Breakdown Card */}
         <div style={{
@@ -280,22 +256,6 @@ export default function NativeWalletApprovalModal({
             </div>
           )}
         </div>
-
-        {/* Low balance warning (only when user must pay network fee) */}
-        {!isGasless && isLowBalance && (
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '10px',
-            padding: '8px 12px',
-            color: '#f87171',
-            fontSize: '11px',
-            marginBottom: '14px',
-            lineHeight: '1.4',
-          }}>
-            • Warning: Low SOL balance ({Number(solBalance || 0).toFixed(4)} SOL). You need SOL for gas and account creation.
-          </div>
-        )}
 
         {/* Security Notice */}
         <div style={{
