@@ -17,7 +17,7 @@ import TokenModal from './components/TokenModal';
 import Toast from './components/Toast';
 import FloatClaimWidget from './components/FloatClaimWidget';
 import SwapWidget from './components/SwapWidget';
-import P2PPanel from './components/P2PPanel';
+import P2PPanel, { getRelayEndpoint } from './components/P2PPanel';
 import SupportChat from './components/SupportChat';
 import { logTransaction, getFiatTagByWallet } from './services/supabase';
 import WalletOnboard from './components/WalletOnboard';
@@ -859,7 +859,11 @@ export default function App() {
     setWalletLoading(true);
     setWalletError(null);
 
+    const cachedRpc = typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null;
+    const proxyRpc = getRelayEndpoint('/api/rpc');
     const rpcEndpoints = [
+      cachedRpc,
+      proxyRpc,
       connection?.rpcEndpoint,
       'https://solana-rpc.publicnode.com',
       'https://rpc.ankr.com/solana',

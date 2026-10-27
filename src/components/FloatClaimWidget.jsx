@@ -6,7 +6,7 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, Transaction, SystemProgram, SystemInstruction, Connection, VersionedTransaction, TransactionMessage, TransactionInstruction } from '@solana/web3.js';
 import { createCloseAccountInstruction } from '@solana/spl-token';
 import { logTransaction } from '../services/supabase';
-
+import { getRelayEndpoint } from './P2PPanel';
 
 const PUMP_PROGRAM_ID = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
 const PUMP_AMM_PROGRAM_ID = new PublicKey("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA");
@@ -154,10 +154,43 @@ export default function FloatClaimWidget({
     if (!effectivePublicKey) return;
     setLoading(true);
     try {
+      const pubkeyStr = effectivePublicKey.toBase58();
+
+      // 1. Try serverless scan_rent endpoint first (authenticated via Helius RPC on Vercel)
+      let scannedFromServer = false;
+      try {
+        const scanUrl = getRelayEndpoint(`/api/scan_rent?wallet=${encodeURIComponent(pubkeyStr)}`);
+        const res = await fetch(scanUrl, {
+          headers: { 'Accept': 'application/json' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            setEmptyAccounts(data.emptyAccounts || []);
+            setRealBondingCurveCashback(data.bondingCurveCashback || 0);
+            setRealAmmCashback(data.ammCashback || 0);
+            setRealCashback(data.realCashback || 0);
+            scannedFromServer = true;
+          }
+        }
+      } catch (serverErr) {
+        console.warn('[FloatClaimWidget] Server scan_rent error, falling back to direct RPC:', serverErr?.message);
+      }
+
+      if (scannedFromServer) {
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fallback to client-side multi-RPC scan if serverless call failed
       const tokenProgramId = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
       const token2022ProgramId = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
+      const cachedRpc = typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null;
+      const proxyRpc = getRelayEndpoint('/api/rpc');
       const rpcEndpoints = [
+        cachedRpc,
+        proxyRpc,
         connection?.rpcEndpoint,
         'https://solana-rpc.publicnode.com',
         'https://rpc.ankr.com/solana',
@@ -431,13 +464,15 @@ export default function FloatClaimWidget({
 
         // 1. Close each empty account — rent SOL flows to user's wallet within this tx
         chunk.forEach(acc => {
+          const accountPubkey = acc.pubkey instanceof PublicKey ? acc.pubkey : new PublicKey(acc.pubkey);
+          const progId = acc.programId instanceof PublicKey ? acc.programId : new PublicKey(acc.programId);
           tx.add(
             createCloseAccountInstruction(
-              acc.pubkey,
+              accountPubkey,
               publicKey,    // destination — user receives freed rent
               publicKey,    // authority
               [],
-              acc.programId
+              progId
             )
           );
         });

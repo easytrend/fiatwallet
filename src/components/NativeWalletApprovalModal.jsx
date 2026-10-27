@@ -174,8 +174,8 @@ export default function NativeWalletApprovalModal({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Network Fee:</span>
-                <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--lime, #a3e635)', fontFamily: 'var(--mono, monospace)' }}>
-                  0 SOL
+                <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--cyan, #22d3ee)', fontFamily: 'var(--mono, monospace)' }}>
+                  ~0.000005 SOL
                 </span>
               </div>
             </div>

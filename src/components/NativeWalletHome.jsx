@@ -122,60 +122,29 @@ export default function NativeWalletHome({
   }), [solBalance, liveSolPrice]);
 
   const moreTokens = useMemo(() => {
-    const heldMap = new Map();
-    if (walletTokenList) {
-      walletTokenList.forEach(t => {
-        if (t.symbol) heldMap.set(t.symbol, t);
-      });
-    }
-
-    // List all supported tokens from TOKENS (excluding SOL, USDC, USDT which are shown above)
-    const supportedList = TOKENS
-      .filter(t => t.symbol !== 'SOL' && t.symbol !== 'USDC' && t.symbol !== 'USDT')
+    if (!walletTokenList) return [];
+    // Only tokens actually available on the user's imported/created wallet with balance > 0
+    return walletTokenList
+      .filter(t => t.symbol !== 'SOL' && t.symbol !== 'USDC' && t.symbol !== 'USDT' && Number(t.balance || 0) > 0)
       .map(t => {
-        const held = heldMap.get(t.symbol);
         const knownMint = Object.values(KNOWN_MINTS).find(k => k.symbol === t.symbol);
-        const logoURI = held?.logoURI || knownMint?.logoURI || KNOWN_LOGOS[t.symbol] || '';
+        const logoURI = t.logoURI || knownMint?.logoURI || KNOWN_LOGOS[t.symbol] || '';
         const price = liveRates?.crypto?.[t.symbol] || t.price || 0;
         return {
           symbol: t.symbol,
-          name: t.name,
-          balance: held ? (held.balance || 0) : 0,
+          name: t.name || t.symbol,
+          balance: Number(t.balance || 0),
           price: price,
           logoURI: logoURI,
-          mint: held?.mint || Object.keys(KNOWN_MINTS).find(k => KNOWN_MINTS[k].symbol === t.symbol) || null,
+          mint: t.mint || null,
         };
+      })
+      .sort((a, b) => {
+        const bBal = (b.balance || 0) * (b.price || 1);
+        const aBal = (a.balance || 0) * (a.price || 1);
+        if (bBal !== aBal) return bBal - aBal;
+        return a.symbol.localeCompare(b.symbol);
       });
-
-    // Also include any extra SPL tokens held in the wallet that are not in TOKENS
-    const extraHeld = [];
-    if (walletTokenList) {
-      walletTokenList.forEach(t => {
-        if (
-          t.symbol !== 'SOL' &&
-          t.symbol !== 'USDC' &&
-          t.symbol !== 'USDT' &&
-          !TOKENS.some(x => x.symbol === t.symbol)
-        ) {
-          extraHeld.push({
-            symbol: t.symbol,
-            name: t.name || t.symbol,
-            balance: t.balance || 0,
-            price: t.price || liveRates?.crypto?.[t.symbol] || 0,
-            logoURI: t.logoURI || '',
-            mint: t.mint || null,
-          });
-        }
-      });
-    }
-
-    // Sort: tokens with balance > 0 first, then alphabetically
-    return [...supportedList, ...extraHeld].sort((a, b) => {
-      const bBal = (b.balance || 0) * (b.price || 1);
-      const aBal = (a.balance || 0) * (a.price || 1);
-      if (bBal !== aBal) return bBal - aBal;
-      return a.symbol.localeCompare(b.symbol);
-    });
   }, [walletTokenList, liveRates]);
 
   // ── Portfolio in USD (not USDC label) ───────────────────────────────────
