@@ -745,11 +745,16 @@ export default function App() {
     return [solEntry, ...splEntries];
   }, [effectiveConnected, solBalance, splTokens, liveRates]);
 
-  // When connected → show ONLY real wallet tokens
-  // When not connected → show full static list so user can browse
+  // Show all supported tokens merged with actual wallet balances, plus any extra held tokens
   const selectableTokens = useMemo(() => {
-    if (effectiveConnected && walletTokenList) return walletTokenList;
-    return TOKENS.map(t => {
+    const heldMap = new Map();
+    if (effectiveConnected && walletTokenList) {
+      walletTokenList.forEach(t => {
+        if (t.symbol) heldMap.set(t.symbol, t);
+      });
+    }
+
+    const supportedList = TOKENS.map(t => {
       let logoURI = '';
       if (t.symbol === 'SOL') {
         logoURI = 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png';
@@ -757,8 +762,35 @@ export default function App() {
         const knownMint = Object.values(KNOWN_MINTS).find(k => k.symbol === t.symbol);
         logoURI = (knownMint?.logoURI && isTrustedImageOrigin(knownMint.logoURI)) ? knownMint.logoURI : '';
       }
-      return { ...t, price: getLiveTokPrice(t.symbol) || t.price || 0, logoURI };
+      const held = heldMap.get(t.symbol);
+      return {
+        ...t,
+        price: getLiveTokPrice(t.symbol) || t.price || 0,
+        balance: held ? held.balance : (effectiveConnected ? 0 : undefined),
+        logoURI: held?.logoURI || logoURI,
+        mint: held?.mint || Object.keys(KNOWN_MINTS).find(k => KNOWN_MINTS[k].symbol === t.symbol) || undefined,
+      };
     });
+
+    const extraTokens = [];
+    if (effectiveConnected && walletTokenList) {
+      walletTokenList.forEach(t => {
+        if (!TOKENS.some(x => x.symbol === t.symbol)) {
+          extraTokens.push(t);
+        }
+      });
+    }
+
+    const all = [...supportedList, ...extraTokens];
+    if (effectiveConnected) {
+      return all.sort((a, b) => {
+        const aHas = (a.balance || 0) > 0 ? 1 : 0;
+        const bHas = (b.balance || 0) > 0 ? 1 : 0;
+        if (bHas !== aHas) return bHas - aHas;
+        return 0;
+      });
+    }
+    return all;
   }, [effectiveConnected, walletTokenList, liveRates]);
 
   const tok = token ? ((walletTokenList && walletTokenList.find(t => t.symbol === token))
@@ -2293,7 +2325,7 @@ export default function App() {
       {showModal && (
         <TokenModal
           filteredTokens={selectableTokens}
-          connected={connected}
+          connected={effectiveConnected}
           walletLoading={walletLoading}
           solBalance={solBalance}
           onSelect={sym => {

@@ -2470,6 +2470,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const signedTx = await signTransaction(transaction, {
         action: 'Swap',
+        amount: (Number(freshQuote.inAmount) / 10**6).toString(),
+        symbol: 'USDC',
+        expectedOutput: `${(Number(freshQuote.outAmount) / 10**(liveSelectedToken?.decimals || 9)).toFixed(4)} ${liveSelectedToken?.symbol}`,
         inputSymbol: 'USDC',
         outputSymbol: liveSelectedToken?.symbol,
         gasless: Boolean(relayerPayer),
@@ -2573,6 +2576,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const deserializedTx = VersionedTransaction.deserialize(rawTx);
       const signedTx = await signTransaction(deserializedTx, {
         action: 'Swap',
+        amount: (Number(freshQuote.inAmount) / 10**(liveSelectedToken?.decimals || 9)).toString(),
+        symbol: liveSelectedToken?.symbol,
+        expectedOutput: `${(Number(freshQuote.outAmount) / 10**6).toFixed(4)} USDC`,
         inputSymbol: liveSelectedToken?.symbol,
         outputSymbol: 'USDC',
         gasless: Boolean(relayerPayer),

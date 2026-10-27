@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import fiatpayLogo from '../assets/fiatpay.png';
+import { TOKENS, KNOWN_MINTS } from '../data/tokens';
 
 const KNOWN_LOGOS = {
   USDC: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
@@ -120,12 +121,62 @@ export default function NativeWalletHome({
     mint:     null,
   }), [solBalance, liveSolPrice]);
 
-  const otherTokens = useMemo(() => {
-    if (!walletTokenList) return [];
-    return walletTokenList.filter(
-      t => t.symbol !== 'USDC' && t.symbol !== 'USDT' && t.symbol !== 'SOL'
-    );
-  }, [walletTokenList]);
+  const moreTokens = useMemo(() => {
+    const heldMap = new Map();
+    if (walletTokenList) {
+      walletTokenList.forEach(t => {
+        if (t.symbol) heldMap.set(t.symbol, t);
+      });
+    }
+
+    // List all supported tokens from TOKENS (excluding SOL, USDC, USDT which are shown above)
+    const supportedList = TOKENS
+      .filter(t => t.symbol !== 'SOL' && t.symbol !== 'USDC' && t.symbol !== 'USDT')
+      .map(t => {
+        const held = heldMap.get(t.symbol);
+        const knownMint = Object.values(KNOWN_MINTS).find(k => k.symbol === t.symbol);
+        const logoURI = held?.logoURI || knownMint?.logoURI || KNOWN_LOGOS[t.symbol] || '';
+        const price = liveRates?.crypto?.[t.symbol] || t.price || 0;
+        return {
+          symbol: t.symbol,
+          name: t.name,
+          balance: held ? (held.balance || 0) : 0,
+          price: price,
+          logoURI: logoURI,
+          mint: held?.mint || Object.keys(KNOWN_MINTS).find(k => KNOWN_MINTS[k].symbol === t.symbol) || null,
+        };
+      });
+
+    // Also include any extra SPL tokens held in the wallet that are not in TOKENS
+    const extraHeld = [];
+    if (walletTokenList) {
+      walletTokenList.forEach(t => {
+        if (
+          t.symbol !== 'SOL' &&
+          t.symbol !== 'USDC' &&
+          t.symbol !== 'USDT' &&
+          !TOKENS.some(x => x.symbol === t.symbol)
+        ) {
+          extraHeld.push({
+            symbol: t.symbol,
+            name: t.name || t.symbol,
+            balance: t.balance || 0,
+            price: t.price || liveRates?.crypto?.[t.symbol] || 0,
+            logoURI: t.logoURI || '',
+            mint: t.mint || null,
+          });
+        }
+      });
+    }
+
+    // Sort: tokens with balance > 0 first, then alphabetically
+    return [...supportedList, ...extraHeld].sort((a, b) => {
+      const bBal = (b.balance || 0) * (b.price || 1);
+      const aBal = (a.balance || 0) * (a.price || 1);
+      if (bBal !== aBal) return bBal - aBal;
+      return a.symbol.localeCompare(b.symbol);
+    });
+  }, [walletTokenList, liveRates]);
 
   // ── Portfolio in USD (not USDC label) ───────────────────────────────────
   const totalPortfolioUSD = useMemo(() => {
@@ -133,9 +184,9 @@ export default function NativeWalletHome({
     total += (usdcToken.balance || 0) * (usdcToken.price || 1);
     total += (usdtToken.balance || 0) * (usdtToken.price || 1);
     total += (solToken.balance  || 0) * (solToken.price  || 0);
-    otherTokens.forEach(t => { total += (t.balance || 0) * (t.price || 0); });
+    moreTokens.forEach(t => { total += (t.balance || 0) * (t.price || 0); });
     return total;
-  }, [usdcToken, usdtToken, solToken, otherTokens]);
+  }, [usdcToken, usdtToken, solToken, moreTokens]);
 
   // local-currency equivalent
   const fiatValue = totalPortfolioUSD * (currRate || 1);
@@ -522,9 +573,9 @@ export default function NativeWalletHome({
           />
 
           {/* Expandable Other Tokens */}
-          {showAllAssets && otherTokens.map((t, idx) => (
+          {showAllAssets && moreTokens.map((t, idx) => (
             <AssetRow
-              key={t.mint || idx}
+              key={t.mint || t.symbol || idx}
               asset={t}
               onSelect={() => {
                 if (onSelectToken) onSelectToken(t.symbol);
@@ -534,7 +585,7 @@ export default function NativeWalletHome({
           ))}
 
           {/* Show / Hide All Assets Toggle */}
-          {otherTokens.length > 0 && (
+          {moreTokens.length > 0 && (
             <button
               onClick={() => setShowAllAssets(!showAllAssets)}
               style={{
@@ -554,7 +605,7 @@ export default function NativeWalletHome({
             >
               {showAllAssets
                 ? '▲ Hide additional tokens'
-                : `▼ Show all assets (${otherTokens.length} more)`}
+                : `▼ View more tokens (${moreTokens.length})`}
             </button>
           )}
         </div>

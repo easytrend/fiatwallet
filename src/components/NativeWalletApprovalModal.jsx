@@ -1,12 +1,48 @@
-import { useState } from 'react';
-
 /**
  * NativeWalletApprovalModal
  *
  * Appears whenever an imported (self-custodial) wallet is requested to sign or send a transaction.
- * Gives a breakdown of the transaction (type, amounts, recipient, network fee, and gas).
+ * Gives an ultra-clean, minimal breakdown matching user requirements.
  * Allows the user to explicitly Approve or Reject before private keys sign on-chain.
  */
+
+function formatTokenAmount(val) {
+  if (val == null || val === '') return '0';
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num)) return String(val);
+  const rounded = parseFloat(num.toFixed(4));
+  return rounded.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  });
+}
+
+function formatExpectedOutput(out, defaultSym = '') {
+  if (!out) return defaultSym ? `+0 ${defaultSym}` : '+0';
+  let str = String(out).trim();
+  str = str.replace(/^[~+]\s*/, '');
+  const parts = str.split(' ');
+  if (parts.length >= 2) {
+    const num = parseFloat(parts[0]);
+    if (!isNaN(num)) {
+      const cleanNum = parseFloat(num.toFixed(4)).toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4,
+      });
+      return `+${cleanNum} ${parts.slice(1).join(' ')}`;
+    }
+  }
+  const num = parseFloat(str);
+  if (!isNaN(num)) {
+    const cleanNum = parseFloat(num.toFixed(4)).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 4,
+    });
+    return defaultSym ? `+${cleanNum} ${defaultSym}` : `+${cleanNum}`;
+  }
+  return `+${str}`;
+}
+
 export default function NativeWalletApprovalModal({
   isOpen,
   request,
@@ -15,12 +51,9 @@ export default function NativeWalletApprovalModal({
   onApprove,
   onReject,
 }) {
-  const [copied, setCopied] = useState(false);
-
   if (!isOpen || !request) return null;
 
   const { meta, breakdown, transaction } = request;
-  const shortAddr = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}` : '';
 
   const RELAYER_PUBKEY = '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
   const txFeePayer = transaction?.feePayer?.toBase58?.() ||
@@ -28,31 +61,27 @@ export default function NativeWalletApprovalModal({
     transaction?.message?.accountKeys?.[0]?.toBase58?.() ||
     breakdown?.feePayer;
 
+  const action = meta?.action || breakdown?.actionType || 'Transaction';
+  const isOfframp = action === 'Offramp Payout' || action === 'Offramp';
+  const isSwap = action === 'Swap';
+
   const isGasless = Boolean(
+    isOfframp ||
+    isSwap ||
     meta?.gasless ||
     breakdown?.isGasless ||
-    meta?.action === 'Offramp Payout' ||
-    (meta?.action === 'Swap' && txFeePayer && txFeePayer !== walletAddress) ||
     (txFeePayer && walletAddress && txFeePayer !== walletAddress) ||
     (txFeePayer === RELAYER_PUBKEY)
   );
 
-  const handleCopyAddr = () => {
-    if (!walletAddress) return;
-    navigator.clipboard.writeText(walletAddress);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const action = meta?.action || breakdown?.actionType || 'Transaction';
-  const amount = meta?.amount || breakdown?.amount;
+  const rawAmount = meta?.amount ?? breakdown?.amount;
   const symbol = meta?.symbol || breakdown?.symbol || 'SOL';
   const recipient = meta?.recipient || breakdown?.recipient;
-  const route = meta?.route || breakdown?.route;
   const expectedOutput = meta?.expectedOutput;
+  const outputSymbol = meta?.outputSymbol;
   const recipientsCount = meta?.recipientsCount;
-  const fiatAmount = meta?.fiatAmount;
-  const fiatSymbol = meta?.fiatSymbol || '$';
+
+  const cleanAmount = formatTokenAmount(rawAmount);
 
   return (
     <div style={{
@@ -63,7 +92,7 @@ export default function NativeWalletApprovalModal({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2147483647, // Always above any modal, card, or explorer view
+      zIndex: 2147483647,
       padding: '16px',
       fontFamily: 'var(--ff, sans-serif)',
       color: 'var(--text, #f0f6ff)',
@@ -82,7 +111,7 @@ export default function NativeWalletApprovalModal({
         animation: 'scaleUp 0.2s ease-out',
       }}>
         {/* Header with Self-Custodial Badge */}
-        <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{
             width: '48px',
             height: '48px',
@@ -107,152 +136,99 @@ export default function NativeWalletApprovalModal({
           </div>
         </div>
 
-        {/* Account & Gas Overview */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '14px',
-          padding: '12px 14px',
-          marginBottom: '14px',
-          fontSize: '12px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Fee Payer:</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                fontFamily: 'var(--mono, monospace)',
-                color: 'white',
-                fontWeight: '700'
-              }}>
-                {shortAddr}
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyAddr}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: copied ? 'var(--lime)' : 'var(--cyan)',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontWeight: '600',
-                }}
-              >
-                {copied ? '✓' : 'Copy'}
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-            <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Estimated Network Fee:</span>
-            <span style={{
-              color: isGasless ? 'var(--lime, #a3e635)' : 'var(--cyan, #22d3ee)',
-              fontWeight: '700',
-              fontFamily: 'var(--mono, monospace)'
-            }}>
-              {isGasless ? '0 SOL' : '~0.000005 SOL'}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Wallet Balance:</span>
-            <span style={{ color: 'white', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
-              {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
-            </span>
-          </div>
-        </div>
-
-        {/* Transaction Breakdown Card */}
+        {/* Clean Transaction Breakdown Card */}
         <div style={{
           background: 'linear-gradient(180deg, rgba(163, 230, 53, 0.06) 0%, rgba(17, 30, 56, 0.6) 100%)',
           border: '1px solid rgba(163, 230, 53, 0.22)',
           borderRadius: '16px',
-          padding: '16px',
-          marginBottom: '16px',
+          padding: '18px 16px',
+          marginBottom: '18px',
         }}>
-          <div style={{
-            fontSize: '11px',
-            color: 'var(--text3)',
-            fontWeight: '700',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            marginBottom: '8px',
-          }}>
-            {action} Breakdown
-          </div>
-
-          {/* Action Specific Display */}
-          {action === 'Swap' ? (
+          {isOfframp ? (
+            /* Offramp View: Net token leaving wallet & Network fee 0 SOL */
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text2)' }}>Selling:</span>
-                <span style={{ fontSize: '15px', fontWeight: '800', color: 'white', fontFamily: 'var(--mono)' }}>
-                  {amount} {symbol}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text2, #94a3b8)' }}>Sending:</span>
+                <span style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--mono, monospace)' }}>
+                  -{cleanAmount} {symbol}
                 </span>
               </div>
-              {expectedOutput && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text2)' }}>Receiving (Est.):</span>
-                  <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--lime, #a3e635)', fontFamily: 'var(--mono)' }}>
-                    {expectedOutput}
-                  </span>
-                </div>
-              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text3)' }}>DEX Aggregator:</span>
-                <span style={{ fontSize: '12px', color: 'white', fontWeight: '600' }}>
-                  {route || 'Jupiter DEX V6'}
+                <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Network Fee:</span>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--lime, #a3e635)', fontFamily: 'var(--mono, monospace)' }}>
+                  0 SOL
+                </span>
+              </div>
+            </div>
+          ) : isSwap ? (
+            /* Swap View: +token amount to receive & -token amount to send & Network fee 0 SOL */
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text2, #94a3b8)' }}>Receiving:</span>
+                <span style={{ fontSize: '17px', fontWeight: '800', color: 'var(--lime, #a3e635)', fontFamily: 'var(--mono, monospace)' }}>
+                  {formatExpectedOutput(expectedOutput, outputSymbol)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text2, #94a3b8)' }}>Sending:</span>
+                <span style={{ fontSize: '17px', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--mono, monospace)' }}>
+                  -{cleanAmount} {symbol}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Network Fee:</span>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--lime, #a3e635)', fontFamily: 'var(--mono, monospace)' }}>
+                  0 SOL
                 </span>
               </div>
             </div>
           ) : action === 'Bulk Send' ? (
+            /* Bulk Send View */
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text2)' }}>Total Sending:</span>
-                <span style={{ fontSize: '15px', fontWeight: '800', color: 'white', fontFamily: 'var(--mono)' }}>
-                  {amount} {symbol}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text2, #94a3b8)' }}>Total Sending:</span>
+                <span style={{ fontSize: '17px', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--mono, monospace)' }}>
+                  -{cleanAmount} {symbol}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Destinations:</span>
+                <span style={{ fontSize: '13px', color: 'var(--lime, #a3e635)', fontWeight: '700' }}>
+                  {recipientsCount ? `${recipientsCount} Recipients` : 'Multiple addresses'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text3)' }}>Destinations:</span>
-                <span style={{ fontSize: '12px', color: 'var(--lime, #a3e635)', fontWeight: '700' }}>
-                  {recipientsCount ? `${recipientsCount} Recipients` : 'Multiple addresses'}
+                <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Network Fee:</span>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: isGasless ? 'var(--lime, #a3e635)' : 'var(--cyan, #22d3ee)', fontFamily: 'var(--mono, monospace)' }}>
+                  {isGasless ? '0 SOL' : '~0.000005 SOL'}
                 </span>
               </div>
             </div>
           ) : (
+            /* Standard Send / Other Action View */
             <div>
-              {amount && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text2)' }}>
-                    {action === 'Offramp Payout' ? 'Payout Amount:' : 'Transfer Amount:'}
-                  </span>
-                  <span style={{ fontSize: '16px', fontWeight: '800', color: 'white', fontFamily: 'var(--mono)' }}>
-                    {amount} {symbol}
-                  </span>
-                </div>
-              )}
-              {fiatAmount && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text3)' }}>
-                    {action === 'Offramp Payout' ? 'Bank Settlement:' : 'Fiat Valuation:'}
-                  </span>
-                  <span style={{ fontSize: '13px', color: 'var(--lime)', fontWeight: '700' }}>
-                    {fiatSymbol}{fiatAmount}
+              {cleanAmount && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text2, #94a3b8)' }}>Sending:</span>
+                  <span style={{ fontSize: '17px', fontWeight: '800', color: '#ffffff', fontFamily: 'var(--mono, monospace)' }}>
+                    -{cleanAmount} {symbol}
                   </span>
                 </div>
               )}
               {recipient && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text3)' }}>
-                    {action === 'Offramp Payout' ? 'Bank Account / Tag:' : 'Recipient:'}
-                  </span>
-                  <span style={{ fontSize: '12px', color: 'white', fontFamily: 'var(--mono)', fontWeight: '600' }}>
-                    {recipient.length > 20 && !recipient.includes('•') ? `${recipient.slice(0, 8)}...${recipient.slice(-6)}` : recipient}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Recipient:</span>
+                  <span style={{ fontSize: '12px', color: '#ffffff', fontFamily: 'var(--mono, monospace)', fontWeight: '600' }}>
+                    {recipient.length > 20 && !recipient.includes('•') ? `${recipient.slice(0, 6)}...${recipient.slice(-6)}` : recipient}
                   </span>
                 </div>
               )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Network Fee:</span>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: isGasless ? 'var(--lime, #a3e635)' : 'var(--cyan, #22d3ee)', fontFamily: 'var(--mono, monospace)' }}>
+                  {isGasless ? '0 SOL' : '~0.000005 SOL'}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -262,7 +238,7 @@ export default function NativeWalletApprovalModal({
           fontSize: '11px',
           color: 'var(--text3, rgba(240, 246, 255, 0.5))',
           textAlign: 'center',
-          marginBottom: '16px',
+          marginBottom: '18px',
           lineHeight: '1.4',
         }}>
           ✓ Non-Custodial: You have full control. Review the breakdown above before approving.

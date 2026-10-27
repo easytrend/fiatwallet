@@ -157,33 +157,39 @@ export default function FloatClaimWidget({
       const tokenProgramId = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
       const token2022ProgramId = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
+      const rpcEndpoints = [
+        connection?.rpcEndpoint,
+        'https://solana-rpc.publicnode.com',
+        'https://rpc.ankr.com/solana',
+        'https://api.mainnet-beta.solana.com',
+      ].filter(Boolean);
+
       let results = [];
       let success = false;
 
-      // SECURITY FIX: Use only the wallet-adapter's connection object
-      // Do NOT fall back to hardcoded public RPC endpoints. This prevents split-brain scenarios
-      // where balance checks occur against different RPC nodes with potentially inconsistent state.
-      try {
-        const [resp1, resp2] = await Promise.all([
-          connection.getParsedTokenAccountsByOwner(effectivePublicKey, { programId: tokenProgramId }),
-          connection.getParsedTokenAccountsByOwner(effectivePublicKey, { programId: token2022ProgramId }).catch(() => ({ value: [] })),
-        ]);
-        results = [
-          ...((resp1 && resp1.value) || []).map(a => ({ ...a, programId: tokenProgramId })),
-          ...((resp2 && resp2.value) || []).map(a => ({ ...a, programId: token2022ProgramId }))
-        ];
-        success = true;
-        
-      } catch (err) {
-        console.error('Failed to scan accounts:', err.message);
-        throw err;
+      for (const rpc of rpcEndpoints) {
+        try {
+          const conn = (rpc === connection?.rpcEndpoint) ? connection : new Connection(rpc, 'confirmed');
+          const [resp1, resp2] = await Promise.all([
+            conn.getParsedTokenAccountsByOwner(effectivePublicKey, { programId: tokenProgramId }),
+            conn.getParsedTokenAccountsByOwner(effectivePublicKey, { programId: token2022ProgramId }).catch(() => ({ value: [] })),
+          ]);
+          results = [
+            ...((resp1 && resp1.value) || []).map(a => ({ ...a, programId: tokenProgramId })),
+            ...((resp2 && resp2.value) || []).map(a => ({ ...a, programId: token2022ProgramId }))
+          ];
+          success = true;
+          break;
+        } catch (err) {
+          console.warn(`Failed to scan accounts on ${rpc}:`, err?.message);
+        }
       }
 
       if (success) {
         const empties = [];
 
-      // Standard SPL token account = 165 bytes → 3480 * (165+128) * 2 = 2,039,280 lamports
-      const STANDARD_SPL_RENT = 2_039_280;
+        // Standard SPL token account = 165 bytes → 3480 * (165+128) * 2 = 2,039,280 lamports
+        const STANDARD_SPL_RENT = 2_039_280;
 
         results.forEach(acc => {
           const parsed = acc.account.data.parsed.info;
@@ -212,21 +218,29 @@ export default function FloatClaimWidget({
       );
 
       let pdaInfo = null;
-      // SECURITY FIX: Use only wallet-adapter connection for PDA queries
-      // Do NOT fall back to hardcoded RPC endpoints
-      try {
-        pdaInfo = await connection.getAccountInfo(userVolumeAccumulator);
-      } catch (err) {
-        
+      let activeConn = connection;
+      for (const rpc of rpcEndpoints) {
+        try {
+          const conn = (rpc === connection?.rpcEndpoint) ? connection : new Connection(rpc, 'confirmed');
+          pdaInfo = await conn.getAccountInfo(userVolumeAccumulator);
+          if (pdaInfo) {
+            activeConn = conn;
+            break;
+          }
+        } catch (err) {
+          // try next RPC
+        }
       }
 
       let bondingCurveVal = 0;
       if (pdaInfo) {
-        // SECURITY FIX: Use wallet-adapter connection instead of fallback RPCs
-        const rentExemptMin = await connection.getMinimumBalanceForRentExemption(pdaInfo.data.length);
-        const claimableLamports = Math.max(0, pdaInfo.lamports - rentExemptMin);
-        bondingCurveVal = claimableLamports / 1e9;
-        
+        try {
+          const rentExemptMin = await activeConn.getMinimumBalanceForRentExemption(pdaInfo.data.length);
+          const claimableLamports = Math.max(0, pdaInfo.lamports - rentExemptMin);
+          bondingCurveVal = claimableLamports / 1e9;
+        } catch (e) {
+          console.warn('Rent exemption check failed:', e?.message);
+        }
       }
 
       // Fetch Real PumpSwap AMM Cashback (WSOL ATA balance of userAmmVolumeAccumulator)
@@ -245,15 +259,17 @@ export default function FloatClaimWidget({
       );
 
       let ammVal = 0;
-      try {
-        const tokenBalanceResp = await connection.getTokenAccountBalance(ammWsolAta);
-        if (tokenBalanceResp && tokenBalanceResp.value) {
-          ammVal = tokenBalanceResp.value.uiAmount || 0;
+      for (const rpc of rpcEndpoints) {
+        try {
+          const conn = (rpc === connection?.rpcEndpoint) ? connection : new Connection(rpc, 'confirmed');
+          const tokenBalanceResp = await conn.getTokenAccountBalance(ammWsolAta);
+          if (tokenBalanceResp && tokenBalanceResp.value) {
+            ammVal = tokenBalanceResp.value.uiAmount || 0;
+            break;
+          }
+        } catch (err) {
+          // ATA does not exist if they have never traded AMM, or RPC error
         }
-        
-      } catch (err) {
-        // ATA does not exist if they have never graded/traded AMM or no rewards, perfectly expected
-        
       }
 
       setRealBondingCurveCashback(bondingCurveVal);
@@ -261,7 +277,7 @@ export default function FloatClaimWidget({
       setRealCashback(bondingCurveVal + ammVal);
 
     } catch (err) {
-      
+      console.warn('fetchClaimables general error:', err?.message);
     }
     setLoading(false);
   };
