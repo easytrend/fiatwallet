@@ -2457,7 +2457,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // relayerPayer: when set, Jupiter builds the tx with the relayer as fee payer (index 0).
       // Both the user AND the relayer must sign before the tx can be broadcast.
       // The user signs here; relay_swap.js adds the relayer signature and broadcasts.
-      const relayerPayer = getEffectiveRelayerPublicKey() || undefined;
+      await getEffectiveRelayerConfigAsync().catch(() => {});
+      const relayerPayer = getEffectiveRelayerPublicKey() || import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
 
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
@@ -2471,6 +2472,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         action: 'Swap',
         inputSymbol: 'USDC',
         outputSymbol: liveSelectedToken?.symbol,
+        gasless: Boolean(relayerPayer),
       });
 
       if (relayerPayer) {
@@ -2560,7 +2562,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         throw new Error("Failed to retrieve quote from Jupiter.");
       }
 
-      const relayerPayer = getEffectiveRelayerPublicKey() || undefined;
+      await getEffectiveRelayerConfigAsync().catch(() => {});
+      const relayerPayer = getEffectiveRelayerPublicKey() || import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
       const base64Tx = await buildSwapTransaction(freshQuote, publicKey.toBase58(), relayerPayer);
       if (!base64Tx) {
         throw new Error("Failed to construct swap transaction.");
@@ -2572,6 +2575,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         action: 'Swap',
         inputSymbol: liveSelectedToken?.symbol,
         outputSymbol: 'USDC',
+        gasless: Boolean(relayerPayer),
       });
 
       if (relayerPayer) {
@@ -3015,7 +3019,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
 
       // 2. Check if server-side relayer is configured
-      const relayerPubkeyStr = import.meta.env.VITE_RELAYER_PUBLIC_KEY || getEffectiveRelayerPublicKey();
+      await getEffectiveRelayerConfigAsync().catch(() => {});
+      const relayerPubkeyStr = getEffectiveRelayerPublicKey() || import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
       let relayerPublicKey = null;
       let usingRelayer = false;
       if (relayerPubkeyStr) {
@@ -3138,6 +3143,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           : `${selectedBank} • ${accountNumber}`,
         fiatAmount: parsedAmt ? parsedAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined,
         fiatSymbol: selectedCountry?.symbol || '₦',
+        gasless: Boolean(usingRelayer),
       };
 
       if (usingRelayer && signTransaction) {
@@ -4647,8 +4653,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                             const feeInToken = tokenPriceUsd > 0 ? 0.10 / tokenPriceUsd : 0.10;
                             rawMaxCrypto = Math.max(0, balance - feeInToken);
                           }
-                          // Reserve gas buffer for native SOL so simulation never fails on rent/fees
-                          const gasReserve = liveSelectedToken.symbol === 'SOL' ? 0.005 : 0;
+                          // Reserve gas buffer for native SOL only if relayer is NOT active/available
+                          const isRelayerSponsoring = Boolean(getEffectiveRelayerPublicKey());
+                          const gasReserve = (!isRelayerSponsoring && liveSelectedToken.symbol === 'SOL') ? 0.005 : 0;
                           rawMaxCrypto = Math.max(0, rawMaxCrypto - gasReserve);
                           if (offrampInputMode === 'crypto') {
                             const maxCrypto = Math.floor(rawMaxCrypto * 10000) / 10000;

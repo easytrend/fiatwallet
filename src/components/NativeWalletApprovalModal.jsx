@@ -19,8 +19,23 @@ export default function NativeWalletApprovalModal({
 
   if (!isOpen || !request) return null;
 
-  const { meta, breakdown } = request;
+  const { meta, breakdown, transaction } = request;
   const shortAddr = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}` : '';
+
+  const RELAYER_PUBKEY = '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
+  const txFeePayer = transaction?.feePayer?.toBase58?.() ||
+    transaction?.message?.staticAccountKeys?.[0]?.toBase58?.() ||
+    transaction?.message?.accountKeys?.[0]?.toBase58?.() ||
+    breakdown?.feePayer;
+
+  const isGasless = Boolean(
+    meta?.gasless ||
+    breakdown?.isGasless ||
+    meta?.action === 'Offramp Payout' ||
+    (meta?.action === 'Swap' && txFeePayer && txFeePayer !== walletAddress) ||
+    (txFeePayer && walletAddress && txFeePayer !== walletAddress) ||
+    (txFeePayer === RELAYER_PUBKEY)
+  );
 
   const handleCopyAddr = () => {
     if (!walletAddress) return;
@@ -39,7 +54,7 @@ export default function NativeWalletApprovalModal({
   const fiatAmount = meta?.fiatAmount;
   const fiatSymbol = meta?.fiatSymbol || '$';
 
-  const isLowBalance = (solBalance || 0) < 0.003;
+  const isLowBalance = !isGasless && (solBalance || 0) < 0.003;
 
   return (
     <div style={{
@@ -106,41 +121,71 @@ export default function NativeWalletApprovalModal({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
             <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Fee Payer:</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontFamily: 'var(--mono, monospace)', color: 'white', fontWeight: '700' }}>
-                {shortAddr}
+              <span style={{
+                fontFamily: 'var(--mono, monospace)',
+                color: isGasless ? 'var(--lime, #a3e635)' : 'white',
+                fontWeight: '700'
+              }}>
+                {isGasless ? 'FiatWallet Relayer (Gasless ✓)' : shortAddr}
               </span>
-              <button
-                type="button"
-                onClick={handleCopyAddr}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: copied ? 'var(--lime)' : 'var(--cyan)',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontWeight: '600',
-                }}
-              >
-                {copied ? '✓' : 'Copy'}
-              </button>
+              {!isGasless && (
+                <button
+                  type="button"
+                  onClick={handleCopyAddr}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: copied ? 'var(--lime)' : 'var(--cyan)',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontWeight: '600',
+                  }}
+                >
+                  {copied ? '✓' : 'Copy'}
+                </button>
+              )}
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Estimated Network Fee:</span>
-            <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
-              ~0.000005 SOL
+            <span style={{
+              color: isGasless ? 'var(--lime, #a3e635)' : 'var(--cyan, #22d3ee)',
+              fontWeight: '700',
+              fontFamily: 'var(--mono, monospace)'
+            }}>
+              {isGasless ? '0 SOL (Sponsored • Free)' : '~0.000005 SOL'}
             </span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))' }}>Wallet Balance:</span>
-            <span style={{ color: isLowBalance ? '#f87171' : 'white', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
+            <span style={{ color: (!isGasless && isLowBalance) ? '#f87171' : 'white', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
               {solBalance != null ? Number(solBalance).toFixed(4) : '0.0000'} SOL
             </span>
           </div>
         </div>
+
+        {/* Gasless Relayer Banner */}
+        {isGasless && (
+          <div style={{
+            background: 'rgba(163, 230, 53, 0.08)',
+            border: '1px solid rgba(163, 230, 53, 0.25)',
+            borderRadius: '10px',
+            padding: '7px 12px',
+            color: 'var(--lime, #a3e635)',
+            fontSize: '11px',
+            marginBottom: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontWeight: '600',
+          }}>
+            <span>✓</span>
+            <span>Network gas sponsored by FiatWallet Relayer (Zero SOL fee)</span>
+          </div>
+        )}
 
         {/* Transaction Breakdown Card */}
         <div style={{
@@ -236,8 +281,8 @@ export default function NativeWalletApprovalModal({
           )}
         </div>
 
-        {/* Low balance warning */}
-        {isLowBalance && (
+        {/* Low balance warning (only when user must pay network fee) */}
+        {!isGasless && isLowBalance && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.3)',

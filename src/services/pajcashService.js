@@ -152,12 +152,14 @@ export async function fetchRemotePajConfig() {
   }
 }
 
+const DEFAULT_RELAYER_PUBLIC_KEY = '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
+
 export function getEffectiveRelayerPublicKey() {
   return (
     import.meta.env.VITE_RELAYER_PUBLIC_KEY ||
     remoteRelayerPublicKey ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('relayer_public_key') : null) ||
-    ''
+    DEFAULT_RELAYER_PUBLIC_KEY
   );
 }
 
@@ -174,8 +176,10 @@ export function getEffectiveUseOnrampRelayer() {
 }
 
 export async function getEffectiveRelayerConfigAsync() {
-  if (!getEffectiveRelayerPublicKey()) {
+  try {
     await fetchRemotePajConfig();
+  } catch (err) {
+    // Rely on environment and default constants
   }
   return {
     relayerPublicKey: getEffectiveRelayerPublicKey(),

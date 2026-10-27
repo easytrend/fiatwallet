@@ -102,6 +102,23 @@ export function parseTransactionBreakdown(tx, userAddress) {
     }
   }
 
+  const RELAYER_PUBKEY = '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
+  let feePayer = null;
+  if (tx.feePayer) {
+    feePayer = tx.feePayer.toBase58 ? tx.feePayer.toBase58() : String(tx.feePayer);
+  } else if (tx.message?.staticAccountKeys?.length > 0) {
+    const k = tx.message.staticAccountKeys[0];
+    feePayer = k?.toBase58 ? k.toBase58() : String(k);
+  } else if (tx.message?.accountKeys?.length > 0) {
+    const k = tx.message.accountKeys[0];
+    feePayer = k?.toBase58 ? k.toBase58() : String(k);
+  }
+
+  const isGasless = Boolean(
+    (feePayer && userKeyStr && feePayer !== userKeyStr) ||
+    (feePayer === RELAYER_PUBKEY)
+  );
+
   return {
     actionType,
     amount,
@@ -109,5 +126,7 @@ export function parseTransactionBreakdown(tx, userAddress) {
     recipient,
     route,
     details,
+    feePayer,
+    isGasless,
   };
 }
