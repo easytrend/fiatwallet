@@ -1,3 +1,5 @@
+import appLogo from '../assets/logo.png';
+
 /**
  * NativeWalletApprovalModal
  *
@@ -110,24 +112,19 @@ export default function NativeWalletApprovalModal({
         boxSizing: 'border-box',
         animation: 'scaleUp 0.2s ease-out',
       }}>
-        {/* Header with Self-Custodial Badge */}
+        {/* Header with App Logo */}
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'rgba(163, 230, 53, 0.15)',
-            border: '1px solid var(--lime, #a3e635)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 12px auto',
-            fontSize: '18px',
-            fontWeight: '800',
-            color: 'var(--lime, #a3e635)',
-          }}>
-            FW
-          </div>
+          <img
+            src={appLogo}
+            alt="FiatWallet"
+            style={{
+              width: '48px',
+              height: '48px',
+              objectFit: 'contain',
+              margin: '0 auto 12px auto',
+              display: 'block',
+            }}
+          />
           <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', margin: '0 0 4px 0', letterSpacing: '-0.01em' }}>
             Approve Transaction
           </h3>

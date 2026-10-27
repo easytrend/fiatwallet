@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import appLogo from '../assets/logo.png';
 
 export default function DAppApprovalModal({ effectivePublicKey, solBalance, effectiveSignTransaction, effectiveSendTransaction, connection }) {
   const [activeRequest, setActiveRequest] = useState(null);
@@ -225,22 +226,17 @@ export default function DAppApprovalModal({ effectivePublicKey, solBalance, effe
       }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '18px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: 'rgba(163, 230, 53, 0.15)',
-            border: '1px solid var(--lime, #a3e635)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 12px auto',
-            fontSize: '18px',
-            fontWeight: '800',
-            color: 'var(--lime, #a3e635)'
-          }}>
-            FW
-          </div>
+          <img
+            src={appLogo}
+            alt="FiatWallet"
+            style={{
+              width: '48px',
+              height: '48px',
+              objectFit: 'contain',
+              margin: '0 auto 12px auto',
+              display: 'block',
+            }}
+          />
           <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', margin: '0 0 6px 0' }}>
             {isConnect ? 'Connect to FiatWallet' : 'Approve Transaction'}
           </h3>

@@ -631,6 +631,7 @@ public class MainActivity extends BridgeActivity {
                         ? pubKey.substring(0, 6) + "..." + pubKey.substring(pubKey.length() - 6)
                         : pubKey;
                     AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
+                    b.setIcon(R.mipmap.ic_launcher);
                     b.setTitle("Connect to FiatWallet");
                     b.setMessage(dAppTitle + " is requesting to connect to your wallet.\n\nOrigin: "
                         + origin + "\nWallet: " + shortKey + "\nNetwork: Solana Mainnet");
@@ -664,6 +665,7 @@ public class MainActivity extends BridgeActivity {
                 actionDesc = "Sign Transaction";
             }
             AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
+            b.setIcon(R.mipmap.ic_launcher);
             b.setTitle(title);
             b.setMessage("Request from: " + (origin != null && !origin.isEmpty() ? origin : "Solana dApp")
                 + "\n\nAction: " + actionDesc
