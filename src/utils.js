@@ -1,5 +1,6 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { resolve, getPrimaryDomain, performReverseLookup } from '@bonfida/spl-name-service';
+import { getRelayEndpoint } from './components/P2PPanel';
 
 export function fmtRate(r) {
   if (r >= 10000) return r.toLocaleString(undefined, { maximumFractionDigits:0 });
@@ -104,7 +105,7 @@ export async function robustResolve(domain, walletConnection) {
   }
 
   const RESOLVE_RPCS = [
-    'https://solana-rpc.publicnode.com',
+    getRelayEndpoint('/api/rpc'),
     'https://rpc.ankr.com/solana',
     'https://api.mainnet-beta.solana.com'
   ];
@@ -153,7 +154,7 @@ export async function robustReverseLookup(connection, publicKeyObj) {
 
   queries.push(
     (async () => {
-      const fallbackConn = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
+      const fallbackConn = new Connection(getRelayEndpoint('/api/rpc'), 'confirmed');
       const primary = await getPrimaryDomain(fallbackConn, publicKeyObj).catch(() => null);
       if (primary && primary.reverse) return primary.reverse + '.sol';
       const reverse = await performReverseLookup(fallbackConn, publicKeyObj).catch(() => null);

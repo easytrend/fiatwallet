@@ -202,6 +202,7 @@ import {
 } from '@solana/wallet-adapter-wallets';
 
 import { FiatWalletAdapter } from './services/fiatwalletAdapter';
+import { getRelayEndpoint } from './components/P2PPanel';
 
 // Wallet adapter default UI styles (for the "Select Wallet" modal)
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -209,25 +210,28 @@ import App from './App';
 import './App.css';
 
 function Root() {
-  // Use an environment variable or remotely fetched/cached RPC for reliable operations.
-  // Defaults to a public, CORS-enabled RPC (solana-rpc.publicnode.com) to prevent HTTP 403 on WebView/Capacitor.
   const [endpoint, setEndpoint] = useState(() => {
-    const custom = (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
-    if (custom && !custom.includes('api.mainnet-beta.solana.com')) {
+    let custom = (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
+    if (custom && (custom.includes('api.mainnet-beta.solana.com') || custom.includes('publicnode.com'))) {
+      try { localStorage.removeItem('fiatwallet_rpc_url'); } catch (e) {}
+      custom = null;
+    }
+    if (custom) {
       return custom;
     }
     const envUrl = import.meta.env.VITE_RPC_URL;
-    if (envUrl && !envUrl.includes('api.mainnet-beta.solana.com')) {
+    if (envUrl && !envUrl.includes('api.mainnet-beta.solana.com') && !envUrl.includes('publicnode.com')) {
       return envUrl;
     }
-    return 'https://solana-rpc.publicnode.com';
+    return getRelayEndpoint('/api/rpc');
   });
 
   useEffect(() => {
     const handleConfig = (e) => {
       let url = e?.detail?.rpcUrl || (typeof localStorage !== 'undefined' ? localStorage.getItem('fiatwallet_rpc_url') : null);
-      if (url && url.includes('api.mainnet-beta.solana.com')) {
-        url = 'https://solana-rpc.publicnode.com';
+      if (url && (url.includes('api.mainnet-beta.solana.com') || url.includes('publicnode.com'))) {
+        try { localStorage.removeItem('fiatwallet_rpc_url'); } catch (e) {}
+        url = getRelayEndpoint('/api/rpc');
       }
       if (url && url !== endpoint) {
         setEndpoint(url);

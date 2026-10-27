@@ -86,7 +86,46 @@ export default async function handler(req, res) {
     ? false
     : Boolean(relayerPublicKey);
 
-  const rpcUrl = process.env.HELIUS_RPC_URL || process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://solana-rpc.publicnode.com';
+  function extractHeliusKey() {
+    if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) {
+      return process.env.HELIUS_API_KEY.trim();
+    }
+    const urls = [
+      process.env.HELIUS_RPC_URL,
+      process.env.VITE_RPC_URL,
+      process.env.RPC_URL,
+    ];
+    for (const url of urls) {
+      if (!url || typeof url !== 'string') continue;
+      try {
+        const parsed = new URL(url.trim());
+        const key = parsed.searchParams.get('api-key') || parsed.searchParams.get('apiKey');
+        if (key) return key.trim();
+      } catch {}
+      const match = url.match(/[?&]api-?key=([a-zA-Z0-9-]+)/i);
+      if (match && match[1]) return match[1].trim();
+    }
+    return null;
+  }
+
+  function resolveConfigRpcUrl() {
+    if (process.env.HELIUS_RPC_URL && process.env.HELIUS_RPC_URL.trim()) {
+      return process.env.HELIUS_RPC_URL.trim();
+    }
+    const heliusKey = extractHeliusKey();
+    if (heliusKey) {
+      return `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}`;
+    }
+    if (process.env.VITE_RPC_URL && process.env.VITE_RPC_URL.trim() && !process.env.VITE_RPC_URL.includes('publicnode.com')) {
+      return process.env.VITE_RPC_URL.trim();
+    }
+    if (process.env.RPC_URL && process.env.RPC_URL.trim() && !process.env.RPC_URL.includes('publicnode.com')) {
+      return process.env.RPC_URL.trim();
+    }
+    return 'https://fiatwallet.app/api/rpc';
+  }
+
+  const rpcUrl = resolveConfigRpcUrl();
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
   const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 

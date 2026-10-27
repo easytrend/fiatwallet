@@ -375,9 +375,30 @@ export default function App() {
     // Prompt Native Wallet Approval Popup
     await requestInternalWalletSign(tx, sendOpts?.meta || sendOpts);
 
-    // Sign and broadcast on-chain
+    // Sign and broadcast on-chain with multi-endpoint fallback
     const signed = await internalWallet.signTransaction(tx);
-    return targetConn.sendRawTransaction(signed.serialize(), sendOpts);
+    const rawTx = signed.serialize();
+
+    const broadcastEndpoints = [
+      targetConn?.rpcEndpoint,
+      getRelayEndpoint('/api/rpc'),
+      'https://api.mainnet-beta.solana.com',
+      'https://rpc.ankr.com/solana',
+    ].filter(Boolean);
+    const uniqueBroadcastEndpoints = [...new Set(broadcastEndpoints)];
+
+    let lastError = null;
+    for (const ep of uniqueBroadcastEndpoints) {
+      try {
+        const c = (ep === targetConn?.rpcEndpoint) ? targetConn : new Connection(ep, 'confirmed');
+        const sig = await c.sendRawTransaction(rawTx, sendOpts);
+        if (sig) return sig;
+      } catch (err) {
+        lastError = err;
+        console.warn(`sendRawTransaction failed on ${ep}:`, err.message);
+      }
+    }
+    throw lastError || new Error('Transaction broadcast failed across all RPC endpoints.');
   } : sendTransaction;
 
   // Sync Injected Web3 Provider State (window.solana, window.fiatwallet, Solana Wallet Standard)
@@ -1373,10 +1394,21 @@ export default function App() {
           needsAtaCreation = true;
         }
 
-        // Fetch decimals from on-chain mint info
-        const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
-        if (!mintInfo.value) throw new Error('Invalid token mint');
-        const decimals = mintInfo.value.data.parsed.info.decimals;
+        // Fetch decimals from on-chain mint info or cached metadata
+        let decimals = tokLive.decimals;
+        if (typeof decimals !== 'number') {
+          try {
+            const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
+            if (mintInfo?.value?.data?.parsed?.info?.decimals !== undefined) {
+              decimals = mintInfo.value.data.parsed.info.decimals;
+            }
+          } catch (e) {
+            console.warn('getParsedAccountInfo error:', e.message);
+          }
+        }
+        if (typeof decimals !== 'number') {
+          decimals = (tokLive.symbol === 'USDC' || tokLive.symbol === 'USDT') ? 6 : 9;
+        }
 
         // Use safe BigInt integer math to avoid floating-point rounding errors
         amountUnits = BigInt(Math.round(tokAmt * Math.pow(10, decimals)));
@@ -1448,9 +1480,16 @@ export default function App() {
           throw new Error('Internal Error: sender ATA is null');
         }
         // Fetch fresh SPL token balance using confirmed commitment
-        const tokenBalanceResp = await connection.getTokenAccountBalance(senderATA, 'confirmed');
-        const freshTokenBalance = tokenBalanceResp.value.uiAmount || 0;
-        if (tokAmt > freshTokenBalance) {
+        let freshTokenBalance = typeof tokLive.balance === 'number' ? tokLive.balance : null;
+        try {
+          const tokenBalanceResp = await connection.getTokenAccountBalance(senderATA, 'confirmed');
+          if (tokenBalanceResp?.value?.uiAmount !== undefined) {
+            freshTokenBalance = tokenBalanceResp.value.uiAmount;
+          }
+        } catch (balErr) {
+          console.warn('getTokenAccountBalance check failed, using portfolio balance:', balErr?.message);
+        }
+        if (freshTokenBalance !== null && tokAmt > freshTokenBalance) {
           throw new Error(`Insufficient ${tokLive.symbol} balance. You have ${freshTokenBalance} but tried to send ${tokAmt}.`);
         }
 
@@ -1475,11 +1514,18 @@ export default function App() {
       verifyTransactionIntegrity(transaction, expectedTransfers, activeKey);
 
       // Pre-flight simulation immediately before sendTransaction
-      const simResult = await connection.simulateTransaction(transaction);
-      if (simResult.value.err) {
-        const simErr = JSON.stringify(simResult.value.err);
-        const logs = simResult.value.logs?.slice(0, 3).join(' | ') || '';
-        throw new Error(`Transaction simulation failed: ${simErr}${logs ? ' — ' + logs : ''}`);
+      try {
+        const simResult = await connection.simulateTransaction(transaction);
+        if (simResult?.value?.err) {
+          const simErr = JSON.stringify(simResult.value.err);
+          const logs = simResult.value.logs?.slice(0, 3).join(' | ') || '';
+          throw new Error(`Transaction simulation failed: ${simErr}${logs ? ' — ' + logs : ''}`);
+        }
+      } catch (simErr) {
+        if (simErr.message && simErr.message.includes('Transaction simulation failed:')) {
+          throw simErr;
+        }
+        console.warn('Simulation network warning (proceeding to wallet sign):', simErr.message);
       }
 
       // All checks passed — submit to wallet for signing and broadcast.
@@ -1555,8 +1601,19 @@ export default function App() {
       }
 
     } catch (err) {
-      
-      setWalletError(err.message || 'Transaction failed');
+      console.error('Send error:', err);
+      let msg = err.message || 'Transaction failed';
+      if (msg.includes('Indexed requests require a personal token') || msg.includes('403')) {
+        msg = 'RPC connection was busy. Switched to private relayer RPC, please tap Send again.';
+        try { localStorage.removeItem('fiatwallet_rpc_url'); } catch (e) {}
+      } else if (msg.includes('User rejected') || msg.includes('Transaction cancelled')) {
+        msg = 'Transaction cancelled.';
+      } else if (msg.includes('Simulation failed')) {
+        msg = 'Transaction simulation failed. Check your token/SOL balance and try again.';
+      } else if (msg.includes('blockhash')) {
+        msg = 'Network was busy and transaction timed out. Please try again.';
+      }
+      setWalletError(msg);
     }
     setSending(false);
   }

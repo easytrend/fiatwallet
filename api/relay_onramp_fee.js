@@ -257,7 +257,18 @@ export default async function handler(req, res) {
     }
 
     // 5. Build forwarding transaction
-    const rpcUrl = process.env.HELIUS_RPC_URL || process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://solana-rpc.publicnode.com';
+    function extractHeliusKey() {
+      if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) return process.env.HELIUS_API_KEY.trim();
+      const urls = [process.env.HELIUS_RPC_URL, process.env.VITE_RPC_URL, process.env.RPC_URL];
+      for (const url of urls) {
+        if (!url || typeof url !== 'string') continue;
+        const match = url.match(/[?&]api-?key=([a-zA-Z0-9-]+)/i);
+        if (match && match[1]) return match[1].trim();
+      }
+      return null;
+    }
+    const heliusKey = extractHeliusKey();
+    const rpcUrl = process.env.HELIUS_RPC_URL || (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : (process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com'));
     const connection = new Connection(rpcUrl, 'confirmed');
 
     // Platform fee math: 0.4% USDC with a 0.10 USDC minimum floor
