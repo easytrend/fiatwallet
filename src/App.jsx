@@ -412,18 +412,35 @@ export default function App() {
     });
   }, [effectivePublicKey, effectiveConnected, effectiveSignTransaction, effectiveSignAllTransactions, effectiveSendTransaction]);
 
-  // Keep fw_wallet_pubkey in localStorage in sync with the active wallet.
-  // This is read by MainActivity.java showNativeConnectDialog() to populate
-  // the native Android connect dialog that appears on top of the dApp WebView.
+  // Keep fw_wallet_pubkey in localStorage and Android FiatWalletBridge in sync with active wallet
   useEffect(() => {
     const key = effectivePublicKey?.toBase58?.() ||
                 (typeof effectivePublicKey === 'string' ? effectivePublicKey : null) ||
                 internalWallet?.publicKey ||
-                internalWallet?.walletMeta?.publicKey;
+                internalWallet?.walletMeta?.publicKey ||
+                '';
     if (key) {
-      localStorage.setItem('fw_wallet_pubkey', key);
+      try { localStorage.setItem('fw_wallet_pubkey', key); } catch (e) {}
     }
-  }, [effectivePublicKey, internalWallet?.publicKey, internalWallet?.walletMeta?.publicKey]);
+    const isInternal = Boolean(internalWallet?.isActive);
+    const isConn = Boolean(effectiveConnected);
+    if (typeof window !== 'undefined' && window.FiatWalletBridge?.syncActiveWallet) {
+      try {
+        window.FiatWalletBridge.syncActiveWallet(key, isInternal, isConn);
+      } catch (e) {
+        console.warn('FiatWalletBridge sync error:', e);
+      }
+    }
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.FiatWalletBridge?.syncActiveWallet) {
+      try {
+        window.Capacitor.Plugins.FiatWalletBridge.syncActiveWallet({
+          publicKey: key,
+          isInternal,
+          isConnected: isConn,
+        });
+      } catch (e) {}
+    }
+  }, [effectivePublicKey, effectiveConnected, internalWallet?.isActive, internalWallet?.publicKey, internalWallet?.walletMeta?.publicKey]);
 
   // Listen for FiatWallet adapter events and onboarding requests
   useEffect(() => {

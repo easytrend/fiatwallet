@@ -87,12 +87,31 @@ public class MainActivity extends BridgeActivity {
                 call.reject("Activity unavailable");
             }
         }
+
+        @PluginMethod
+        public void syncActiveWallet(PluginCall call) {
+            String pubKey = call.getString("publicKey");
+            Boolean isInternal = call.getBoolean("isInternal", false);
+            Boolean isConnected = call.getBoolean("isConnected", false);
+            MainActivity activity = (MainActivity) getActivity();
+            if (activity != null) {
+                activity.activeWalletPublicKey = pubKey != null ? pubKey.trim() : "";
+                activity.activeWalletIsInternal = isInternal != null && isInternal;
+                activity.activeWalletIsConnected = isConnected != null && isConnected;
+                call.resolve();
+            } else {
+                call.reject("Activity unavailable");
+            }
+        }
     }
 
     private ViewGroup dAppContainer = null;
     private WebView dAppWebView = null;
     private EditText dAppSearchBar = null;
     private ProgressBar dAppProgressBar = null;
+    private String activeWalletPublicKey = "";
+    private boolean activeWalletIsInternal = false;
+    private boolean activeWalletIsConnected = false;
     private final FiatWalletBridge bridgeInstance = new FiatWalletBridge();
 
     @Override
@@ -379,10 +398,18 @@ public class MainActivity extends BridgeActivity {
             "    }," +
             "    connect: function(opts) {" +
             "      return new Promise(function(resolve, reject) {" +
+            "        if (opts && opts.onlyIfTrusted) {" +
+            "          if (provider.isConnected && provider.publicKey) {" +
+            "            resolve({ publicKey: provider.publicKey });" +
+            "          } else {" +
+            "            reject(new Error('User rejected connection'));" +
+            "          }" +
+            "          return;" +
+            "        }" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
             "        pendingRequests[reqId] = {" +
             "          resolve: function(res) {" +
-            "            var pubStr = (res && res.publicKey) ? (typeof res.publicKey === 'string' ? res.publicKey : res.publicKey.toString()) : '';" +
+            "            var pubStr = (res && res.publicKey) ? (typeof res.publicKey === 'string' ? res.publicKey : res.publicKey.toString()) : (typeof res === 'string' ? res : '');" +
             "            var pub = pubStr ? new PublicKey(pubStr) : null;" +
             "            provider.publicKey = pub;" +
             "            provider.isConnected = !!pub;" +
@@ -405,7 +432,31 @@ public class MainActivity extends BridgeActivity {
             "    signTransaction: function(tx) {" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
-            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        pendingRequests[reqId] = {" +
+            "          resolve: function(res) {" +
+            "            try {" +
+            "              if (res && (Array.isArray(res) || res instanceof Uint8Array || res.data)) {" +
+            "                var bytes = new Uint8Array(res.data || res);" +
+            "                var reconstructed = null;" +
+            "                if (tx && tx.constructor && typeof tx.constructor.from === 'function') {" +
+            "                  try { reconstructed = tx.constructor.from(bytes); } catch(e) {}" +
+            "                }" +
+            "                if (!reconstructed && tx && tx.constructor && typeof tx.constructor.deserialize === 'function') {" +
+            "                  try { reconstructed = tx.constructor.deserialize(bytes); } catch(e) {}" +
+            "                }" +
+            "                if (!reconstructed && window.solanaWeb3) {" +
+            "                  try { reconstructed = window.solanaWeb3.Transaction.from(bytes); } catch(e) {" +
+            "                    try { reconstructed = window.solanaWeb3.VersionedTransaction.deserialize(bytes); } catch(e2) {}" +
+            "                  }" +
+            "                }" +
+            "                resolve(reconstructed || tx);" +
+            "                return;" +
+            "              }" +
+            "            } catch(e) { console.warn('Transaction parse fallback:', e); }" +
+            "            resolve(res || tx);" +
+            "          }," +
+            "          reject: reject" +
+            "        };" +
             "        var serialized;" +
             "        try {" +
             "          if (typeof tx.serialize === 'function') {" +
@@ -427,7 +478,13 @@ public class MainActivity extends BridgeActivity {
             "    signAndSendTransaction: function(tx, opts) {" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
-            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        pendingRequests[reqId] = {" +
+            "          resolve: function(res) {" +
+            "            var sig = (res && res.signature) ? res.signature : (typeof res === 'string' ? res : '');" +
+            "            resolve({ signature: sig });" +
+            "          }," +
+            "          reject: reject" +
+            "        };" +
             "        var serialized;" +
             "        try {" +
             "          if (typeof tx.serialize === 'function') {" +
@@ -446,7 +503,13 @@ public class MainActivity extends BridgeActivity {
             "    signMessage: function(msg) {" +
             "      return new Promise(function(resolve, reject) {" +
             "        var reqId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);" +
-            "        pendingRequests[reqId] = { resolve: resolve, reject: reject };" +
+            "        pendingRequests[reqId] = {" +
+            "          resolve: function(res) {" +
+            "            var sigBytes = res && res.signature ? (Array.isArray(res.signature) ? new Uint8Array(res.signature) : res.signature) : new Uint8Array(64);" +
+            "            resolve({ signature: sigBytes, publicKey: provider.publicKey });" +
+            "          }," +
+            "          reject: reject" +
+            "        };" +
             "        var msgStr = typeof msg === 'string' ? msg : Array.from(msg).join(',');" +
             "        if (window.FiatWalletBridge && window.FiatWalletBridge.requestSignMessage) {" +
             "          window.FiatWalletBridge.requestSignMessage(reqId, msgStr);" +
@@ -459,6 +522,16 @@ public class MainActivity extends BridgeActivity {
             "      provider.publicKey = pub;" +
             "      provider.isConnected = !!pub;" +
             "      if (pub) provider.emit('connect', pub);" +
+            "      if (window.phantom && window.phantom.solana) {" +
+            "        window.phantom.solana.publicKey = pub;" +
+            "        window.phantom.solana.isConnected = !!pub;" +
+            "        if (pub && typeof window.phantom.solana.emit === 'function') window.phantom.solana.emit('connect', pub);" +
+            "      }" +
+            "      if (window.solflare) {" +
+            "        window.solflare.publicKey = pub;" +
+            "        window.solflare.isConnected = !!pub;" +
+            "        if (pub && typeof window.solflare.emit === 'function') window.solflare.emit('connect', pub);" +
+            "      }" +
             "      if (pendingRequests[reqId]) {" +
             "        pendingRequests[reqId].resolve({ publicKey: pub });" +
             "        delete pendingRequests[reqId];" +
@@ -492,12 +565,12 @@ public class MainActivity extends BridgeActivity {
             "  var standardWallet = {" +
             "    version: '1.0.0'," +
             "    name: 'FiatWallet'," +
-            "    icon: 'https://fiatwallet.pages.dev/logo.jpg'," +
-            "    chains: ['solana:mainnet', 'solana:devnet']," +
+            "    icon: 'https://fiatwallet.app/logo.png'," +
+            "    chains: ['solana:mainnet', 'solana:mainnet-beta', 'solana:devnet']," +
             "    features: {" +
             "      'standard:connect': { version: '1.0.0', connect: function(input) {" +
             "        return provider.connect(input).then(function(res) {" +
-            "          return { accounts: [{ address: res.publicKey.toBase58(), publicKey: res.publicKey.toBytes(), chains: ['solana:mainnet', 'solana:devnet'], features: ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage'] }] };" +
+            "          return { accounts: [{ address: res.publicKey.toBase58(), publicKey: res.publicKey.toBytes(), chains: ['solana:mainnet', 'solana:mainnet-beta', 'solana:devnet'], features: ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage'] }] };" +
             "        });" +
             "      } }," +
             "      'standard:disconnect': { version: '1.0.0', disconnect: function() { return provider.disconnect(); } }," +
@@ -521,7 +594,7 @@ public class MainActivity extends BridgeActivity {
             "    }," +
             "    get accounts() {" +
             "      if (!provider.publicKey) return [];" +
-            "      return [{ address: provider.publicKey.toBase58(), publicKey: provider.publicKey.toBytes(), chains: ['solana:mainnet', 'solana:devnet'], features: ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage'] }];" +
+            "      return [{ address: provider.publicKey.toBase58(), publicKey: provider.publicKey.toBytes(), chains: ['solana:mainnet', 'solana:mainnet-beta', 'solana:devnet'], features: ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage'] }];" +
             "    }" +
             "  };" +
             "  function _reg(register) { if (typeof register === 'function') { try { register(standardWallet); } catch(e) {} } }" +
@@ -556,20 +629,21 @@ public class MainActivity extends BridgeActivity {
             "    }" +
             "  });" +
             "  function _closeMwaDialog() {" +
-            "    var cb = document.querySelector('.wallet-adapter-modal-button-close, [aria-label=\"Close\"], [aria-label=\"Dismiss\"]');" +
+            "    var cb = document.querySelector('.wallet-adapter-modal-button-close, [aria-label=\'Close\'], [aria-label=\'Dismiss\']');" +
             "    if (cb) { try { cb.click(); } catch(e) {} }" +
-            "    var dialogs = document.querySelectorAll('[role=\"dialog\"], [class*=\"modal\"], [class*=\"overlay\"]');" +
+            "    var dialogs = document.querySelectorAll('[role=\'dialog\'], [class*=\'modal\'], [class*=\'overlay\']');" +
             "    for (var i = 0; i < dialogs.length; i++) {" +
             "      var d = dialogs[i];" +
-            "      if ((d.textContent || '').indexOf(\"can't find a wallet\") > -1 || (d.textContent || '').indexOf('cannot find a wallet') > -1) {" +
+            "      var txt = (d.textContent || '').toLowerCase();" +
+            "      if (txt.indexOf('find a wallet') > -1 || txt.indexOf('cannot find') > -1) {" +
             "        var btn = d.querySelector('button'); if (btn) { try { btn.click(); } catch(e) {} }" +
             "      }" +
             "    }" +
             "  }" +
             "  function _hideMwaListItem(root) {" +
-            "    var imgs = (root || document).querySelectorAll('[alt=\"Mobile Wallet Adapter\"]');" +
+            "    var imgs = (root || document).querySelectorAll('[alt=\'Mobile Wallet Adapter\']');" +
             "    for (var i = 0; i < imgs.length; i++) {" +
-            "      var li = imgs[i].closest('li, [role=\"listitem\"], [role=\"option\"]');" +
+            "      var li = imgs[i].closest('li, [role=\'listitem\'], [role=\'option\']');" +
             "      if (li) li.style.display = 'none';" +
             "    }" +
             "    var btns = (root || document).querySelectorAll('button, li');" +
@@ -584,8 +658,8 @@ public class MainActivity extends BridgeActivity {
             "        var added = muts[i].addedNodes;" +
             "        for (var j = 0; j < added.length; j++) {" +
             "          var n = added[j]; if (n.nodeType !== 1) continue;" +
-            "          var txt = n.textContent || '';" +
-            "          if (txt.indexOf(\"can't find a wallet\") > -1 || txt.indexOf('cannot find a wallet') > -1) {" +
+            "          var txt = (n.textContent || '').toLowerCase();" +
+            "          if (txt.indexOf('find a wallet') > -1 || txt.indexOf('cannot find') > -1) {" +
             "            setTimeout(_closeMwaDialog, 40);" +
             "          }" +
             "          _hideMwaListItem(n);" +
@@ -603,7 +677,7 @@ public class MainActivity extends BridgeActivity {
             "  }" +
             "  try {" +
             "    var _style = document.createElement('style');" +
-            "    _style.textContent = '.wallet-adapter-modal-list li:has([alt=\"Mobile Wallet Adapter\"]) { display:none!important } .wallet-adapter-modal-list li:has(button[title=\"Mobile Wallet Adapter\"]) { display:none!important }';" +
+            "    _style.textContent = '.wallet-adapter-modal-list li:has([alt=\'Mobile Wallet Adapter\']) { display:none!important } .wallet-adapter-modal-list li:has(button[title=\'Mobile Wallet Adapter\']) { display:none!important }';" +
             "    var _target = document.head || document.documentElement || document.body;" +
             "    if (_target) { _target.appendChild(_style); }" +
             "    else { document.addEventListener('DOMContentLoaded', function() { (document.head || document.documentElement || document.body).appendChild(_style); }); }" +
@@ -622,6 +696,14 @@ public class MainActivity extends BridgeActivity {
      */
     private void showNativeConnectDialog(final String reqId, final String origin, final String dAppTitle) {
         if (getBridge() == null || getBridge().getWebView() == null) return;
+
+        // 1. Check in-memory synced active wallet (set by React whenever user connects or unlocks)
+        if (activeWalletPublicKey != null && !activeWalletPublicKey.trim().isEmpty()) {
+            displayConnectPrompt(reqId, origin, dAppTitle, activeWalletPublicKey.trim());
+            return;
+        }
+
+        // 2. Fallback to localStorage query
         getBridge().getWebView().evaluateJavascript(
             "(function(){ " +
             "  var pk = localStorage.getItem('fw_wallet_pubkey') || " +
@@ -638,46 +720,48 @@ public class MainActivity extends BridgeActivity {
                 final String pubKey = pubKeyRaw != null
                     ? pubKeyRaw.replace("\"", "").replace("null", "").trim()
                     : "";
-                runOnUiThread(() -> {
-                    if (pubKey.isEmpty()) {
-                        AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
-                        b.setTitle("Wallet Required");
-                        b.setMessage("Please create, import, or connect a Solana wallet in FiatWallet before connecting to " + (dAppTitle != null ? dAppTitle : "dApp") + ".");
-                        b.setCancelable(false);
-                        b.setPositiveButton("Go to Wallet", (d, w) -> {
-                            d.dismiss();
-                            closeDAppInternal();
-                            bridgeInstance.rejectConnect(reqId);
-                        });
-                        b.setNegativeButton("Cancel", (d, w) -> {
-                            d.dismiss();
-                            bridgeInstance.rejectConnect(reqId);
-                        });
-                        b.create().show();
-                        return;
-                    }
-
-                    String shortKey = pubKey.length() > 12
-                        ? pubKey.substring(0, 6) + "..." + pubKey.substring(pubKey.length() - 6)
-                        : pubKey;
-                    AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
-                    b.setIcon(R.mipmap.ic_launcher);
-                    b.setTitle("Connect to FiatWallet");
-                    b.setMessage(dAppTitle + " is requesting to connect to your wallet.\n\nOrigin: "
-                        + origin + "\nWallet: " + shortKey + "\nNetwork: Solana Mainnet");
-                    b.setCancelable(false);
-                    b.setPositiveButton("Connect", (d, w) -> {
-                        d.dismiss();
-                        bridgeInstance.approveConnect(reqId, pubKey);
-                    });
-                    b.setNegativeButton("Reject", (d, w) -> {
-                        d.dismiss();
-                        bridgeInstance.rejectConnect(reqId);
-                    });
-                    b.create().show();
-                });
+                runOnUiThread(() -> displayConnectPrompt(reqId, origin, dAppTitle, pubKey));
             }
         );
+    }
+
+    private void displayConnectPrompt(final String reqId, final String origin, final String dAppTitle, final String pubKey) {
+        if (pubKey.isEmpty()) {
+            AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
+            b.setTitle("Wallet Required");
+            b.setMessage("Please create, import, or connect a Solana wallet in FiatWallet before connecting to " + (dAppTitle != null ? dAppTitle : "dApp") + ".");
+            b.setCancelable(false);
+            b.setPositiveButton("Go to Wallet", (d, w) -> {
+                d.dismiss();
+                closeDAppInternal();
+                bridgeInstance.rejectConnect(reqId);
+            });
+            b.setNegativeButton("Cancel", (d, w) -> {
+                d.dismiss();
+                bridgeInstance.rejectConnect(reqId);
+            });
+            b.create().show();
+            return;
+        }
+
+        String shortKey = pubKey.length() > 12
+            ? pubKey.substring(0, 6) + "..." + pubKey.substring(pubKey.length() - 6)
+            : pubKey;
+        AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
+        b.setIcon(R.mipmap.ic_launcher);
+        b.setTitle("Connect to FiatWallet");
+        b.setMessage(dAppTitle + " is requesting to connect to your wallet.\n\nOrigin: "
+            + origin + "\nWallet: " + shortKey + "\nNetwork: Solana Mainnet");
+        b.setCancelable(false);
+        b.setPositiveButton("Connect", (d, w) -> {
+            d.dismiss();
+            bridgeInstance.approveConnect(reqId, pubKey);
+        });
+        b.setNegativeButton("Reject", (d, w) -> {
+            d.dismiss();
+            bridgeInstance.rejectConnect(reqId);
+        });
+        b.create().show();
     }
 
     private void showNativeSignDialog(final String reqId, final String type, final String txData, final String origin) {
@@ -896,7 +980,7 @@ public class MainActivity extends BridgeActivity {
             // Clean User-Agent without WebView markers or custom bot tokens
             String defaultUa = s.getUserAgentString();
             String cleanUa = defaultUa.replace("; wv", "").replace(";wv", "").replace("Version/4.0 ", "");
-            s.setUserAgentString(cleanUa);
+            s.setUserAgentString(cleanUa + " FiatWallet/1.0.0 SolanaWeb3");
 
             dAppWebView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
 
@@ -952,13 +1036,22 @@ public class MainActivity extends BridgeActivity {
                             if (scheme.equalsIgnoreCase("solana-wallet") || scheme.equalsIgnoreCase("fiatwallet")) {
                                 runOnUiThread(() -> {
                                     String origin = view.getUrl() != null ? view.getUrl() : "Solana dApp";
-                                    String title = "Solana dApp";
-                                    if (view.getTitle() != null && !view.getTitle().isEmpty()) {
-                                        title = view.getTitle();
-                                    }
+                                    String title = (view.getTitle() != null && !view.getTitle().isEmpty()) ? view.getTitle() : "Solana dApp";
                                     showNativeConnectDialog("mwa_" + System.currentTimeMillis(), origin, title);
                                 });
                                 return true; // consumed — do not let Android handle it externally
+                            }
+                            // Intercept Phantom / Solflare universal link redirects (e.g. https://phantom.app/ul/browse/...)
+                            if (scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http")) {
+                                String host = reqUri.getHost();
+                                if (host != null && (host.contains("phantom.app") || host.contains("solflare.com"))) {
+                                    runOnUiThread(() -> {
+                                        String origin = view.getUrl() != null ? view.getUrl() : "Solana dApp";
+                                        String title = (view.getTitle() != null && !view.getTitle().isEmpty()) ? view.getTitle() : "Solana dApp";
+                                        showNativeConnectDialog("ext_" + System.currentTimeMillis(), origin, title);
+                                    });
+                                    return true;
+                                }
                             }
                             // wc:// and other non-http schemes: forward to Capacitor WebView event bus
                             if (scheme.equalsIgnoreCase("wc")) {
@@ -1056,6 +1149,15 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void syncActiveWallet(String pubKey, boolean isInternal, boolean isConnected) {
+            runOnUiThread(() -> {
+                activeWalletPublicKey = pubKey != null ? pubKey.trim() : "";
+                activeWalletIsInternal = isInternal;
+                activeWalletIsConnected = isConnected;
+            });
+        }
+
+        @JavascriptInterface
         public void launchIntent(String url) {
             runOnUiThread(() -> {
                 try {
@@ -1138,11 +1240,21 @@ public class MainActivity extends BridgeActivity {
 
                 if (dAppWebView != null) {
                     String dAppJs = "if (window.solana && window.solana._onConnectApproved) { " +
-                                    "window.solana._onConnectApproved('" + reqId + "', '" + escapeJs(pubKey) + "'); }" +
-                                    "else if (window.solana) { " +
+                                    "  window.solana._onConnectApproved('" + reqId + "', '" + escapeJs(pubKey) + "'); " +
+                                    "} " +
+                                    "if (window.solana) { " +
                                     "  window.solana.publicKey = new window.PublicKey('" + escapeJs(pubKey) + "'); " +
                                     "  window.solana.isConnected = true; " +
                                     "  if (typeof window.solana.emit === 'function') window.solana.emit('connect', window.solana.publicKey); " +
+                                    "} " +
+                                    "if (window.phantom && window.phantom.solana) { " +
+                                    "  window.phantom.solana.publicKey = new window.PublicKey('" + escapeJs(pubKey) + "'); " +
+                                    "  window.phantom.solana.isConnected = true; " +
+                                    "  if (typeof window.phantom.solana.emit === 'function') window.phantom.solana.emit('connect', window.phantom.solana.publicKey); " +
+                                    "} " +
+                                    "if (window.fiatwallet) { " +
+                                    "  window.fiatwallet.publicKey = new window.PublicKey('" + escapeJs(pubKey) + "'); " +
+                                    "  window.fiatwallet.isConnected = true; " +
                                     "}";
                     dAppWebView.evaluateJavascript(dAppJs, null);
                 }
