@@ -36,6 +36,7 @@ import LogoutConfirmModal from './components/LogoutConfirmModal';
 import NativeWalletApprovalModal from './components/NativeWalletApprovalModal';
 import { parseTransactionBreakdown } from './utils/txParser';
 import HistoryPanel from './components/HistoryPanel';
+import LeaderboardModal from './components/LeaderboardModal';
 
 
 
@@ -304,6 +305,7 @@ export default function App() {
   const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -2649,6 +2651,15 @@ export default function App() {
         </div>
       )}
 
+      {/* ── Volume Leaderboard & Points Modal ── */}
+      {showLeaderboardModal && (
+        <LeaderboardModal
+          isOpen={showLeaderboardModal}
+          onClose={() => setShowLeaderboardModal(false)}
+          walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : ((typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '')}
+        />
+      )}
+
       {/* ── Slide-Out Wallet Menu Drawer ── */}
       <WalletMenuDrawer
         isOpen={showMenuDrawer}
@@ -2656,6 +2667,7 @@ export default function App() {
         walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : (localStorage.getItem('paj_manual_wallet') || '')}
         isInternal={internalWallet.isActive}
         onOpenHistory={() => setActiveTab('history')}
+        onOpenLeaderboard={() => setShowLeaderboardModal(true)}
         onOpenBankDetails={() => setShowBankDetailsModal(true)}
         onOpenSecurity={() => setShowSecurityModal(true)}
         onOpenTerms={() => setShowTermsModal(true)}

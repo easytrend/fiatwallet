@@ -8,6 +8,7 @@ export default function WalletMenuDrawer({
   walletAddress,
   isInternal,
   onOpenHistory,
+  onOpenLeaderboard,
   onOpenBankDetails,
   onOpenSecurity,
   onOpenTerms,
@@ -202,6 +203,49 @@ export default function WalletMenuDrawer({
               </div>
             </div>
             <span style={{ color: 'var(--text3)' }}>→</span>
+          </button>
+
+          {/* Leaderboard & Volume Points */}
+          <button
+            onClick={() => { onClose(); onOpenLeaderboard && onOpenLeaderboard(); }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '14px 16px',
+              background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.08) 0%, rgba(34, 211, 238, 0.04) 100%)',
+              border: '1px solid rgba(163, 230, 53, 0.3)',
+              borderRadius: '14px',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'background 0.2s',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: 'var(--lime, #a3e635)', fontSize: '13px', fontWeight: '800' }}>•</span>
+                <span style={{ color: 'white', fontWeight: '700' }}>Volume Leaderboard</span>
+                <span style={{
+                  background: 'rgba(163, 230, 53, 0.18)',
+                  color: 'var(--lime, #a3e635)',
+                  fontSize: '9px',
+                  fontWeight: '800',
+                  padding: '1px 6px',
+                  borderRadius: '5px',
+                  textTransform: 'uppercase'
+                }}>
+                  $1 = 1 Pt
+                </span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px', fontWeight: '400' }}>
+                Earn 1 point per $1 on-ramp or off-ramp volume
+              </div>
+            </div>
+            <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>→</span>
           </button>
 
           {/* 2. Transaction History */}
