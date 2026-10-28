@@ -4,12 +4,14 @@
  * FiatWallet Referral Program Endpoint
  * Rules:
  *  - 1 Ref Point for every 10 USD on-ramp or off-ramp completed by referred friends.
- *  - Referee account is permanently tied to referrer upon connecting or importing wallet.
+ *  - Referral link uses Fiat Tag (e.g. https://fiatwallet.app/?ref=tagname) if created & linked.
+ *  - Falls back to wallet address if no Fiat Tag exists yet.
+ *  - Previous wallet address referral links continue to function seamlessly after a tag is created.
  *  - Points are whole integers (no decimals). No $ or volume values exposed.
  *
  * Endpoints:
- *  - POST: Bind referee wallet to referrer wallet
- *  - GET ?address=<wallet>: Get user referral link, total friends referred, and referral points
+ *  - POST: Bind referee wallet to referrer wallet (accepts wallet address or Fiat Tag)
+ *  - GET ?address=<wallet_or_tag>: Get user referral link, Fiat Tag status, friends count, and points
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -56,24 +58,44 @@ export default async function handler(req, res) {
         }
       }
 
-      const referrerAddress = (body?.referrer_address || body?.referrer || '').trim();
+      const rawReferrer = (body?.referrer_address || body?.referrer || '').trim();
       const referredAddress = (body?.referred_address || body?.referee || '').trim();
 
-      if (!referrerAddress || !referredAddress) {
+      if (!rawReferrer || !referredAddress) {
         return res.status(400).json({
           success: false,
           error: 'Both referrer_address and referred_address are required',
         });
       }
 
-      if (referrerAddress.toLowerCase() === referredAddress.toLowerCase()) {
+      // 1. Resolve Fiat Tag to canonical wallet address if a tag was provided or linked
+      let canonicalReferrer = rawReferrer;
+      let referrerTag = null;
+
+      try {
+        const cleanTag = rawReferrer.replace(/^\$/, '').trim();
+        const { data: tagLookup } = await supabase
+          .from('fiat_tags')
+          .select('wallet_address, tag_name')
+          .or(`tag_name.ilike.$${cleanTag},tag_name.ilike.${cleanTag},wallet_address.ilike.${rawReferrer}`)
+          .maybeSingle();
+
+        if (tagLookup?.wallet_address) {
+          canonicalReferrer = tagLookup.wallet_address;
+          referrerTag = tagLookup.tag_name;
+        }
+      } catch (e) {
+        // Soft fail if fiat_tags lookup is unavailable
+      }
+
+      if (canonicalReferrer.toLowerCase() === referredAddress.toLowerCase()) {
         return res.status(400).json({
           success: false,
           error: 'Users cannot refer their own wallet',
         });
       }
 
-      // Check if already bound
+      // 2. Check if referee is already bound
       const { data: existing, error: checkError } = await supabase
         .from('referrals')
         .select('id, referrer_address')
@@ -81,7 +103,6 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (checkError) {
-        // If table doesn't exist yet, return soft warning
         if (checkError.code === '42P01') {
           return res.status(200).json({
             success: false,
@@ -100,17 +121,16 @@ export default async function handler(req, res) {
         });
       }
 
-      // Insert new binding
+      // 3. Insert new binding using canonical wallet address
       const { error: insertError } = await supabase
         .from('referrals')
         .insert({
-          referrer_address: referrerAddress,
+          referrer_address: canonicalReferrer,
           referred_address: referredAddress,
           created_at: new Date().toISOString(),
         });
 
       if (insertError) {
-        // Handle race conditions or unique constraint violations
         if (insertError.code === '23505') {
           return res.status(200).json({
             success: true,
@@ -124,7 +144,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         message: 'Referral successfully recorded',
-        referrer_address: referrerAddress,
+        referrer_address: canonicalReferrer,
+        referrer_tag: referrerTag,
         referred_address: referredAddress,
       });
     } catch (err) {
@@ -134,32 +155,58 @@ export default async function handler(req, res) {
   }
 
   // =========================================================================
-  // GET: Fetch Referral Stats & Friends List for a Wallet
+  // GET: Fetch Referral Stats & Friends List for a Wallet or Fiat Tag
   // =========================================================================
   if (req.method === 'GET') {
     try {
-      const userAddress = (req.query.address || '').trim();
-      if (!userAddress) {
+      const rawAddress = (req.query.address || '').trim();
+      if (!rawAddress) {
         return res.status(400).json({
           success: false,
           error: 'Wallet address query parameter is required',
         });
       }
 
-      const referralLink = `https://fiatwallet.app/?ref=${userAddress}`;
+      // 1. Resolve Fiat Tag if a tag was queried, or fetch linked tag for wallet
+      let userWallet = rawAddress;
+      let userFiatTag = null;
 
-      // 1. Fetch referees from public.referrals
+      try {
+        const cleanTag = rawAddress.replace(/^\$/, '').trim();
+        const { data: tagLookup } = await supabase
+          .from('fiat_tags')
+          .select('wallet_address, tag_name')
+          .or(`tag_name.ilike.$${cleanTag},tag_name.ilike.${cleanTag},wallet_address.ilike.${rawAddress}`)
+          .maybeSingle();
+
+        if (tagLookup) {
+          userWallet = tagLookup.wallet_address || userWallet;
+          userFiatTag = tagLookup.tag_name;
+        }
+      } catch (e) {
+        // Soft fail if fiat_tags lookup is unavailable
+      }
+
+      // 2. Build referral link: use Fiat Tag slug if created, otherwise wallet address
+      let referralLink = `https://fiatwallet.app/?ref=${userWallet}`;
+      if (userFiatTag) {
+        const cleanTagSlug = userFiatTag.replace(/^\$/, '').trim();
+        referralLink = `https://fiatwallet.app/?ref=${cleanTagSlug}`;
+      }
+
+      // 3. Fetch referees from public.referrals
       const { data: refRows, error: refError } = await supabase
         .from('referrals')
         .select('referred_address, created_at')
-        .ilike('referrer_address', userAddress);
+        .ilike('referrer_address', userWallet);
 
       if (refError) {
         if (refError.code === '42P01') {
-          // Table not created yet
           return res.status(200).json({
             success: true,
-            address: userAddress,
+            address: userWallet,
+            fiat_tag: userFiatTag,
+            has_fiat_tag: Boolean(userFiatTag),
             referral_link: referralLink,
             total_referred_users: 0,
             referral_points: 0,
@@ -172,7 +219,9 @@ export default async function handler(req, res) {
       if (!refRows || refRows.length === 0) {
         return res.status(200).json({
           success: true,
-          address: userAddress,
+          address: userWallet,
+          fiat_tag: userFiatTag,
+          has_fiat_tag: Boolean(userFiatTag),
           referral_link: referralLink,
           total_referred_users: 0,
           referral_points: 0,
@@ -182,7 +231,7 @@ export default async function handler(req, res) {
 
       const refereeAddresses = refRows.map(r => (r.referred_address || '').trim()).filter(Boolean);
 
-      // 2. Fetch completed transactions for all referees
+      // 4. Fetch completed transactions for all referees
       const { data: txs, error: txError } = await supabase
         .from('p2p_transactions')
         .select('user_address, usd_value, status, created_at')
@@ -228,7 +277,9 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        address: userAddress,
+        address: userWallet,
+        fiat_tag: userFiatTag,
+        has_fiat_tag: Boolean(userFiatTag),
         referral_link: referralLink,
         total_referred_users: friendsList.length,
         referral_points: totalReferralPoints,

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
+import { getFiatTagByWallet } from '../services/supabase';
 
 export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
   const [activeTab, setActiveTab] = useState('leaderboard'); // 'leaderboard' | 'referrals'
   const [timeframe, setTimeframe] = useState('all');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [fiatTag, setFiatTag] = useState(null);
   const [data, setData] = useState({
     user: null,
     leaderboard: [],
@@ -15,6 +17,8 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
   });
   const [referralData, setReferralData] = useState({
     referral_link: '',
+    fiat_tag: null,
+    has_fiat_tag: false,
     total_referred_users: 0,
     referral_points: 0,
     referred_friends: [],
@@ -23,24 +27,40 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [lbRes, refRes] = await Promise.all([
+      const [lbRes, refRes, tagRes] = await Promise.all([
         fetchLeaderboard({
           address: walletAddress || null,
           timeframe,
           limit: 50,
         }),
         walletAddress ? fetchReferralStats(walletAddress) : Promise.resolve(null),
+        walletAddress ? getFiatTagByWallet(walletAddress) : Promise.resolve(null),
       ]);
 
       if (lbRes && lbRes.success) {
         setData(lbRes);
       }
+
+      const resolvedTag = refRes?.fiat_tag || tagRes?.tag_name || (typeof localStorage !== 'undefined' ? localStorage.getItem('fw_fiat_tag') : null);
+      if (resolvedTag) {
+        setFiatTag(resolvedTag);
+      }
+
+      const activeLink = refRes?.referral_link || getReferralLink(walletAddress, resolvedTag);
+
       if (refRes && refRes.success) {
-        setReferralData(refRes);
+        setReferralData({
+          ...refRes,
+          fiat_tag: resolvedTag,
+          has_fiat_tag: Boolean(resolvedTag),
+          referral_link: activeLink,
+        });
       } else if (walletAddress) {
         setReferralData(prev => ({
           ...prev,
-          referral_link: getReferralLink(walletAddress),
+          fiat_tag: resolvedTag,
+          has_fiat_tag: Boolean(resolvedTag),
+          referral_link: activeLink,
         }));
       }
     } catch (err) {
@@ -57,7 +77,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
   }, [isOpen, loadData]);
 
   const handleCopyLink = () => {
-    const link = referralData.referral_link || getReferralLink(walletAddress);
+    const link = referralData.referral_link || getReferralLink(walletAddress, fiatTag);
     if (!link) return;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -78,7 +98,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
   };
 
   const handleShareLink = () => {
-    const link = referralData.referral_link || getReferralLink(walletAddress);
+    const link = referralData.referral_link || getReferralLink(walletAddress, fiatTag);
     if (!link) return;
     if (typeof navigator !== 'undefined' && navigator.share) {
       navigator.share({
@@ -627,6 +647,32 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                   Share your link with friends. When they trade crypto through FiatWallet on-ramp or off-ramp, you earn 1 Point for every 10 USD of volume they complete.
                 </div>
 
+                {/* Linked Tag Badge (if created) */}
+                {fiatTag && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '8px',
+                    padding: '2px 4px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', fontWeight: '600' }}>Linked Fiat Tag:</span>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        color: 'var(--lime, #a3e635)',
+                        background: 'rgba(163, 230, 53, 0.15)',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                      }}>
+                        {fiatTag.startsWith('$') ? fiatTag : `$${fiatTag}`}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active ✓</span>
+                  </div>
+                )}
+
                 {/* Referral Link Box */}
                 <div style={{
                   background: 'rgba(0, 0, 0, 0.35)',
@@ -646,7 +692,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
                   }}>
-                    {referralData.referral_link || getReferralLink(walletAddress)}
+                    {referralData.referral_link || getReferralLink(walletAddress, fiatTag)}
                   </div>
                   <button
                     onClick={handleCopyLink}
@@ -682,6 +728,23 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                   >
                     Share
                   </button>
+                </div>
+
+                {/* Guidance note */}
+                <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', marginTop: '8px', lineHeight: '1.4' }}>
+                  {fiatTag ? (
+                    <>
+                      • Your referral link is personalized with your Fiat Tag.
+                      <br />
+                      • Previous referral links using your wallet address also still work seamlessly.
+                    </>
+                  ) : (
+                    <>
+                      • Share this link with friends to earn points on their ramp volume.
+                      <br />
+                      • <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
+                    </>
+                  )}
                 </div>
               </div>
 

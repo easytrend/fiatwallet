@@ -453,7 +453,7 @@ export default function App() {
       const refParam = params.get('ref') || params.get('referrer');
       if (refParam && typeof refParam === 'string') {
         const cleanRef = refParam.trim();
-        if (cleanRef.length >= 20) {
+        if (cleanRef.length >= 2) {
           localStorage.setItem('fw_referrer', cleanRef);
         }
         // Clean query parameter from URL without reloading

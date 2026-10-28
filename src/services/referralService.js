@@ -7,22 +7,34 @@
 import { getRelayEndpoint } from '../components/P2PPanel.jsx';
 
 /**
- * Returns the shareable referral link for a given wallet address.
+ * Returns the shareable referral link for a given wallet address or linked Fiat Tag.
+ * If user has a Fiat Tag (e.g. "$alex"), the link becomes "https://fiatwallet.app/?ref=alex".
+ * Otherwise it falls back to "https://fiatwallet.app/?ref=<walletAddress>".
  */
-export function getReferralLink(walletAddress) {
-  if (!walletAddress) return 'https://fiatwallet.app';
+export function getReferralLink(walletAddress, fiatTag = null) {
+  if (!walletAddress && !fiatTag) return 'https://fiatwallet.app';
   try {
     const origin = (typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('file://'))
       ? window.location.origin
       : 'https://fiatwallet.app';
+
+    if (fiatTag) {
+      const cleanTag = String(fiatTag).replace(/^\$/, '').trim();
+      if (cleanTag) return `${origin}/?ref=${cleanTag}`;
+    }
     return `${origin}/?ref=${walletAddress}`;
   } catch (e) {
+    if (fiatTag) {
+      const cleanTag = String(fiatTag).replace(/^\$/, '').trim();
+      if (cleanTag) return `https://fiatwallet.app/?ref=${cleanTag}`;
+    }
     return `https://fiatwallet.app/?ref=${walletAddress}`;
   }
 }
 
 /**
  * Binds a referee wallet to their referrer via the backend endpoint.
+ * Accepts either a wallet address or a Fiat Tag.
  * Ensures idempotency using localStorage to avoid duplicate network calls.
  */
 export async function bindReferral(refereeAddress, referrerAddress) {
@@ -74,12 +86,14 @@ export async function bindReferral(refereeAddress, referrerAddress) {
 }
 
 /**
- * Fetches referral statistics (link, total friends, points earned) for a wallet address.
+ * Fetches referral statistics (link, Fiat Tag status, total friends, points earned) for a wallet address.
  */
 export async function fetchReferralStats(walletAddress) {
   if (!walletAddress) {
     return {
       success: false,
+      fiat_tag: null,
+      has_fiat_tag: false,
       total_referred_users: 0,
       referral_points: 0,
       referred_friends: [],
@@ -88,6 +102,10 @@ export async function fetchReferralStats(walletAddress) {
   }
 
   const cleanAddr = String(walletAddress).trim();
+  const cachedTag = (typeof localStorage !== 'undefined')
+    ? (localStorage.getItem(`paj_user_tag_${cleanAddr}`) || localStorage.getItem('fw_fiat_tag'))
+    : null;
+
   const endpoint = getRelayEndpoint(`/api/referral?address=${encodeURIComponent(cleanAddr)}`);
 
   try {
@@ -110,7 +128,9 @@ export async function fetchReferralStats(walletAddress) {
       success: false,
       error: err.message,
       address: cleanAddr,
-      referral_link: getReferralLink(cleanAddr),
+      fiat_tag: cachedTag,
+      has_fiat_tag: Boolean(cachedTag),
+      referral_link: getReferralLink(cleanAddr, cachedTag),
       total_referred_users: 0,
       referral_points: 0,
       referred_friends: [],
