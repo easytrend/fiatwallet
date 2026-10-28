@@ -290,56 +290,69 @@ export function initFiatWalletProvider() {
 
   // Register with official Solana Wallet Standard (Wallet Standard Specification)
   try {
-    const registerWallet = (register) => {
-      register({
-        name: 'FiatWallet',
-        icon: 'https://fiatwallet.pages.dev/logo.jpg',
-        version: '1.0.0',
-        chains: ['solana:mainnet', 'solana:devnet'],
-        features: {
-          'standard:connect': {
-            version: '1.0.0',
-            connect: async (input) => fiatwalletProvider.connect(input),
-          },
-          'standard:disconnect': {
-            version: '1.0.0',
-            disconnect: async () => fiatwalletProvider.disconnect(),
-          },
-          'standard:events': {
-            version: '1.0.0',
-            on: (event, listener) => fiatwalletProvider.on(event, listener),
-          },
-          'solana:signTransaction': {
-            version: '1.0.0',
-            signTransaction: async (input) => {
-              const signed = await fiatwalletProvider.signTransaction(input.transaction);
-              return [{ signedTransaction: signed }];
-            },
-          },
-          'solana:signAndSendTransaction': {
-            version: '1.0.0',
-            signAndSendTransaction: async (input) => {
-              const res = await fiatwalletProvider.signAndSendTransaction(input.transaction, input.options);
-              return [{ signature: res.signature }];
-            },
-          },
-          'solana:signMessage': {
-            version: '1.0.0',
-            signMessage: async (input) => {
-              const res = await fiatwalletProvider.signMessage(input.message);
-              return [{ signedMessage: input.message, signature: res.signature }];
-            },
+    const standardWallet = {
+      name: 'FiatWallet',
+      icon: 'https://fiatwallet.pages.dev/logo.jpg',
+      version: '1.0.0',
+      chains: ['solana:mainnet', 'solana:mainnet-beta', 'solana:devnet'],
+      features: {
+        'standard:connect': {
+          version: '1.0.0',
+          connect: async (input) => fiatwalletProvider.connect(input),
+        },
+        'standard:disconnect': {
+          version: '1.0.0',
+          disconnect: async () => fiatwalletProvider.disconnect(),
+        },
+        'standard:events': {
+          version: '1.0.0',
+          on: (event, listener) => fiatwalletProvider.on(event, listener),
+        },
+        'solana:signTransaction': {
+          version: '1.0.0',
+          signTransaction: async (input) => {
+            const signed = await fiatwalletProvider.signTransaction(input.transaction);
+            return [{ signedTransaction: signed }];
           },
         },
-        accounts: fiatwalletProvider.publicKey
-          ? [{ address: fiatwalletProvider.publicKey.toBase58(), publicKey: fiatwalletProvider.publicKey }]
-          : [],
-      });
+        'solana:signAndSendTransaction': {
+          version: '1.0.0',
+          signAndSendTransaction: async (input) => {
+            const res = await fiatwalletProvider.signAndSendTransaction(input.transaction, input.options);
+            return [{ signature: res.signature }];
+          },
+        },
+        'solana:signMessage': {
+          version: '1.0.0',
+          signMessage: async (input) => {
+            const res = await fiatwalletProvider.signMessage(input.message);
+            return [{ signedMessage: input.message, signature: res.signature }];
+          },
+        },
+      },
+      accounts: fiatwalletProvider.publicKey
+        ? [{ address: fiatwalletProvider.publicKey.toBase58(), publicKey: fiatwalletProvider.publicKey }]
+        : [],
     };
 
+    window.navigator.wallets = window.navigator.wallets || [];
+    window.navigator.wallets.push((register) => register(standardWallet));
+
     window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', {
-      detail: { register: registerWallet }
+      detail: (register) => register(standardWallet)
     }));
+
+    window.addEventListener('wallet-standard:app-ready', (event) => {
+      try {
+        if (event && event.detail && typeof event.detail.register === 'function') {
+          event.detail.register(standardWallet);
+        } else {
+          window.dispatchEvent(new CustomEvent('wallet-standard:register-wallet', {
+            detail: (register) => register(standardWallet)
+          }));
+        }
+      } catch (e) {}
+    });
   } catch (e) {
     console.warn('Solana Wallet Standard registration skipped:', e);
   }

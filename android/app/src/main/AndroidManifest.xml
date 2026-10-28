@@ -46,6 +46,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="fiatwallet" />
+                <data android:scheme="solana-wallet" />
                 <data android:scheme="wc" />
             </intent-filter>
 
