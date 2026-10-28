@@ -2042,32 +2042,7 @@ export default function App() {
                 </button>
               </div>
 
-            {/* RPC warning banner — shown when no custom VITE_RPC_URL is set */}
-            {isUsingPublicRpc && !rpcWarnDismissed && (
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.35)',
-                borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12,
-                color: '#fde68a', lineHeight: 1.5
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <span style={{ flex: 1 }}>
-                  <strong>Public RPC active.</strong> No <code>VITE_RPC_URL</code> is configured.
-                  The default endpoint (<code>api.mainnet-beta.solana.com</code>) is rate-limited
-                  and may cause simulation failures or stale balance reads.
-                  Set a private RPC (e.g. Helius) in your <code>.env</code> file for reliable operation.
-                </span>
-                <button
-                  onClick={() => setRpcWarnDismissed(true)}
-                  style={{ background: 'none', border: 'none', color: '#fde68a', cursor: 'pointer', fontSize: 16, padding: 0, flexShrink: 0 }}
-                  aria-label="Dismiss RPC warning"
-                >✕</button>
-              </div>
-            )}
+
             <div className="title-row">
               <div className="card-title">Send Crypto</div>
             </div>
@@ -2196,32 +2171,7 @@ export default function App() {
                 </button>
               </div>
 
-            {/* RPC warning banner — shown when no custom VITE_RPC_URL is set */}
-            {isUsingPublicRpc && !rpcWarnDismissed && (
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.35)',
-                borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12,
-                color: '#fde68a', lineHeight: 1.5
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <span style={{ flex: 1 }}>
-                  <strong>Public RPC active.</strong> No <code>VITE_RPC_URL</code> is configured.
-                  The default endpoint (<code>api.mainnet-beta.solana.com</code>) is rate-limited
-                  and may cause simulation failures or stale balance reads.
-                  Set a private RPC (e.g. Helius) in your <code>.env</code> file for reliable operation.
-                </span>
-                <button
-                  onClick={() => setRpcWarnDismissed(true)}
-                  style={{ background: 'none', border: 'none', color: '#fde68a', cursor: 'pointer', fontSize: 16, padding: 0, flexShrink: 0 }}
-                  aria-label="Dismiss RPC warning"
-                >✕</button>
-              </div>
-            )}
+
             <div className="title-row">
               <div className="card-title">Bulk Send</div>
             </div>

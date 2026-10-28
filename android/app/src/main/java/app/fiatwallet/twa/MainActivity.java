@@ -29,6 +29,8 @@ import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import com.getcapacitor.BridgeWebViewClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -200,6 +202,34 @@ public class MainActivity extends BridgeActivity {
         webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.addJavascriptInterface(bridgeInstance, "FiatWalletBridge");
+
+        // Pass /api/* requests directly to live Vercel backend over HTTPS
+        getBridge().setWebViewClient(new BridgeWebViewClient(getBridge()) {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                if (request != null && request.getUrl() != null) {
+                    String reqPath = request.getUrl().getPath();
+                    if (reqPath != null && (reqPath.startsWith("/api/") || reqPath.equals("/api"))) {
+                        return null; // Return null to let Android network stack make live HTTPS request to Vercel
+                    }
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+                if (url != null) {
+                    try {
+                        Uri uri = Uri.parse(url);
+                        String reqPath = uri.getPath();
+                        if (reqPath != null && (reqPath.startsWith("/api/") || reqPath.equals("/api"))) {
+                            return null;
+                        }
+                    } catch (Exception ignored) {}
+                }
+                return super.shouldInterceptRequest(view, url);
+            }
+        });
     }
 
     private void closeDAppInternal() {

@@ -90,7 +90,8 @@ export async function fetchRemotePajConfig() {
       window.location.protocol === 'ionic:' ||
       window.location.protocol === 'file:' ||
       Boolean(window.Capacitor?.isNativePlatform?.()) ||
-      Boolean(window.AndroidBridge)
+      Boolean(window.AndroidBridge) ||
+      Boolean(window.FiatWalletBridge)
     );
     const endpoints = isCapacitorOrLocal
       ? ['https://fiatwallet.app/api/paj_config', '/api/paj_config']

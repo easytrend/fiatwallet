@@ -39,10 +39,16 @@ import {
 
 export function getRelayEndpoint(path) {
   if (typeof window !== 'undefined') {
+    if (typeof path === 'string' && (path.startsWith('http://') || path.startsWith('https://'))) {
+      return path;
+    }
     const isLocalOrCapacitor = window.location.protocol === 'capacitor:'
       || window.location.protocol === 'file:'
       || window.location.hostname === 'localhost'
-      || window.location.hostname === '127.0.0.1';
+      || window.location.hostname === '127.0.0.1'
+      || Boolean(window.Capacitor?.isNativePlatform?.())
+      || Boolean(window.FiatWalletBridge)
+      || Boolean(window.AndroidBridge);
     if (isLocalOrCapacitor) {
       return `https://fiatwallet.app${path}`;
     }
