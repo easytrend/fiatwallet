@@ -2822,7 +2822,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
           currency: selectedCountry.currency,
           fiatAmount: parsedAmt,
-          amount: liveSelectedToken.symbol === 'SOL' ? estCryptoAmount : undefined,
+          amount: estCryptoAmount,
           mint: selectedMint,
           chain: 'SOLANA',
           fee: platformFee,
@@ -2836,11 +2836,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
 
       // Ensure protocol fee is always intact and included
-      // For SOL (or non-1:1 stables), order.amount is in USD and must never overwrite baseCryptoAmount in SOL
-      const finalCryptoAmount = (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT')
-        && order?.amount && Number(order.amount) >= baseCryptoAmount
-          ? Number(order.amount)
-          : baseCryptoAmount;
+      // In crypto mode, user explicitly specified the crypto amount, so use baseCryptoAmount.
+      // In fiat mode, if PajCash order requires slightly more crypto, use order.amount.
+      let calculatedCryptoAmount = baseCryptoAmount;
+      if (offrampInputMode === 'fiat' && (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') && order?.amount) {
+        const orderAmt = Number(order.amount);
+        if (orderAmt >= baseCryptoAmount) {
+          calculatedCryptoAmount = orderAmt;
+        }
+      }
+      const finalCryptoAmount = calculatedCryptoAmount;
 
       // Net crypto converted to fiat payout (gross crypto minus platform fee)
       // Ensures usd_value in Supabase accurately reflects the net amount actually offramped
@@ -2997,8 +3002,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setSubmitting(true);
     try {
       const balance = liveSelectedToken.balance || 0;
-      if (estCryptoAmount > balance) {
-        throw new Error(`Insufficient ${liveSelectedToken.symbol} balance. You have ${balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${liveSelectedToken.symbol} but need ${estCryptoAmount.toFixed(4)} ${liveSelectedToken.symbol}.`);
+      if (baseCryptoAmount > (balance + 0.0001)) {
+        throw new Error(
+          `Insufficient ${liveSelectedToken.symbol} balance. You need ${baseCryptoAmount.toFixed(4)} ${liveSelectedToken.symbol} (including platform fee) but only have ${balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${liveSelectedToken.symbol} in your wallet.`
+        );
       }
 
       // When a tag is resolved, read bank/account details from the privately resolved tag data
@@ -3013,14 +3020,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
 
       // 1. Create paj_ramp off-ramp order
+      const selectedMint = liveSelectedToken.mint || (liveSelectedToken.symbol === 'USDT' ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
       const order = await createOfframpOrder(
         {
           bank: bankId,
           accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
           currency: selectedCountry.currency,
           fiatAmount: parsedAmt,
-          amount: liveSelectedToken.symbol === 'SOL' ? estCryptoAmount : undefined,
-          mint: liveSelectedToken.mint,
+          amount: estCryptoAmount,
+          mint: selectedMint,
           chain: 'SOLANA',
           fee: platformFee,
           webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
@@ -3054,19 +3062,40 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const depositPubkey = new PublicKey(order.address);
 
       // Ensure protocol fee is always intact and included
-      // For SOL (or non-1:1 stables), order.amount is in USD and must never overwrite baseCryptoAmount in SOL
-      const finalSendAmount = (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT')
-        && order?.amount && Number(order.amount) >= baseCryptoAmount
-          ? Number(order.amount)
-          : baseCryptoAmount;
+      // In crypto mode, user explicitly specified the crypto amount, so use baseCryptoAmount.
+      // In fiat mode, if PajCash order requires slightly more crypto, use order.amount.
+      let calculatedSendAmount = baseCryptoAmount;
+      if (offrampInputMode === 'fiat' && (liveSelectedToken.symbol === 'USDC' || liveSelectedToken.symbol === 'USDT') && order?.amount) {
+        const orderAmt = Number(order.amount);
+        if (orderAmt >= baseCryptoAmount) {
+          calculatedSendAmount = orderAmt;
+        }
+      }
+
+      // Strict Hard Cap: Transaction amount MUST NEVER exceed user's available wallet balance.
+      // An on-chain transfer for more than available balance will ALWAYS fail with 0x1 InsufficientFunds.
+      const maxSpendable = Number(walletBalance) || 0;
+      let finalSendAmount = calculatedSendAmount;
+      if (maxSpendable > 0 && finalSendAmount > maxSpendable) {
+        finalSendAmount = maxSpendable;
+      }
 
       if (liveSelectedToken.symbol === 'SOL') {
-        const lamports = Math.round(finalSendAmount * 1e9);
+        const onChainSolBalance = await connection.getBalance(publicKey, 'confirmed').catch(() => 0);
+        const gasBuffer = usingRelayer ? 0 : 5000;
+        const maxSolLamports = Math.max(0, onChainSolBalance - gasBuffer);
+        let lamports = Math.floor(finalSendAmount * 1e9);
+        if (lamports > maxSolLamports) {
+          lamports = maxSolLamports;
+        }
+        if (lamports <= 0) {
+          throw new Error('Insufficient SOL balance to cover transfer and network fee.');
+        }
         transaction.add(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: depositPubkey, lamports })
         );
       } else {
-        const mintPubkey = new PublicKey(liveSelectedToken.mint);
+        const mintPubkey = new PublicKey(selectedMint);
 
         // Determine the correct SPL token program.
         // USDG uses Token-2022; we honour the override flag first so we
@@ -3102,7 +3131,27 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         }
 
         const sendAmount = finalSendAmount;
-        const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
+        let units = BigInt(Math.floor(Number(sendAmount.toFixed(decimals)) * Math.pow(10, decimals)));
+
+        // Strict On-Chain Balance Safeguard:
+        // Query the sender's actual on-chain ATA token balance directly.
+        // If units exceeds the on-chain balance by even a fraction of a micro-lamport, clamp it.
+        try {
+          const ataBalanceRes = await connection.getTokenAccountBalance(senderATA);
+          if (ataBalanceRes?.value?.amount) {
+            const rawOnChainUnits = BigInt(ataBalanceRes.value.amount);
+            if (units > rawOnChainUnits) {
+              console.warn(`[Offramp] Clamping send units from ${units} to available on-chain balance ${rawOnChainUnits}`);
+              units = rawOnChainUnits;
+            }
+          }
+        } catch (balErr) {
+          console.warn('[Offramp] Could not check raw on-chain ATA balance:', balErr);
+        }
+
+        if (units <= 0n) {
+          throw new Error(`Insufficient ${liveSelectedToken.symbol} balance to complete transfer.`);
+        }
 
         transaction.add(
           createAssociatedTokenAccountIdempotentInstruction(
@@ -3125,7 +3174,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         })
       );
 
-      verifyOfframpTransaction(transaction, order.address, liveSelectedToken, publicKey,
+      verifyOfframpTransaction(transaction, order.address, { ...liveSelectedToken, mint: selectedMint }, publicKey,
         usingRelayer ? relayerPublicKey : null);
 
       // 5. Pre-flight simulation (only if user is feePayer; relayer server simulates after adding relayer signature)
