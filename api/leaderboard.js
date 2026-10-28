@@ -1,9 +1,14 @@
 /**
  * api/leaderboard.js — Vercel Serverless Function
  *
- * Leaderboard & Volume Points Endpoint
- * Rule: 1 USD on-ramp or off-ramp volume = 1 Point (status = 'COMPLETED')
- * Points are whole integers (no decimals).
+ * FiatWallet Points & Volume Leaderboard Endpoint
+ *
+ * Rules:
+ *  - Personal: 1 USD on-ramp or off-ramp volume = 1 Point (status = 'COMPLETED')
+ *  - Referral: 10 USD on-ramp or off-ramp volume of referred friends = 1 Point to referrer
+ *  - Total Points = Personal Points + Referral Points
+ *  - Points are whole integers (no decimals, no fractions).
+ *  - No $ value or volume exposed in response.
  *
  * Query Params:
  *  - address: optional wallet address to get personal rank and stats
@@ -77,18 +82,21 @@ export default async function handler(req, res) {
         if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
           aggregated = viewData.map(row => ({
             address: row.user_address,
+            personal_points: Math.floor(Number(row.personal_points) || 0),
+            referral_points: Math.floor(Number(row.referral_points) || 0),
             total_points: Math.floor(Number(row.total_points) || 0),
             total_transactions: Number(row.total_transactions) || 0,
+            total_referred_users: Number(row.total_referred_users) || 0,
             last_active_at: row.last_active_at,
             rank: Number(row.rank) || 1,
           }));
         }
       } catch (e) {
-        // Fallback to table aggregation below
+        // Fallback to in-memory aggregation below
       }
     }
 
-    // Attempt 2 / Timeframe Fallback: Query p2p_transactions directly
+    // Attempt 2 / Timeframe Fallback: Query p2p_transactions & referrals directly
     if (aggregated.length === 0) {
       let query = supabase
         .from('p2p_transactions')
@@ -105,43 +113,93 @@ export default async function handler(req, res) {
       }
 
       const { data: txs, error: txError } = await query;
-
       if (txError) {
         console.warn('[api/leaderboard] Supabase query error:', txError.message);
         return res.status(500).json({ success: false, error: txError.message });
       }
 
+      // Query referrals mapping (referee -> referrer)
+      let refereeMap = new Map(); // refereeLower -> referrerOriginal
+      let referrerRefereesCount = new Map(); // referrerLower -> count
+      try {
+        const { data: refs, error: refsError } = await supabase
+          .from('referrals')
+          .select('referrer_address, referred_address');
+        
+        if (!refsError && Array.isArray(refs)) {
+          for (const r of refs) {
+            const referee = (r.referred_address || '').trim().toLowerCase();
+            const referrer = (r.referrer_address || '').trim();
+            if (referee && referrer) {
+              refereeMap.set(referee, referrer);
+              const refLower = referrer.toLowerCase();
+              referrerRefereesCount.set(refLower, (referrerRefereesCount.get(refLower) || 0) + 1);
+            }
+          }
+        }
+      } catch (e) {
+        // Soft fail if referrals table is not created yet
+      }
+
       // Group and sum in memory
-      const userMap = new Map();
+      const userMap = new Map(); // lowerAddr -> record
+
+      const getOrCreateEntry = (addr) => {
+        const lower = addr.toLowerCase();
+        let entry = userMap.get(lower);
+        if (!entry) {
+          entry = {
+            address: addr,
+            personal_usd: 0,
+            referee_usd: 0,
+            total_transactions: 0,
+            total_referred_users: referrerRefereesCount.get(lower) || 0,
+            last_active_at: null,
+          };
+          userMap.set(lower, entry);
+        }
+        return entry;
+      };
+
       for (const tx of (txs || [])) {
         const addr = (tx.user_address || '').trim();
         if (!addr) continue;
         const usd = Math.max(0, Number(tx.usd_value) || 0);
 
-        let entry = userMap.get(addr);
-        if (!entry) {
-          entry = {
-            address: addr,
-            total_points: 0,
-            total_transactions: 0,
-            last_active_at: tx.created_at,
-          };
-          userMap.set(addr, entry);
+        // Personal volume
+        const personalEntry = getOrCreateEntry(addr);
+        personalEntry.personal_usd += usd;
+        personalEntry.total_transactions += 1;
+        if (!personalEntry.last_active_at || new Date(tx.created_at) > new Date(personalEntry.last_active_at)) {
+          personalEntry.last_active_at = tx.created_at;
         }
 
-        entry.total_points += usd;
-        entry.total_transactions += 1;
-        if (new Date(tx.created_at) > new Date(entry.last_active_at)) {
-          entry.last_active_at = tx.created_at;
+        // Referral volume: if this user was referred by someone
+        const referrer = refereeMap.get(addr.toLowerCase());
+        if (referrer && referrer.toLowerCase() !== addr.toLowerCase()) {
+          const referrerEntry = getOrCreateEntry(referrer);
+          referrerEntry.referee_usd += usd;
         }
       }
 
-      // Convert to integer points (no decimals) and sort descending
+      // Convert to whole integer points (no decimals)
+      // Rule: Personal = floor(personal_usd), Referral = floor(referee_usd / 10)
       const sorted = Array.from(userMap.values())
-        .map(e => ({
-          ...e,
-          total_points: Math.floor(e.total_points),
-        }))
+        .map(e => {
+          const personalPts = Math.floor(e.personal_usd);
+          const referralPts = Math.floor(e.referee_usd / 10);
+          const totalPts = personalPts + referralPts;
+          return {
+            address: e.address,
+            personal_points: personalPts,
+            referral_points: referralPts,
+            total_points: totalPts,
+            total_transactions: e.total_transactions,
+            total_referred_users: e.total_referred_users,
+            last_active_at: e.last_active_at,
+          };
+        })
+        .filter(e => e.total_points > 0)
         .sort((a, b) => b.total_points - a.total_points);
 
       // Assign dense rank
@@ -157,6 +215,7 @@ export default async function handler(req, res) {
 
     const totalParticipants = aggregated.length;
     const totalPointsDistributed = aggregated.reduce((acc, row) => acc + (row.total_points || 0), 0);
+    const totalReferralPointsDistributed = aggregated.reduce((acc, row) => acc + (row.referral_points || 0), 0);
 
     // Format leaderboard page
     const pageItems = aggregated.slice(offset, offset + limit).map(item => {
@@ -166,6 +225,8 @@ export default async function handler(req, res) {
         address: item.address,
         short_address: maskAddress(item.address),
         total_points: Math.floor(item.total_points || 0),
+        personal_points: Math.floor(item.personal_points || 0),
+        referral_points: Math.floor(item.referral_points || 0),
         total_transactions: item.total_transactions,
         tier: tierInfo.name,
       };
@@ -182,7 +243,10 @@ export default async function handler(req, res) {
           short_address: maskAddress(found.address),
           rank: found.rank,
           total_points: Math.floor(found.total_points || 0),
+          personal_points: Math.floor(found.personal_points || 0),
+          referral_points: Math.floor(found.referral_points || 0),
           total_transactions: found.total_transactions,
+          total_referred_users: found.total_referred_users || 0,
           tier: tierInfo.name,
           next_tier_target: tierInfo.nextTarget,
           tier_progress: tierInfo.progress,
@@ -194,7 +258,10 @@ export default async function handler(req, res) {
           short_address: maskAddress(userAddress),
           rank: null,
           total_points: 0,
+          personal_points: 0,
+          referral_points: 0,
           total_transactions: 0,
+          total_referred_users: 0,
           tier: tierInfo.name,
           next_tier_target: 250,
           tier_progress: 0,
@@ -209,6 +276,7 @@ export default async function handler(req, res) {
       leaderboard: pageItems,
       total_participants: totalParticipants,
       total_points_distributed: Math.floor(totalPointsDistributed),
+      total_referral_points_distributed: Math.floor(totalReferralPointsDistributed),
     });
   } catch (err) {
     console.error('[api/leaderboard] Unhandled error:', err);

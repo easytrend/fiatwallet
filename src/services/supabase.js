@@ -111,6 +111,9 @@ export async function logP2PTransaction({
   if (!client || !orderId) return;
 
   const actualSignature = signature || `pending_${type}_${orderId}`;
+  const storedReferrer = (typeof window !== 'undefined' && window.localStorage)
+    ? (window.localStorage.getItem('fw_referrer') || null)
+    : null;
 
   const payload = {
     signature: actualSignature,
@@ -129,6 +132,7 @@ export async function logP2PTransaction({
     user_email: userEmail || null,
     deposit_address: depositAddress || null,
     recipient_tag: recipientTag || null,
+    referrer_address: storedReferrer,
     updated_at: new Date().toISOString(),
   };
 
@@ -151,6 +155,22 @@ export async function logP2PTransaction({
       ({ error: p2pError } = await client
         .from('p2p_transactions')
         .insert(payload));
+    }
+
+    // Graceful fallback if referrer_address column does not exist yet in database
+    if (p2pError && p2pError.message && p2pError.message.includes('referrer_address')) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.referrer_address;
+      if (existingP2P?.id) {
+        ({ error: p2pError } = await client
+          .from('p2p_transactions')
+          .update(fallbackPayload)
+          .eq('order_id', String(orderId)));
+      } else {
+        ({ error: p2pError } = await client
+          .from('p2p_transactions')
+          .insert(fallbackPayload));
+      }
     }
 
     // --- transactions (secondary ledger table) ---

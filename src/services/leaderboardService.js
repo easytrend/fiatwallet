@@ -4,7 +4,7 @@
  * Client service to fetch leaderboard data and user rank from /api/leaderboard.
  */
 
-import { getRelayEndpoint } from '../components/P2PPanel';
+import { getRelayEndpoint } from '../components/P2PPanel.jsx';
 
 export async function fetchLeaderboard({ address = null, limit = 50, offset = 0, timeframe = 'all' } = {}) {
   const params = new URLSearchParams();

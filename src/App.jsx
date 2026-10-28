@@ -37,6 +37,7 @@ import NativeWalletApprovalModal from './components/NativeWalletApprovalModal';
 import { parseTransactionBreakdown } from './utils/txParser';
 import HistoryPanel from './components/HistoryPanel';
 import LeaderboardModal from './components/LeaderboardModal';
+import { bindReferral } from './services/referralService';
 
 
 
@@ -443,6 +444,45 @@ export default function App() {
       } catch (e) {}
     }
   }, [effectivePublicKey, effectiveConnected, internalWallet?.isActive, internalWallet?.publicKey, internalWallet?.walletMeta?.publicKey]);
+
+  // Capture referral link parameter (?ref=... or ?referrer=...) on initial load
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const refParam = params.get('ref') || params.get('referrer');
+      if (refParam && typeof refParam === 'string') {
+        const cleanRef = refParam.trim();
+        if (cleanRef.length >= 20) {
+          localStorage.setItem('fw_referrer', cleanRef);
+        }
+        // Clean query parameter from URL without reloading
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ref');
+        url.searchParams.delete('referrer');
+        window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : '') + url.hash);
+      }
+    } catch (e) {
+      console.warn('[Referral] URL parse warning:', e);
+    }
+  }, []);
+
+  // Bind referral when wallet is active and referrer is present in localStorage
+  useEffect(() => {
+    const key = effectivePublicKey?.toBase58?.() ||
+                (typeof effectivePublicKey === 'string' ? effectivePublicKey : null) ||
+                internalWallet?.publicKey ||
+                internalWallet?.walletMeta?.publicKey ||
+                '';
+    if (!key) return;
+
+    try {
+      const storedRef = localStorage.getItem('fw_referrer');
+      if (storedRef && storedRef.toLowerCase() !== key.toLowerCase()) {
+        bindReferral(key, storedRef);
+      }
+    } catch (e) {}
+  }, [effectivePublicKey, internalWallet?.publicKey, internalWallet?.walletMeta?.publicKey]);
 
   // Listen for FiatWallet adapter events and onboarding requests
   useEffect(() => {

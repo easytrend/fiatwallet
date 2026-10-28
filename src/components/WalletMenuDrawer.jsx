@@ -242,7 +242,7 @@ export default function WalletMenuDrawer({
                 </span>
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px', fontWeight: '400' }}>
-                Earn points from on-ramp and off-ramp transactions
+                Earn points from ramp volume and friend referrals
               </div>
             </div>
             <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>→</span>
