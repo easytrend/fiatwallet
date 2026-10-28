@@ -628,30 +628,6 @@ const DAppExplorer = forwardRef(function DAppExplorer({
               </div>
             </form>
 
-            {/* Pop-out / external window for PWA when dApp blocks iframes */}
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedDApp?.url) {
-                  window.open(selectedDApp.url, '_blank', 'popup=yes,width=460,height=820');
-                }
-              }}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                borderRadius: '8px',
-                color: '#f0f6ff',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: '700',
-                padding: '6px 10px',
-                flexShrink: 0
-              }}
-              title="Open in dedicated window"
-            >
-              ↗
-            </button>
-
             {/* Right: Reload button */}
             <button
               type="button"
@@ -672,40 +648,6 @@ const DAppExplorer = forwardRef(function DAppExplorer({
               ↻
             </button>
           </div>
-
-          {/* PWA frame advisory bar */}
-          {typeof window !== 'undefined' && !window.FiatWalletBridge && !window.Capacitor?.isNativePlatform?.() && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-              padding: '6px 14px',
-              background: 'rgba(30, 41, 59, 0.95)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              fontSize: '11px',
-              color: '#94a3b8'
-            }}>
-              <span>Can&#39;t view dApp? Some sites block in-browser frames. Tap ↗ to open directly, or use the Android APK.</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedDApp?.url) window.open(selectedDApp.url, '_blank', 'popup=yes,width=460,height=820');
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--lime, #a3e635)',
-                  fontWeight: '700',
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  padding: 0
-                }}
-              >
-                Open ↗
-              </button>
-            </div>
-          )}
 
           {/* Full Screen Web View Iframe */}
           <iframe
