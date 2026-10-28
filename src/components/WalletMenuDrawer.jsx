@@ -228,7 +228,7 @@ export default function WalletMenuDrawer({
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: 'var(--lime, #a3e635)', fontSize: '13px', fontWeight: '800' }}>•</span>
-                <span style={{ color: 'white', fontWeight: '700' }}>Volume Leaderboard</span>
+                <span style={{ color: 'white', fontWeight: '700' }}>Points Leaderboard</span>
                 <span style={{
                   background: 'rgba(163, 230, 53, 0.18)',
                   color: 'var(--lime, #a3e635)',
@@ -238,11 +238,11 @@ export default function WalletMenuDrawer({
                   borderRadius: '5px',
                   textTransform: 'uppercase'
                 }}>
-                  $1 = 1 Pt
+                  1 Pt / USD
                 </span>
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px', fontWeight: '400' }}>
-                Earn 1 point per $1 on-ramp or off-ramp volume
+                Earn points from on-ramp and off-ramp transactions
               </div>
             </div>
             <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>→</span>

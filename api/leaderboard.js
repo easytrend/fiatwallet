@@ -2,7 +2,8 @@
  * api/leaderboard.js — Vercel Serverless Function
  *
  * Leaderboard & Volume Points Endpoint
- * Rule: $1.00 USD on-ramp or off-ramp volume = 1 Point (status = 'COMPLETED')
+ * Rule: 1 USD on-ramp or off-ramp volume = 1 Point (status = 'COMPLETED')
+ * Points are whole integers (no decimals).
  *
  * Query Params:
  *  - address: optional wallet address to get personal rank and stats
@@ -14,7 +15,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 function getTier(points) {
-  const pts = Number(points) || 0;
+  const pts = Math.floor(Number(points) || 0);
   if (pts >= 20000) return { name: 'Legend', nextTarget: null, progress: 100 };
   if (pts >= 5000) return { name: 'Diamond', nextTarget: 20000, progress: Math.min(100, Math.round(((pts - 5000) / 15000) * 100)) };
   if (pts >= 1000) return { name: 'Gold', nextTarget: 5000, progress: Math.min(100, Math.round(((pts - 1000) / 4000) * 100)) };
@@ -76,10 +77,7 @@ export default async function handler(req, res) {
         if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
           aggregated = viewData.map(row => ({
             address: row.user_address,
-            total_points: Number(row.total_points) || 0,
-            total_volume_usd: Number(row.total_volume_usd) || 0,
-            onramp_usd: Number(row.onramp_usd) || 0,
-            offramp_usd: Number(row.offramp_usd) || 0,
+            total_points: Math.floor(Number(row.total_points) || 0),
             total_transactions: Number(row.total_transactions) || 0,
             last_active_at: row.last_active_at,
             rank: Number(row.rank) || 1,
@@ -94,7 +92,7 @@ export default async function handler(req, res) {
     if (aggregated.length === 0) {
       let query = supabase
         .from('p2p_transactions')
-        .select('user_address, usd_value, transaction_type, status, created_at')
+        .select('user_address, usd_value, status, created_at')
         .in('status', ['COMPLETED', 'SUCCESSFUL', 'CONFIRMED'])
         .not('user_address', 'is', null);
 
@@ -119,37 +117,32 @@ export default async function handler(req, res) {
         const addr = (tx.user_address || '').trim();
         if (!addr) continue;
         const usd = Math.max(0, Number(tx.usd_value) || 0);
-        const isTxOnramp = String(tx.transaction_type || '').toLowerCase().includes('onramp');
 
         let entry = userMap.get(addr);
         if (!entry) {
           entry = {
             address: addr,
             total_points: 0,
-            total_volume_usd: 0,
-            onramp_usd: 0,
-            offramp_usd: 0,
             total_transactions: 0,
             last_active_at: tx.created_at,
           };
           userMap.set(addr, entry);
         }
 
-        entry.total_points = Math.round((entry.total_points + usd) * 100) / 100;
-        entry.total_volume_usd = Math.round((entry.total_volume_usd + usd) * 100) / 100;
-        if (isTxOnramp) {
-          entry.onramp_usd = Math.round((entry.onramp_usd + usd) * 100) / 100;
-        } else {
-          entry.offramp_usd = Math.round((entry.offramp_usd + usd) * 100) / 100;
-        }
+        entry.total_points += usd;
         entry.total_transactions += 1;
         if (new Date(tx.created_at) > new Date(entry.last_active_at)) {
           entry.last_active_at = tx.created_at;
         }
       }
 
-      // Sort descending by total_points
-      const sorted = Array.from(userMap.values()).sort((a, b) => b.total_points - a.total_points);
+      // Convert to integer points (no decimals) and sort descending
+      const sorted = Array.from(userMap.values())
+        .map(e => ({
+          ...e,
+          total_points: Math.floor(e.total_points),
+        }))
+        .sort((a, b) => b.total_points - a.total_points);
 
       // Assign dense rank
       let currentRank = 1;
@@ -172,10 +165,7 @@ export default async function handler(req, res) {
         rank: item.rank,
         address: item.address,
         short_address: maskAddress(item.address),
-        total_points: item.total_points,
-        total_volume_usd: item.total_volume_usd,
-        onramp_usd: item.onramp_usd,
-        offramp_usd: item.offramp_usd,
+        total_points: Math.floor(item.total_points || 0),
         total_transactions: item.total_transactions,
         tier: tierInfo.name,
       };
@@ -191,10 +181,7 @@ export default async function handler(req, res) {
           address: found.address,
           short_address: maskAddress(found.address),
           rank: found.rank,
-          total_points: found.total_points,
-          total_volume_usd: found.total_volume_usd,
-          onramp_usd: found.onramp_usd,
-          offramp_usd: found.offramp_usd,
+          total_points: Math.floor(found.total_points || 0),
           total_transactions: found.total_transactions,
           tier: tierInfo.name,
           next_tier_target: tierInfo.nextTarget,
@@ -207,9 +194,6 @@ export default async function handler(req, res) {
           short_address: maskAddress(userAddress),
           rank: null,
           total_points: 0,
-          total_volume_usd: 0,
-          onramp_usd: 0,
-          offramp_usd: 0,
           total_transactions: 0,
           tier: tierInfo.name,
           next_tier_target: 250,
@@ -221,11 +205,10 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       timeframe,
-      rule: '1 USD Volume = 1 Point',
       user: userCard,
       leaderboard: pageItems,
       total_participants: totalParticipants,
-      total_points_distributed: Math.round(totalPointsDistributed * 100) / 100,
+      total_points_distributed: Math.floor(totalPointsDistributed),
     });
   } catch (err) {
     console.error('[api/leaderboard] Unhandled error:', err);

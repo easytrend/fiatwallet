@@ -37,6 +37,36 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
   const topThree = list.slice(0, 3);
   const restList = list.slice(3);
 
+  // Reorder top 3 for classic podium layout: [2nd (left), 1st (center), 3rd (right)]
+  const podiumItems = [];
+  if (topThree.length >= 2) {
+    podiumItems.push({
+      item: topThree[1],
+      rankLabel: '2nd',
+      color: '#94a3b8',
+      borderColor: 'rgba(148, 163, 184, 0.45)',
+      isCenter: false,
+    });
+  }
+  if (topThree.length >= 1) {
+    podiumItems.push({
+      item: topThree[0],
+      rankLabel: '1st',
+      color: '#eab308',
+      borderColor: 'rgba(234, 179, 8, 0.65)',
+      isCenter: true,
+    });
+  }
+  if (topThree.length >= 3) {
+    podiumItems.push({
+      item: topThree[2],
+      rankLabel: '3rd',
+      color: '#d97706',
+      borderColor: 'rgba(217, 119, 6, 0.45)',
+      isCenter: false,
+    });
+  }
+
   const getTierColor = (tier) => {
     switch ((tier || '').toLowerCase()) {
       case 'legend': return '#f59e0b';
@@ -93,7 +123,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px', fontWeight: '800', color: 'white', letterSpacing: '-0.02em' }}>
-                Volume Leaderboard
+                Points Leaderboard
               </span>
               <span style={{
                 background: 'rgba(163, 230, 53, 0.15)',
@@ -105,11 +135,11 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
               }}>
-                1 USD = 1 Pt
+                1 Pt / USD
               </span>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text3, #94a3b8)', marginTop: '2px' }}>
-              Earn 1 Point per $1.00 USD on-ramped or off-ramped
+              Points earned from successful on-ramp and off-ramp transactions
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -183,11 +213,8 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                   <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', fontWeight: '600' }}>
                     Total Points
                   </div>
-                  <div style={{ fontSize: '20px', fontWeight: '800', color: 'white', marginTop: '2px' }}>
-                    {Number(userCard.total_points || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                  <div style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>
-                    ${Number(userCard.total_volume_usd || 0).toLocaleString()} Volume
+                  <div style={{ fontSize: '22px', fontWeight: '800', color: 'white', marginTop: '2px' }}>
+                    {Math.floor(Number(userCard.total_points) || 0).toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -197,7 +224,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                 <div style={{ marginTop: '14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text3, #94a3b8)', marginBottom: '5px' }}>
                     <span>Next Tier Progress</span>
-                    <span>{userCard.tier_progress || 0}% ({userCard.total_points} / {userCard.next_tier_target} pts)</span>
+                    <span>{userCard.tier_progress || 0}% ({Math.floor(Number(userCard.total_points) || 0).toLocaleString()} / {Math.floor(Number(userCard.next_tier_target)).toLocaleString()} pts)</span>
                   </div>
                   <div style={{
                     width: '100%',
@@ -217,28 +244,19 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                 </div>
               )}
 
-              {/* Breakdown */}
+              {/* Completed Orders Count */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
+                alignItems: 'center',
                 marginTop: '12px',
                 paddingTop: '10px',
                 borderTop: '1px solid rgba(255, 255, 255, 0.06)',
                 fontSize: '11px',
                 color: 'var(--text2, #cbd5e1)',
               }}>
-                <div>
-                  <span style={{ color: 'var(--text3, #94a3b8)' }}>On-Ramp: </span>
-                  <span style={{ fontWeight: '700' }}>${Number(userCard.onramp_usd || 0).toLocaleString()}</span>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text3, #94a3b8)' }}>Off-Ramp: </span>
-                  <span style={{ fontWeight: '700' }}>${Number(userCard.offramp_usd || 0).toLocaleString()}</span>
-                </div>
-                <div>
-                  <span style={{ color: 'var(--text3, #94a3b8)' }}>Orders: </span>
-                  <span style={{ fontWeight: '700' }}>{userCard.total_transactions || 0}</span>
-                </div>
+                <span style={{ color: 'var(--text3, #94a3b8)' }}>Completed Transactions:</span>
+                <span style={{ fontWeight: '700', color: 'white' }}>{userCard.total_transactions || 0}</span>
               </div>
             </div>
           )}
@@ -247,7 +265,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
           <div style={{
             display: 'flex',
             gap: '8px',
-            marginBottom: '16px',
+            marginBottom: '18px',
             background: 'rgba(255, 255, 255, 0.04)',
             padding: '4px',
             borderRadius: '12px',
@@ -278,52 +296,55 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
             ))}
           </div>
 
-          {/* Top 3 Podium */}
-          {topThree.length > 0 && (
+          {/* Top 3 Podium (2nd on Left, 1st in Center, 3rd on Right) */}
+          {podiumItems.length > 0 && (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
+              gridTemplateColumns: `repeat(${podiumItems.length}, 1fr)`,
               gap: '8px',
-              marginBottom: '18px',
+              alignItems: 'end',
+              marginBottom: '20px',
+              paddingTop: '10px',
             }}>
-              {topThree.map((item, idx) => {
-                const borderColors = ['#eab308', '#94a3b8', '#d97706'];
-                const rankLabels = ['1st', '2nd', '3rd'];
-                return (
-                  <div
-                    key={item.address}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: `1px solid ${borderColors[idx] || 'rgba(255, 255, 255, 0.1)'}`,
-                      borderRadius: '14px',
-                      padding: '12px 8px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div style={{
-                      display: 'inline-block',
-                      fontSize: '11px',
-                      fontWeight: '800',
-                      color: borderColors[idx],
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      padding: '2px 8px',
-                      borderRadius: '6px',
-                      marginBottom: '6px',
-                    }}>
-                      {rankLabels[idx]}
-                    </div>
-                    <div style={{ fontSize: '11px', fontWeight: '700', color: 'white', marginBottom: '2px' }}>
-                      {item.short_address}
-                    </div>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: 'var(--lime, #a3e635)' }}>
-                      {Number(item.total_points || 0).toLocaleString()} pts
-                    </div>
-                    <div style={{ fontSize: '9px', color: 'var(--text3, #94a3b8)' }}>
-                      ${Number(item.total_volume_usd || 0).toLocaleString()}
-                    </div>
+              {podiumItems.map(({ item, rankLabel, color, borderColor, isCenter }) => (
+                <div
+                  key={item.address}
+                  style={{
+                    background: isCenter
+                      ? 'linear-gradient(180deg, rgba(234, 179, 8, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%)'
+                      : 'rgba(255, 255, 255, 0.03)',
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: '16px',
+                    padding: isCenter ? '18px 8px 14px' : '12px 8px',
+                    textAlign: 'center',
+                    transform: isCenter ? 'translateY(-6px)' : 'none',
+                    boxShadow: isCenter ? '0 8px 24px rgba(234, 179, 8, 0.18)' : 'none',
+                  }}
+                >
+                  <div style={{
+                    display: 'inline-block',
+                    fontSize: isCenter ? '12px' : '11px',
+                    fontWeight: '800',
+                    color: color,
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    marginBottom: '6px',
+                  }}>
+                    {rankLabel}
                   </div>
-                );
-              })}
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'white', marginBottom: '4px' }}>
+                    {item.short_address}
+                  </div>
+                  <div style={{
+                    fontSize: isCenter ? '15px' : '13px',
+                    fontWeight: '800',
+                    color: 'var(--lime, #a3e635)',
+                  }}>
+                    {Math.floor(Number(item.total_points) || 0).toLocaleString()} pts
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -344,9 +365,9 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
             }}>
-              <span style={{ width: '45px' }}>Rank</span>
+              <span style={{ width: '50px' }}>Rank</span>
               <span style={{ flex: 1 }}>Wallet</span>
-              <span style={{ width: '70px', textAlign: 'center' }}>Tier</span>
+              <span style={{ width: '80px', textAlign: 'center' }}>Tier</span>
               <span style={{ width: '90px', textAlign: 'right' }}>Points</span>
             </div>
 
@@ -373,14 +394,14 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                       fontSize: '12px',
                     }}
                   >
-                    <span style={{ width: '45px', fontWeight: '700', color: isMe ? 'var(--lime, #a3e635)' : 'var(--text3, #94a3b8)' }}>
+                    <span style={{ width: '50px', fontWeight: '700', color: isMe ? 'var(--lime, #a3e635)' : 'var(--text3, #94a3b8)' }}>
                       #{item.rank}
                     </span>
                     <span style={{ flex: 1, fontWeight: '600', color: isMe ? 'var(--lime, #a3e635)' : 'white' }}>
                       {item.short_address} {isMe && '(You)'}
                     </span>
                     <span style={{
-                      width: '70px',
+                      width: '80px',
                       textAlign: 'center',
                       fontSize: '10px',
                       fontWeight: '700',
@@ -389,7 +410,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                       {item.tier}
                     </span>
                     <span style={{ width: '90px', textAlign: 'right', fontWeight: '700', color: 'white' }}>
-                      {Number(item.total_points || 0).toLocaleString()}
+                      {Math.floor(Number(item.total_points) || 0).toLocaleString()}
                     </span>
                   </div>
                 );
@@ -408,14 +429,14 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                         fontSize: '12px',
                       }}
                     >
-                      <span style={{ width: '45px', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
+                      <span style={{ width: '50px', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
                         #{item.rank}
                       </span>
                       <span style={{ flex: 1, fontWeight: '600', color: isMe ? 'var(--lime, #a3e635)' : 'white' }}>
                         {item.short_address} {isMe && '(You)'}
                       </span>
                       <span style={{
-                        width: '70px',
+                        width: '80px',
                         textAlign: 'center',
                         fontSize: '10px',
                         fontWeight: '700',
@@ -424,7 +445,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                         {item.tier}
                       </span>
                       <span style={{ width: '90px', textAlign: 'right', fontWeight: '700', color: 'white' }}>
-                        {Number(item.total_points || 0).toLocaleString()}
+                        {Math.floor(Number(item.total_points) || 0).toLocaleString()}
                       </span>
                     </div>
                   );
@@ -446,7 +467,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
           color: 'var(--text3, #94a3b8)',
         }}>
           <span>{data.total_participants || 0} Traders Ranked</span>
-          <span>Total Points: {Number(data.total_points_distributed || 0).toLocaleString()}</span>
+          <span>Total Points: {Math.floor(Number(data.total_points_distributed) || 0).toLocaleString()}</span>
         </div>
       </div>
     </div>
