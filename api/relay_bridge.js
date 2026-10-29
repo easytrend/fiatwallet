@@ -141,15 +141,15 @@ export default async function handler(req, res) {
 
     // 3. Prevent double-forwarding via atomic DB lock
     if (supabase) {
-      const { data: currentDb } = await supabase
-        .from('p2p_transactions')
+      const { data: currentBridge } = await supabase
+        .from('bridge_transactions')
         .select('status, signature')
-        .eq('order_id', String(depositAddress))
+        .eq('deposit_address', String(depositAddress))
         .maybeSingle();
 
-      if (currentDb?.status === 'COMPLETED' || currentDb?.status === 'FORWARDED_SUCCESS') {
+      if (currentBridge?.status === 'COMPLETED' || currentBridge?.status === 'FORWARDED_SUCCESS') {
         return res.status(200).json({
-          signature: currentDb.signature,
+          signature: currentBridge.signature,
           alreadyForwarded: true,
           message: 'Bridge payout already forwarded',
         });
@@ -157,9 +157,9 @@ export default async function handler(req, res) {
 
       // Lock status to FORWARDING
       await supabase
-        .from('p2p_transactions')
+        .from('bridge_transactions')
         .update({ status: 'FORWARDING', updated_at: new Date().toISOString() })
-        .eq('order_id', String(depositAddress));
+        .eq('deposit_address', String(depositAddress));
     }
 
     // 4. Calculate gross amount & platform fee
@@ -261,17 +261,18 @@ export default async function handler(req, res) {
 
     console.log(`[relay_bridge] Successfully forwarded ${netAmount} ${destinationSymbol} to ${userAddress}. Sig: ${sig}`);
 
-    // 6. Update database record to COMPLETED
+    // 6. Update database record to COMPLETED in dedicated bridge_transactions table
     if (supabase) {
       await supabase
-        .from('p2p_transactions')
+        .from('bridge_transactions')
         .update({
           status: 'COMPLETED',
           signature: sig,
-          crypto_amount: netAmount,
+          net_amount: netAmount,
+          protocol_fee: platformFee,
           updated_at: new Date().toISOString(),
         })
-        .eq('order_id', String(depositAddress));
+        .eq('deposit_address', String(depositAddress));
     }
 
     return res.status(200).json({

@@ -788,3 +788,140 @@ export async function getWalletStats(walletAddress) {
     return null;
   }
 }
+
+
+/**
+ * Log or update a cross-chain bridge transaction in the dedicated bridge_transactions table.
+ */
+export async function logBridgeTransaction({
+  depositAddress,
+  userAddress,
+  originChain,
+  originSymbol,
+  destinationSymbol = 'USDT',
+  depositAmount = 0,
+  grossAmount = 0,
+  netAmount = 0,
+  protocolFee = 0,
+  nearFee = '0.27',
+  refundTo = null,
+  status = 'PENDING',
+  signature = null,
+  correlationId = null,
+  timeEstimate = 25,
+}) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !depositAddress) return null;
+
+  const payload = {
+    deposit_address: String(depositAddress),
+    user_address: userAddress,
+    origin_chain: originChain || 'unknown',
+    origin_symbol: originSymbol || 'UNKNOWN',
+    destination_symbol: destinationSymbol || 'USDT',
+    deposit_amount: parseFloat(depositAmount) || 0,
+    gross_amount: parseFloat(grossAmount) || 0,
+    net_amount: parseFloat(netAmount) || 0,
+    protocol_fee: parseFloat(protocolFee) || 0,
+    near_fee: String(nearFee || '0.27'),
+    refund_to: refundTo || null,
+    status: String(status || 'PENDING').toUpperCase(),
+    signature: signature || null,
+    correlation_id: correlationId || null,
+    time_estimate: parseInt(timeEstimate, 10) || 25,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    const { data: existing } = await client
+      .from('bridge_transactions')
+      .select('id')
+      .eq('deposit_address', String(depositAddress))
+      .maybeSingle();
+
+    if (existing?.id) {
+      const { data, error } = await client
+        .from('bridge_transactions')
+        .update(payload)
+        .eq('deposit_address', String(depositAddress))
+        .select()
+        .maybeSingle();
+      if (error) console.warn('[Supabase] update bridge_transactions note:', error.message);
+      return data;
+    } else {
+      const { data, error } = await client
+        .from('bridge_transactions')
+        .insert(payload)
+        .select()
+        .maybeSingle();
+      if (error) console.warn('[Supabase] insert bridge_transactions note:', error.message);
+      return data;
+    }
+  } catch (err) {
+    console.warn('[Supabase] logBridgeTransaction error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Update the status and on-chain signature of a bridge transaction.
+ */
+export async function updateBridgeTransactionStatus({
+  depositAddress,
+  status,
+  signature = null,
+  netAmount = null,
+  protocolFee = null,
+}) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !depositAddress) return false;
+
+  const patch = {
+    status: String(status).toUpperCase(),
+    updated_at: new Date().toISOString(),
+  };
+  if (signature) patch.signature = signature;
+  if (netAmount != null) patch.net_amount = parseFloat(netAmount) || 0;
+  if (protocolFee != null) patch.protocol_fee = parseFloat(protocolFee) || 0;
+
+  try {
+    const { error } = await client
+      .from('bridge_transactions')
+      .update(patch)
+      .eq('deposit_address', String(depositAddress));
+
+    if (error) {
+      console.warn('[Supabase] updateBridgeTransactionStatus error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase] updateBridgeTransactionStatus failed:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Fetch bridge transactions for a user wallet from bridge_transactions table.
+ */
+export async function getBridgeTransactionsByUser(walletAddress) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return [];
+
+  try {
+    const { data, error } = await client
+      .from('bridge_transactions')
+      .select('*')
+      .eq('user_address', walletAddress)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('[Supabase] getBridgeTransactionsByUser query error:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn('[Supabase] getBridgeTransactionsByUser failed:', err.message);
+    return [];
+  }
+}

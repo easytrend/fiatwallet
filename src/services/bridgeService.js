@@ -1,5 +1,7 @@
 import { getEffectiveRelayerPublicKey } from './pajcashService';
-import { logP2PTransaction } from './supabase';
+import { logBridgeTransaction, updateBridgeTransactionStatus, getBridgeTransactionsByUser } from './supabase';
+
+export { logBridgeTransaction, updateBridgeTransactionStatus, getBridgeTransactionsByUser };
 
 const NEAR_INTENTS_BASE_URL = 'https://1click.chaindefuser.com/v0';
 
@@ -397,6 +399,7 @@ export async function createBridgeDeposit({
   amountFloat,
   originDecimals = 6,
   destinationSymbol = 'USDT',
+  originSymbol,
   userAddress,
   chainId,
   refundTo,
@@ -477,20 +480,23 @@ export async function createBridgeDeposit({
   const netReceived = Math.max(0, rawOut - protocolFee);
   const minNetReceived = Math.max(0, minGrossOut - minProtocolFee);
 
-  // Log pending order to Supabase
+  // Log pending order to dedicated bridge_transactions table (NOT p2p_transactions)
   try {
-    await logP2PTransaction({
-      signature: `pending_bridge_${depositAddress}`,
-      userAddress,
-      orderId: depositAddress,
-      tokenSymbol: destinationSymbol,
-      cryptoAmount: netReceived,
-      fiatCurrency: 'USD',
-      fiatAmount: netReceived,
-      usdValue: quote.amountOutUsd || netReceived,
-      status: 'PENDING',
+    await logBridgeTransaction({
       depositAddress,
-      type: 'bridge',
+      userAddress,
+      originChain: chainId,
+      originSymbol: originSymbol || (originAsset.includes('.') ? originAsset.split('.')[1] : originAsset),
+      destinationSymbol,
+      depositAmount: amountFloat,
+      grossAmount: rawOut,
+      netAmount: netReceived,
+      protocolFee,
+      nearFee: nearFeeFormatted,
+      refundTo: effectiveRefund,
+      status: 'PENDING',
+      correlationId: data.correlationId,
+      timeEstimate: quote.timeEstimate || 25,
     });
   } catch (err) {
     console.warn('[bridgeService] Failed to log pending bridge to Supabase:', err.message);
@@ -540,6 +546,7 @@ export async function getOrCreateBridgeDeposit({
     amountFloat: defaultAmount,
     originDecimals,
     destinationSymbol,
+    originSymbol: tokenSymbol,
     userAddress,
     chainId: chain,
     refundTo: validRefund,
@@ -691,6 +698,11 @@ export async function sweepPendingBridgesForUser(userAddress) {
           try {
             localStorage.setItem(key, JSON.stringify(item));
           } catch (_) {}
+          updateBridgeTransactionStatus({
+            depositAddress: item.depositAddress,
+            status: 'COMPLETED',
+            signature: forwardRes.signature,
+          }).catch(() => {});
           swept.push({ depositAddress: item.depositAddress, signature: forwardRes.signature });
           console.log(`[bridgeService] Swept & forwarded bridge deposit ${item.depositAddress} -> ${forwardRes.signature}`);
         }
@@ -699,6 +711,10 @@ export async function sweepPendingBridgesForUser(userAddress) {
         try {
           localStorage.setItem(key, JSON.stringify(item));
         } catch (_) {}
+        updateBridgeTransactionStatus({
+          depositAddress: item.depositAddress,
+          status,
+        }).catch(() => {});
       }
     } catch (err) {
       // Ignore background sweep errors silently
