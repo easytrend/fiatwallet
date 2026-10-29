@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.bridge_transactions (
   user_address        text NOT NULL,
   origin_chain        text NOT NULL,
   origin_symbol       text NOT NULL,
-  destination_symbol  text NOT NULL DEFAULT 'USDT',
+  destination_symbol  text NOT NULL DEFAULT 'USDC',
   deposit_amount      numeric(28, 8) NOT NULL DEFAULT 0,
   gross_amount        numeric(28, 8) NOT NULL DEFAULT 0,
   net_amount          numeric(28, 8) NOT NULL DEFAULT 0,

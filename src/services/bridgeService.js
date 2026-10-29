@@ -51,20 +51,20 @@ export const SUPPORTED_CHAINS = [
 
 export const SOLANA_DESTINATIONS = [
   {
-    symbol: 'USDT',
-    name: 'Tether USD',
-    decimals: 6,
-    assetId: 'nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near',
-    mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-    logo: LOGOS.usdt,
-  },
-  {
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
     assetId: 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near',
     mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     logo: LOGOS.usdc,
+  },
+  {
+    symbol: 'USDT',
+    name: 'Tether USD',
+    decimals: 6,
+    assetId: 'nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near',
+    mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+    logo: LOGOS.usdt,
   },
   {
     symbol: 'SOL',
@@ -363,12 +363,23 @@ function formatUnits(amountFloat, decimals) {
  * Synchronous instant check for cached deposit address.
  * Eliminates screen delay when switching between previously viewed tokens/chains.
  */
-export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo = '') {
+export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo = '', destSymbol = 'USDC') {
   if (typeof localStorage === 'undefined' || !userAddress || !chain || !tokenSymbol) return null;
   const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? `_${refundTo.trim()}` : '';
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${validRefund}`;
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}_${destSymbol}${validRefund}`;
   try {
-    const raw = localStorage.getItem(cacheKey);
+    let raw = localStorage.getItem(cacheKey);
+    // Backward compatibility: check without destSymbol if matching destSymbol
+    if (!raw) {
+      const legacyKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${validRefund}`;
+      const legacyRaw = localStorage.getItem(legacyKey);
+      if (legacyRaw) {
+        const legacyParsed = JSON.parse(legacyRaw);
+        if ((legacyParsed?.destinationSymbol || 'USDC') === destSymbol) {
+          raw = legacyRaw;
+        }
+      }
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const ageHours = (Date.now() - (parsed.createdAt || 0)) / (1000 * 60 * 60);
@@ -379,7 +390,7 @@ export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo
       }
       if (parsed.minNetReceived == null) {
         const rawOut = parsed.grossOut || parsed.netReceived || 0;
-        const isUsd = (parsed.destinationSymbol || 'USDT').includes('USD');
+        const isUsd = (parsed.destinationSymbol || 'USDC').includes('USD');
         const minGross = rawOut * 0.99;
         const fee = isUsd ? Math.max(0.10, Math.round(minGross * 0.004 * 100) / 100) : minGross * 0.004;
         parsed.minNetReceived = Math.max(0, minGross - fee);
@@ -398,7 +409,7 @@ export async function createBridgeDeposit({
   destinationAsset,
   amountFloat,
   originDecimals = 6,
-  destinationSymbol = 'USDT',
+  destinationSymbol = 'USDC',
   originSymbol,
   userAddress,
   chainId,
@@ -528,7 +539,7 @@ export async function getOrCreateBridgeDeposit({
   originAsset,
   destinationAsset,
   originDecimals = 6,
-  destinationSymbol = 'USDT',
+  destinationSymbol = 'USDC',
   userAddress,
   chain,
   tokenSymbol,
@@ -537,7 +548,7 @@ export async function getOrCreateBridgeDeposit({
   refundTo = '',
 }) {
   const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? refundTo.trim() : '';
-  const cached = !forceNew ? getCachedBridgeDeposit(userAddress, chain, tokenSymbol, validRefund) : null;
+  const cached = !forceNew ? getCachedBridgeDeposit(userAddress, chain, tokenSymbol, validRefund, destinationSymbol) : null;
   if (cached) return cached;
 
   const deposit = await createBridgeDeposit({
@@ -558,11 +569,12 @@ export async function getOrCreateBridgeDeposit({
     chain,
     tokenSymbol,
     userAddress,
+    destinationSymbol,
     refundTo: deposit.refundTo || validRefund || getDefaultRefundAddress(chain),
   };
 
   const cleanRefund = validRefund ? `_${validRefund}` : '';
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${cleanRefund}`;
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}_${destinationSymbol}${cleanRefund}`;
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(cacheKey, JSON.stringify(record));
@@ -575,18 +587,21 @@ export async function getOrCreateBridgeDeposit({
 /**
  * Mark a bridge deposit as completed in cache.
  */
-export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol, refundTo = '') {
+export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol, refundTo = '', destSymbol = 'USDC') {
   if (typeof localStorage === 'undefined') return;
   const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? `_${refundTo.trim()}` : '';
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${validRefund}`;
-  try {
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      parsed.status = 'COMPLETED';
-      localStorage.setItem(cacheKey, JSON.stringify(parsed));
-    }
-  } catch (_) {}
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}_${destSymbol}${validRefund}`;
+  const legacyKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${validRefund}`;
+  for (const k of [cacheKey, legacyKey]) {
+    try {
+      const cached = localStorage.getItem(k);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        parsed.status = 'COMPLETED';
+        localStorage.setItem(k, JSON.stringify(parsed));
+      }
+    } catch (_) {}
+  }
 }
 
 /**
@@ -690,7 +705,7 @@ export async function sweepPendingBridgesForUser(userAddress) {
         const forwardRes = await claimBridgeForward({
           depositAddress: item.depositAddress,
           userAddress,
-          destinationSymbol: item.destinationSymbol || 'USDT',
+          destinationSymbol: item.destinationSymbol || 'USDC',
         });
         if (forwardRes?.signature || forwardRes?.alreadyForwarded) {
           item.status = 'COMPLETED';

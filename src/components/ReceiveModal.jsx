@@ -25,7 +25,7 @@ export default function ReceiveModal({ address, onClose }) {
 
   // Cross-chain active token & destination
   const [selectedOriginToken, setSelectedOriginToken] = useState(null);
-  const [selectedDestToken, setSelectedDestToken] = useState(SOLANA_DESTINATIONS[0]); // default USDT
+  const [selectedDestToken, setSelectedDestToken] = useState(SOLANA_DESTINATIONS[0]); // default USDC
 
   // Optional custom refund address
   const [customRefundInput, setCustomRefundInput] = useState('');
@@ -71,7 +71,7 @@ export default function ReceiveModal({ address, onClose }) {
 
       // Check synchronous cache immediately for 0ms render
       if (firstTok && address) {
-        const cached = getCachedBridgeDeposit(address, selectedChainId, firstTok.symbol, '');
+        const cached = getCachedBridgeDeposit(address, selectedChainId, firstTok.symbol, '', selectedDestToken.symbol);
         if (cached?.depositAddress) {
           setBridgeDeposit(cached);
           setBridgeError('');
@@ -90,16 +90,16 @@ export default function ReceiveModal({ address, onClose }) {
       setCustomRefundInput('');
       setAppliedRefund('');
     }
-  }, [selectedChainId, address]);
+  }, [selectedChainId, address, selectedDestToken.symbol]);
 
-  // INSTANTLY get or create deposit address whenever origin token, chain, or appliedRefund changes
+  // INSTANTLY get or create deposit address whenever origin token, chain, destToken, or appliedRefund changes
   useEffect(() => {
     if (selectedChainId === 'solana' || !selectedOriginToken || !address) return;
 
     let isCancelled = false;
 
     // Check if already in cache synchronously
-    const cached = getCachedBridgeDeposit(address, selectedChainId, selectedOriginToken.symbol, appliedRefund);
+    const cached = getCachedBridgeDeposit(address, selectedChainId, selectedOriginToken.symbol, appliedRefund, selectedDestToken.symbol);
     if (cached?.depositAddress) {
       setBridgeDeposit(cached);
       setBridgeError('');
@@ -191,13 +191,13 @@ export default function ReceiveModal({ address, onClose }) {
             if (forwardRes?.signature) {
               setForwardSig(forwardRes.signature);
               setBridgeStatus('COMPLETED');
-              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund);
+              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund, selectedDestToken.symbol);
             }
           } catch (forwardErr) {
             console.error('Relayer forward error:', forwardErr);
             if (forwardErr.message?.includes('already forwarded')) {
               setBridgeStatus('COMPLETED');
-              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund);
+              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund, selectedDestToken.symbol);
             }
           }
         } else if (status === 'FAILED' || status === 'REFUNDED') {
@@ -644,13 +644,37 @@ export default function ReceiveModal({ address, onClose }) {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <span style={{ color: 'var(--text2)' }}>Receive on Solana as:</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <img
-                            src={selectedDestToken.logo}
-                            alt={selectedDestToken.symbol}
-                            style={{ width: '16px', height: '16px', borderRadius: '50%' }}
-                          />
-                          <span style={{ fontWeight: '700', color: '#fff' }}>{selectedDestToken.symbol}</span>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {SOLANA_DESTINATIONS.slice(0, 2).map(dest => {
+                            const isSel = selectedDestToken.symbol === dest.symbol;
+                            return (
+                              <button
+                                key={dest.symbol}
+                                type="button"
+                                onClick={() => setSelectedDestToken(dest)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '3px 8px',
+                                  borderRadius: '8px',
+                                  background: isSel ? 'rgba(34, 211, 238, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                  border: isSel ? '1px solid var(--cyan, #22d3ee)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                  color: isSel ? '#fff' : 'var(--text2)',
+                                  fontSize: '11px',
+                                  fontWeight: isSel ? '700' : '500',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <img
+                                  src={dest.logo}
+                                  alt={dest.symbol}
+                                  style={{ width: '14px', height: '14px', borderRadius: '50%' }}
+                                />
+                                <span>{dest.symbol}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
