@@ -82,7 +82,8 @@ export const CHAIN_TOKENS = {
       decimals: 8,
       assetId: 'nep141:btc.omft.near',
       min: '0.0002',
-      defaultAmount: '0.0005',
+      defaultAmount: '0.0002',
+      estMinReceive: '15.47',
       logo: LOGOS.btc,
     },
   ],
@@ -93,7 +94,8 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',
       min: '2',
-      defaultAmount: '5',
+      defaultAmount: '2',
+      estMinReceive: '1.62',
       logo: LOGOS.usdc,
     },
     {
@@ -102,7 +104,8 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:base.omft.near',
       min: '0.001',
-      defaultAmount: '0.003',
+      defaultAmount: '0.001',
+      estMinReceive: '1.93',
       logo: LOGOS.eth,
     },
   ],
@@ -113,7 +116,8 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near',
       min: '2',
-      defaultAmount: '5',
+      defaultAmount: '2',
+      estMinReceive: '1.62',
       logo: LOGOS.usdc,
     },
     {
@@ -122,7 +126,8 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:arb.omft.near',
       min: '0.001',
-      defaultAmount: '0.003',
+      defaultAmount: '0.001',
+      estMinReceive: '1.93',
       logo: LOGOS.eth,
     },
   ],
@@ -133,7 +138,8 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near',
       min: '10',
-      defaultAmount: '15',
+      defaultAmount: '10',
+      estMinReceive: '9.53',
       logo: LOGOS.usdt,
     },
     {
@@ -142,7 +148,8 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near',
       min: '10',
-      defaultAmount: '15',
+      defaultAmount: '10',
+      estMinReceive: '9.54',
       logo: LOGOS.usdc,
     },
     {
@@ -151,7 +158,8 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:eth.omft.near',
       min: '0.005',
-      defaultAmount: '0.008',
+      defaultAmount: '0.005',
+      estMinReceive: '11.11',
       logo: LOGOS.eth,
     },
   ],
@@ -161,8 +169,9 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (TRC20)',
       decimals: 6,
       assetId: 'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near',
-      min: '100',
-      defaultAmount: '110',
+      min: '105',
+      defaultAmount: '105',
+      estMinReceive: '103.20',
       logo: LOGOS.usdt,
     },
     {
@@ -170,8 +179,9 @@ export const CHAIN_TOKENS = {
       name: 'Tron',
       decimals: 6,
       assetId: 'nep141:tron.omft.near',
-      min: '20',
-      defaultAmount: '50',
+      min: '350',
+      defaultAmount: '350',
+      estMinReceive: '113.80',
       logo: LOGOS.tron,
     },
   ],
@@ -182,7 +192,8 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L',
       min: '2',
-      defaultAmount: '5',
+      defaultAmount: '2',
+      estMinReceive: '1.62',
       logo: LOGOS.usdc,
     },
     {
@@ -191,7 +202,8 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr',
       min: '2',
-      defaultAmount: '5',
+      defaultAmount: '2',
+      estMinReceive: '1.62',
       logo: LOGOS.usdt,
     },
     {
@@ -199,8 +211,9 @@ export const CHAIN_TOKENS = {
       name: 'Polygon (POL)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:137_11111111111111111111',
-      min: '2',
-      defaultAmount: '5',
+      min: '10',
+      defaultAmount: '10',
+      estMinReceive: '0.50',
       logo: LOGOS.pol,
     },
   ],
@@ -212,6 +225,7 @@ export const CHAIN_TOKENS = {
       assetId: 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g',
       min: '1000',
       defaultAmount: '1000',
+      estMinReceive: '992.50',
       logo: LOGOS.usdt,
     },
     {
@@ -221,6 +235,7 @@ export const CHAIN_TOKENS = {
       assetId: 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r',
       min: '1000',
       defaultAmount: '1000',
+      estMinReceive: '992.50',
       logo: LOGOS.usdc,
     },
     {
@@ -230,6 +245,7 @@ export const CHAIN_TOKENS = {
       assetId: 'nep245:v2_1.omni.hot.tg:56_11111111111111111111',
       min: '2',
       defaultAmount: '2',
+      estMinReceive: '1450.15',
       logo: LOGOS.bsc,
     },
   ],
@@ -267,6 +283,17 @@ export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol) {
     const parsed = JSON.parse(raw);
     const ageHours = (Date.now() - (parsed.createdAt || 0)) / (1000 * 60 * 60);
     if (ageHours < 48 && parsed.depositAddress && parsed.status !== 'COMPLETED') {
+      // Backwards-compatible hydration for fees and minimum guaranteed net receive
+      if (!parsed.nearFee) {
+        parsed.nearFee = '0.27';
+      }
+      if (parsed.minNetReceived == null) {
+        const rawOut = parsed.grossOut || parsed.netReceived || 0;
+        const isUsd = (parsed.destinationSymbol || 'USDT').includes('USD');
+        const minGross = rawOut * 0.99;
+        const fee = isUsd ? Math.max(0.10, Math.round(minGross * 0.004 * 100) / 100) : minGross * 0.004;
+        parsed.minNetReceived = Math.max(0, minGross - fee);
+      }
       return parsed;
     }
   } catch (_) {}
@@ -328,12 +355,37 @@ export async function createBridgeDeposit({
     throw new Error('Bridge did not return a valid deposit address');
   }
 
-  const rawOut = parseFloat(data.quote?.amountOutFormatted || '0');
+  const quote = data.quote || {};
+  const rawOut = parseFloat(quote.amountOutFormatted || '0');
   const isUsdToken = destinationSymbol.includes('USD');
+  const destDecimals = destinationSymbol === 'SOL' ? 9 : 6;
+
+  // 1. NEAR Network / Routing Fee (withdrawFee is in destination base units)
+  let nearFee = 0.27;
+  if (quote.withdrawFee) {
+    nearFee = parseFloat(quote.withdrawFee) / Math.pow(10, destDecimals);
+  } else if (quote.amountInUsd && quote.amountOutUsd) {
+    nearFee = Math.max(0, parseFloat(quote.amountInUsd) - parseFloat(quote.amountOutUsd));
+  }
+  const nearFeeFormatted = nearFee < 0.01 ? nearFee.toFixed(4) : nearFee.toFixed(2);
+
+  // 2. Minimum Guaranteed Gross Output from Solvers (accounting for max slippage)
+  let minGrossOut = rawOut * 0.99;
+  if (quote.minAmountOut) {
+    minGrossOut = parseFloat(quote.minAmountOut) / Math.pow(10, destDecimals);
+  }
+
+  // 3. FiatWallet Protocol Fee (0.4% with $0.10 min floor for USD tokens)
   const protocolFee = isUsdToken
     ? Math.max(0.10, Math.round(rawOut * 0.004 * 100) / 100)
     : rawOut * 0.004;
+
+  const minProtocolFee = isUsdToken
+    ? Math.max(0.10, Math.round(minGrossOut * 0.004 * 100) / 100)
+    : minGrossOut * 0.004;
+
   const netReceived = Math.max(0, rawOut - protocolFee);
+  const minNetReceived = Math.max(0, minGrossOut - minProtocolFee);
 
   // Log pending order to Supabase
   try {
@@ -345,7 +397,7 @@ export async function createBridgeDeposit({
       cryptoAmount: netReceived,
       fiatCurrency: 'USD',
       fiatAmount: netReceived,
-      usdValue: data.quote?.amountOutUsd || netReceived,
+      usdValue: quote.amountOutUsd || netReceived,
       status: 'PENDING',
       depositAddress,
       type: 'bridge',
@@ -356,11 +408,17 @@ export async function createBridgeDeposit({
 
   return {
     depositAddress,
-    timeEstimate: data.quote?.timeEstimate || 25,
+    timeEstimate: quote.timeEstimate || 25,
     grossOut: rawOut,
     protocolFee,
     netReceived,
-    deadline: data.quote?.deadline,
+    minGrossOut,
+    minNetReceived,
+    nearFee: nearFeeFormatted,
+    amountInFormatted: quote.amountInFormatted || String(amountFloat),
+    amountInUsd: quote.amountInUsd,
+    amountOutUsd: quote.amountOutUsd,
+    deadline: quote.deadline,
     correlationId: data.correlationId,
   };
 }
