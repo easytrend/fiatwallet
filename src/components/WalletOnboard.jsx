@@ -371,7 +371,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       const vault = await encryptVault(secretMaterial, pin);
       saveVaultToStorage(vault);
       saveWalletMeta(pendingPublicKey, pendingSource);
-      recordWalletRegistration(pendingPublicKey, pendingSource || 'created');
+      recordWalletRegistration(pendingPublicKey, pendingSource);
       try {
         loadSession(pendingPublicKey).then(row => {
           if (row && row.session_token) {

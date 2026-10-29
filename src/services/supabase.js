@@ -737,6 +737,11 @@ export async function recordWalletRegistration(walletAddress, walletType = 'crea
       return existing;
     }
 
+    // STRICT: Only log wallets that were directly created on FiatWallet
+    if (walletType !== 'created') {
+      return null;
+    }
+
     const insertPayload = {
       wallet_address: walletAddress,
       wallet_type: walletType || 'created',

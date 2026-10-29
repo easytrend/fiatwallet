@@ -1693,7 +1693,7 @@ export default function App() {
           walletMeta={internalWallet.walletMeta}
           onUnlocked={(walletData) => {
             internalWallet.activate(walletData);
-            recordWalletRegistration(walletData?.publicKey, walletData?.source || 'internal');
+            recordWalletRegistration(walletData?.publicKey, walletData?.source || internalWallet.walletMeta?.source);
             setGuestBypass(false);
             // Also complete the adapter connection so wallet.connected is true for dApps
             if (wallet?.adapter?._completeConnect) {
@@ -1729,7 +1729,7 @@ export default function App() {
         <WalletOnboard
           onWalletReady={(walletData) => {
             internalWallet.activate(walletData);
-            recordWalletRegistration(walletData?.publicKey, walletData?.source || 'created');
+            recordWalletRegistration(walletData?.publicKey, walletData?.source);
             setGuestBypass(false);
             setIsGuestMode(false);
             setActiveTab('wallet');
@@ -2671,7 +2671,7 @@ export default function App() {
               onClose={() => setShowOnboardModal(null)}
               onWalletReady={(walletData) => {
                 internalWallet.activate(walletData);
-                recordWalletRegistration(walletData?.publicKey, walletData?.source || 'created');
+                recordWalletRegistration(walletData?.publicKey, walletData?.source);
                 setShowOnboardModal(null);
                 setGuestBypass(false);
                 setIsGuestMode(false);
