@@ -9,6 +9,9 @@ import {
   markBridgeDepositCompleted,
   checkBridgeStatus,
   claimBridgeForward,
+  isValidRefundAddress,
+  getDefaultRefundAddress,
+  isTreasuryRefundConfigured,
 } from '../services/bridgeService';
 
 export default function ReceiveModal({ address, onClose }) {
@@ -23,6 +26,10 @@ export default function ReceiveModal({ address, onClose }) {
   // Cross-chain active token & destination
   const [selectedOriginToken, setSelectedOriginToken] = useState(null);
   const [selectedDestToken, setSelectedDestToken] = useState(SOLANA_DESTINATIONS[0]); // default USDT
+
+  // Optional custom refund address
+  const [customRefundInput, setCustomRefundInput] = useState('');
+  const [appliedRefund, setAppliedRefund] = useState('');
 
   // Bridge deposit state (instantly loaded/generated & persisted)
   const [bridgeDeposit, setBridgeDeposit] = useState(null);
@@ -53,16 +60,18 @@ export default function ReceiveModal({ address, onClose }) {
       .catch(err => console.error('Solana QR error:', err));
   }, [address]);
 
-  // When switching chain, pick the first token for that chain immediately
+  // When switching chain, pick the first token for that chain immediately and clear refund overrides
   useEffect(() => {
     if (selectedChainId !== 'solana') {
       const tokens = CHAIN_TOKENS[selectedChainId] || [];
       const firstTok = tokens[0] || null;
       setSelectedOriginToken(firstTok);
+      setCustomRefundInput('');
+      setAppliedRefund('');
 
       // Check synchronous cache immediately for 0ms render
       if (firstTok && address) {
-        const cached = getCachedBridgeDeposit(address, selectedChainId, firstTok.symbol);
+        const cached = getCachedBridgeDeposit(address, selectedChainId, firstTok.symbol, '');
         if (cached?.depositAddress) {
           setBridgeDeposit(cached);
           setBridgeError('');
@@ -78,17 +87,19 @@ export default function ReceiveModal({ address, onClose }) {
       setBridgeDeposit(null);
       setBridgeQrUrl('');
       setBridgeError('');
+      setCustomRefundInput('');
+      setAppliedRefund('');
     }
   }, [selectedChainId, address]);
 
-  // INSTANTLY get or create deposit address whenever origin token or chain changes
+  // INSTANTLY get or create deposit address whenever origin token, chain, or appliedRefund changes
   useEffect(() => {
     if (selectedChainId === 'solana' || !selectedOriginToken || !address) return;
 
     let isCancelled = false;
 
     // Check if already in cache synchronously
-    const cached = getCachedBridgeDeposit(address, selectedChainId, selectedOriginToken.symbol);
+    const cached = getCachedBridgeDeposit(address, selectedChainId, selectedOriginToken.symbol, appliedRefund);
     if (cached?.depositAddress) {
       setBridgeDeposit(cached);
       setBridgeError('');
@@ -121,6 +132,7 @@ export default function ReceiveModal({ address, onClose }) {
           tokenSymbol: selectedOriginToken.symbol,
           defaultAmount: selectedOriginToken.min || selectedOriginToken.defaultAmount || '5',
           forceNew: force,
+          refundTo: appliedRefund,
         });
 
         if (!isCancelled && deposit?.depositAddress) {
@@ -149,7 +161,7 @@ export default function ReceiveModal({ address, onClose }) {
     return () => {
       isCancelled = true;
     };
-  }, [selectedChainId, selectedOriginToken, selectedDestToken, address]);
+  }, [selectedChainId, selectedOriginToken, selectedDestToken, address, appliedRefund]);
 
   // Status Poller: monitors bridge deposit in real-time
   useEffect(() => {
@@ -179,12 +191,13 @@ export default function ReceiveModal({ address, onClose }) {
             if (forwardRes?.signature) {
               setForwardSig(forwardRes.signature);
               setBridgeStatus('COMPLETED');
-              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol);
+              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund);
             }
           } catch (forwardErr) {
             console.error('Relayer forward error:', forwardErr);
             if (forwardErr.message?.includes('already forwarded')) {
               setBridgeStatus('COMPLETED');
+              markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund);
             }
           }
         } else if (status === 'FAILED' || status === 'REFUNDED') {
@@ -199,7 +212,7 @@ export default function ReceiveModal({ address, onClose }) {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
-  }, [bridgeDeposit?.depositAddress, bridgeStatus, address, selectedDestToken.symbol, selectedChainId, selectedOriginToken]);
+  }, [bridgeDeposit?.depositAddress, bridgeStatus, address, selectedDestToken.symbol, selectedChainId, selectedOriginToken, appliedRefund]);
 
   const handleCopySolana = () => {
     if (!address) return;
@@ -700,6 +713,128 @@ export default function ReceiveModal({ address, onClose }) {
                       <div style={{ color: 'var(--text3, rgba(240,246,255,0.5))', fontSize: '10.5px', lineHeight: '1.4' }}>
                         Send at least {minDepositVal} to this address. Solvers will bridge it directly into your Solana wallet as {selectedDestToken.symbol}, deducting the NEAR network fee and our 0.4% protocol fee automatically.
                       </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Refund Protection Section */}
+                {(() => {
+                  const defaultAddr = getDefaultRefundAddress(selectedChainId);
+                  const isTreasuryConfigured = isTreasuryRefundConfigured(selectedChainId);
+                  const shortenedDefault = defaultAddr && defaultAddr.length > 14
+                    ? `${defaultAddr.slice(0, 6)}...${defaultAddr.slice(-4)}`
+                    : defaultAddr;
+                  const trimmedInput = customRefundInput.trim();
+                  const isInputValid = trimmedInput ? isValidRefundAddress(trimmedInput, selectedChainId) : false;
+
+                  return (
+                    <div
+                      style={{
+                        background: 'rgba(10, 22, 40, 0.7)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '14px',
+                        padding: '12px 14px',
+                        marginBottom: '12px',
+                        textAlign: 'left',
+                        fontSize: '11px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          REFUND PROTECTION (IF SWAP FAILS)
+                        </span>
+                        <span style={{
+                          fontSize: '9.5px',
+                          padding: '2px 6px',
+                          borderRadius: '6px',
+                          background: appliedRefund ? 'rgba(34, 211, 238, 0.15)' : 'rgba(163, 230, 53, 0.15)',
+                          color: appliedRefund ? 'var(--cyan, #22d3ee)' : 'var(--lime, #a3e635)',
+                          fontWeight: '700',
+                        }}>
+                          {appliedRefund ? '✓ Custom Wallet Active' : (isTreasuryConfigured ? '✓ Treasury Protected' : '✓ Safe Fallback Active')}
+                        </span>
+                      </div>
+
+                      <div style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))', fontSize: '10.5px', lineHeight: '1.4', marginBottom: '8px' }}>
+                        {appliedRefund ? (
+                          <span>
+                            If bridge swap expires or fails, 100% of funds refund directly to <strong style={{ color: '#fff', wordBreak: 'break-all' }}>{appliedRefund}</strong>.
+                          </span>
+                        ) : (
+                          <span>
+                            If bridge swap expires or fails, funds are safely safeguarded by platform treasury recovery (<strong style={{ color: '#fff' }}>{shortenedDefault}</strong>). You can also set a personal refund wallet below.
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input
+                          type="text"
+                          placeholder={`Enter your ${selectedChain.name} refund address (optional)`}
+                          value={customRefundInput}
+                          onChange={e => setCustomRefundInput(e.target.value)}
+                          style={{
+                            flex: 1,
+                            background: 'rgba(5, 11, 20, 0.8)',
+                            border: trimmedInput
+                              ? (isInputValid ? '1px solid var(--lime, #a3e635)' : '1px solid #ef4444')
+                              : '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '8px',
+                            padding: '7px 10px',
+                            color: '#fff',
+                            fontSize: '11px',
+                            fontFamily: 'var(--mono, monospace)',
+                            outline: 'none',
+                          }}
+                        />
+                        {trimmedInput && isInputValid && trimmedInput !== appliedRefund && (
+                          <button
+                            type="button"
+                            onClick={() => setAppliedRefund(trimmedInput)}
+                            style={{
+                              padding: '0 12px',
+                              background: 'rgba(34, 211, 238, 0.2)',
+                              border: '1px solid var(--cyan, #22d3ee)',
+                              borderRadius: '8px',
+                              color: 'var(--cyan, #22d3ee)',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Apply
+                          </button>
+                        )}
+                        {appliedRefund && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAppliedRefund('');
+                              setCustomRefundInput('');
+                            }}
+                            style={{
+                              padding: '0 10px',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              border: '1px solid rgba(255, 255, 255, 0.12)',
+                              borderRadius: '8px',
+                              color: 'var(--text2)',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title="Reset to Treasury Protection"
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+
+                      {trimmedInput && !isInputValid && (
+                        <div style={{ color: '#ef4444', fontSize: '9.5px', marginTop: '4px' }}>
+                          ✕ Invalid {selectedChain.name} format ({selectedChainId === 'btc' ? 'bc1, 1, or 3' : selectedChainId === 'tron' ? 'starts with T (34 chars)' : 'starts with 0x (42 chars)'})
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

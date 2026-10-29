@@ -138,6 +138,9 @@ export default async function handler(req, res) {
     supabaseUrl,
     supabaseAnonKey,
     nearIntentsApiKey: process.env.NEAR_INTENTS_API_KEY || process.env.VITE_NEAR_INTENTS_API_KEY || '',
+    bridgeRefundBtc: process.env.BRIDGE_REFUND_BTC_ADDRESS || process.env.VITE_BRIDGE_REFUND_BTC_ADDRESS || '',
+    bridgeRefundEvm: process.env.BRIDGE_REFUND_EVM_ADDRESS || process.env.VITE_BRIDGE_REFUND_EVM_ADDRESS || '',
+    bridgeRefundTron: process.env.BRIDGE_REFUND_TRON_ADDRESS || process.env.VITE_BRIDGE_REFUND_TRON_ADDRESS || '',
   });
 }
 

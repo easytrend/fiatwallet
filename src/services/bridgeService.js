@@ -251,10 +251,97 @@ export const CHAIN_TOKENS = {
   ],
 };
 
+export function isValidRefundAddress(address, chainId) {
+  if (!address || typeof address !== 'string') return false;
+  const clean = address.trim();
+  if (chainId === 'btc') {
+    return /^(bc1[a-z0-9]{39,59}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(clean);
+  }
+  if (chainId === 'tron') {
+    return /^T[a-km-zA-HJ-NP-Z1-9]{33}$/.test(clean);
+  }
+  // EVM chains: Base, Arb, ETH, BSC, Polygon
+  return /^0x[a-fA-F0-9]{40}$/.test(clean);
+}
+
+let remoteBridgeRefunds = { btc: '', evm: '', tron: '' };
+
+export async function fetchRemoteBridgeConfig() {
+  try {
+    const isCapacitorOrLocal = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'file:'
+    );
+    const endpoints = isCapacitorOrLocal
+      ? ['https://fiatwallet.app/api/paj_config', '/api/paj_config']
+      : ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+
+    for (const ep of endpoints) {
+      const res = await fetch(ep).catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data) {
+          if (data.nearIntentsApiKey) {
+            setNearIntentsApiKey(data.nearIntentsApiKey);
+          }
+          if (data.bridgeRefundBtc) {
+            remoteBridgeRefunds.btc = data.bridgeRefundBtc.trim();
+            try { localStorage.setItem('bridge_refund_btc', remoteBridgeRefunds.btc); } catch (_) {}
+          }
+          if (data.bridgeRefundEvm) {
+            remoteBridgeRefunds.evm = data.bridgeRefundEvm.trim();
+            try { localStorage.setItem('bridge_refund_evm', remoteBridgeRefunds.evm); } catch (_) {}
+          }
+          if (data.bridgeRefundTron) {
+            remoteBridgeRefunds.tron = data.bridgeRefundTron.trim();
+            try { localStorage.setItem('bridge_refund_tron', remoteBridgeRefunds.tron); } catch (_) {}
+          }
+          return;
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+if (typeof window !== 'undefined') {
+  fetchRemoteBridgeConfig().catch(() => {});
+}
+
 export function getDefaultRefundAddress(chainId) {
-  if (chainId === 'btc') return '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
-  if (chainId === 'tron') return 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb';
-  return '0x0000000000000000000000000000000000000001';
+  if (chainId === 'btc') {
+    return (
+      (remoteBridgeRefunds.btc && remoteBridgeRefunds.btc.trim()) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('bridge_refund_btc') : null) ||
+      import.meta.env.VITE_BRIDGE_REFUND_BTC_ADDRESS ||
+      '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'
+    );
+  }
+  if (chainId === 'tron') {
+    return (
+      (remoteBridgeRefunds.tron && remoteBridgeRefunds.tron.trim()) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('bridge_refund_tron') : null) ||
+      import.meta.env.VITE_BRIDGE_REFUND_TRON_ADDRESS ||
+      'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb'
+    );
+  }
+  return (
+    (remoteBridgeRefunds.evm && remoteBridgeRefunds.evm.trim()) ||
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('bridge_refund_evm') : null) ||
+    import.meta.env.VITE_BRIDGE_REFUND_EVM_ADDRESS ||
+    '0x0000000000000000000000000000000000000001'
+  );
+}
+
+export function isTreasuryRefundConfigured(chainId) {
+  const addr = getDefaultRefundAddress(chainId);
+  return (
+    Boolean(addr) &&
+    addr !== '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' &&
+    addr !== 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb' &&
+    addr !== '0x0000000000000000000000000000000000000001'
+  );
 }
 
 function formatUnits(amountFloat, decimals) {
@@ -274,9 +361,10 @@ function formatUnits(amountFloat, decimals) {
  * Synchronous instant check for cached deposit address.
  * Eliminates screen delay when switching between previously viewed tokens/chains.
  */
-export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol) {
+export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo = '') {
   if (typeof localStorage === 'undefined' || !userAddress || !chain || !tokenSymbol) return null;
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
+  const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? `_${refundTo.trim()}` : '';
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${validRefund}`;
   try {
     const raw = localStorage.getItem(cacheKey);
     if (!raw) return null;
@@ -316,7 +404,9 @@ export async function createBridgeDeposit({
   const amountUnits = formatUnits(amountFloat, originDecimals);
   const relayerPubkey = getEffectiveRelayerPublicKey();
   const apiKey = getNearIntentsApiKey();
-  const effectiveRefund = refundTo || getDefaultRefundAddress(chainId);
+  const effectiveRefund = refundTo && isValidRefundAddress(refundTo, chainId)
+    ? refundTo.trim()
+    : getDefaultRefundAddress(chainId);
 
   const body = {
     dry: false,
@@ -420,6 +510,7 @@ export async function createBridgeDeposit({
     amountOutUsd: quote.amountOutUsd,
     deadline: quote.deadline,
     correlationId: data.correlationId,
+    refundTo: effectiveRefund,
   };
 }
 
@@ -437,8 +528,10 @@ export async function getOrCreateBridgeDeposit({
   tokenSymbol,
   defaultAmount = '5',
   forceNew = false,
+  refundTo = '',
 }) {
-  const cached = !forceNew ? getCachedBridgeDeposit(userAddress, chain, tokenSymbol) : null;
+  const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? refundTo.trim() : '';
+  const cached = !forceNew ? getCachedBridgeDeposit(userAddress, chain, tokenSymbol, validRefund) : null;
   if (cached) return cached;
 
   const deposit = await createBridgeDeposit({
@@ -449,6 +542,7 @@ export async function getOrCreateBridgeDeposit({
     destinationSymbol,
     userAddress,
     chainId: chain,
+    refundTo: validRefund,
   });
 
   const record = {
@@ -457,9 +551,11 @@ export async function getOrCreateBridgeDeposit({
     chain,
     tokenSymbol,
     userAddress,
+    refundTo: deposit.refundTo || validRefund || getDefaultRefundAddress(chain),
   };
 
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
+  const cleanRefund = validRefund ? `_${validRefund}` : '';
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${cleanRefund}`;
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(cacheKey, JSON.stringify(record));
@@ -472,9 +568,10 @@ export async function getOrCreateBridgeDeposit({
 /**
  * Mark a bridge deposit as completed in cache.
  */
-export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol) {
+export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol, refundTo = '') {
   if (typeof localStorage === 'undefined') return;
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
+  const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? `_${refundTo.trim()}` : '';
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}${validRefund}`;
   try {
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
