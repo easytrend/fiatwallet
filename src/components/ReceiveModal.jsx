@@ -4,6 +4,7 @@ import {
   SUPPORTED_CHAINS,
   CHAIN_TOKENS,
   SOLANA_DESTINATIONS,
+  getCachedBridgeDeposit,
   getOrCreateBridgeDeposit,
   markBridgeDepositCompleted,
   checkBridgeStatus,
@@ -52,16 +53,33 @@ export default function ReceiveModal({ address, onClose }) {
       .catch(err => console.error('Solana QR error:', err));
   }, [address]);
 
-  // When switching chain, select the first token for that chain
+  // When switching chain, pick the first token for that chain immediately
   useEffect(() => {
     if (selectedChainId !== 'solana') {
       const tokens = CHAIN_TOKENS[selectedChainId] || [];
-      setSelectedOriginToken(tokens[0] || null);
+      const firstTok = tokens[0] || null;
+      setSelectedOriginToken(firstTok);
+
+      // Check synchronous cache immediately for 0ms render
+      if (firstTok && address) {
+        const cached = getCachedBridgeDeposit(address, selectedChainId, firstTok.symbol);
+        if (cached?.depositAddress) {
+          setBridgeDeposit(cached);
+          setBridgeError('');
+          QRCode.toDataURL(cached.depositAddress, {
+            width: 240,
+            margin: 2,
+            color: { dark: '#0a1628', light: '#ffffff' },
+          }).then(url => setBridgeQrUrl(url)).catch(() => {});
+        }
+      }
     } else {
       setSelectedOriginToken(null);
       setBridgeDeposit(null);
+      setBridgeQrUrl('');
+      setBridgeError('');
     }
-  }, [selectedChainId]);
+  }, [selectedChainId, address]);
 
   // INSTANTLY get or create deposit address whenever origin token or chain changes
   useEffect(() => {
@@ -69,6 +87,23 @@ export default function ReceiveModal({ address, onClose }) {
 
     let isCancelled = false;
 
+    // Check if already in cache synchronously
+    const cached = getCachedBridgeDeposit(address, selectedChainId, selectedOriginToken.symbol);
+    if (cached?.depositAddress) {
+      setBridgeDeposit(cached);
+      setBridgeError('');
+      setBridgeLoading(false);
+      QRCode.toDataURL(cached.depositAddress, {
+        width: 240,
+        margin: 2,
+        color: { dark: '#0a1628', light: '#ffffff' },
+      }).then(url => {
+        if (!isCancelled) setBridgeQrUrl(url);
+      }).catch(() => {});
+      return;
+    }
+
+    // Not in cache yet: create deposit address immediately
     async function loadInstantDeposit(force = false) {
       setBridgeLoading(true);
       setBridgeError('');
@@ -84,19 +119,16 @@ export default function ReceiveModal({ address, onClose }) {
           userAddress: address,
           chain: selectedChainId,
           tokenSymbol: selectedOriginToken.symbol,
+          defaultAmount: selectedOriginToken.defaultAmount || '5',
           forceNew: force,
         });
 
         if (!isCancelled && deposit?.depositAddress) {
           setBridgeDeposit(deposit);
-          // Generate QR code for the deposit address
           QRCode.toDataURL(deposit.depositAddress, {
             width: 240,
             margin: 2,
-            color: {
-              dark: '#0a1628',
-              light: '#ffffff',
-            },
+            color: { dark: '#0a1628', light: '#ffffff' },
           })
             .then(url => {
               if (!isCancelled) setBridgeQrUrl(url);
@@ -350,7 +382,7 @@ export default function ReceiveModal({ address, onClose }) {
           )}
         </div>
 
-        {/* ── Token Selector Pills (When chain has multiple tokens, e.g. Base, BSC, Ethereum) ── */}
+        {/* ── Token Selector Pills (When chain has multiple tokens, e.g. Base, Arbitrum, Ethereum, Tron) ── */}
         {selectedChainId !== 'solana' && availableTokens.length > 1 && (
           <div style={{ marginBottom: '14px' }}>
             <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text2, rgba(240, 246, 255, 0.6))', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -485,16 +517,17 @@ export default function ReceiveModal({ address, onClose }) {
             {bridgeLoading && !bridgeDeposit && (
               <div style={{ padding: '36px 0', color: 'var(--text2)' }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', marginBottom: '4px' }}>
-                  Loading {selectedChain.name} Bridge...
+                  Loading {selectedChain.name} Address...
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
-                  Connecting solver network...
+                  Generating instant deposit vault...
                 </div>
               </div>
             )}
 
             {bridgeError && (
-              <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', color: '#ef4444', fontSize: '11px', marginBottom: '12px' }}>
+              <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', color: '#ef4444', fontSize: '12px', marginBottom: '12px', lineHeight: '1.4' }}>
+                <div style={{ fontWeight: '700', marginBottom: '4px' }}>Notice</div>
                 {bridgeError}
               </div>
             )}
@@ -609,7 +642,7 @@ export default function ReceiveModal({ address, onClose }) {
                   <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '6px 0' }} />
 
                   <div style={{ color: 'var(--text3, rgba(240,246,255,0.5))', fontSize: '10.5px', lineHeight: '1.4' }}>
-                    Any amount sent to this address will be automatically bridged directly to your Solana wallet. The relayer deducts 0.4% and forwards the rest immediately.
+                    Send any amount of {selectedOriginToken?.symbol} to this address. Solvers will bridge it directly into your Solana wallet as {selectedDestToken.symbol}, with our 0.4% protocol fee deducted automatically.
                   </div>
                 </div>
 

@@ -40,11 +40,11 @@ export const SUPPORTED_CHAINS = [
   { id: 'solana', name: 'Solana', badge: 'SOL', isDefault: true, logo: LOGOS.solana },
   { id: 'btc', name: 'Bitcoin', badge: 'BTC', logo: LOGOS.btc },
   { id: 'base', name: 'Base', badge: 'BASE', logo: LOGOS.base },
-  { id: 'bsc', name: 'BNB Chain', badge: 'BSC', logo: LOGOS.bsc },
   { id: 'arb', name: 'Arbitrum', badge: 'ARB', logo: LOGOS.arb },
   { id: 'eth', name: 'Ethereum', badge: 'ETH', logo: LOGOS.eth },
   { id: 'tron', name: 'Tron', badge: 'TRX', logo: LOGOS.tron },
   { id: 'pol', name: 'Polygon', badge: 'POL', logo: LOGOS.pol },
+  { id: 'bsc', name: 'BNB Chain', badge: 'BSC', logo: LOGOS.bsc },
 ];
 
 export const SOLANA_DESTINATIONS = [
@@ -81,7 +81,8 @@ export const CHAIN_TOKENS = {
       name: 'Bitcoin',
       decimals: 8,
       assetId: 'nep141:btc.omft.near',
-      min: '0.0001',
+      min: '0.0002',
+      defaultAmount: '0.0005',
       logo: LOGOS.btc,
     },
   ],
@@ -91,7 +92,8 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (Base)',
       decimals: 6,
       assetId: 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',
-      min: '1',
+      min: '2',
+      defaultAmount: '5',
       logo: LOGOS.usdc,
     },
     {
@@ -100,33 +102,8 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:base.omft.near',
       min: '0.001',
+      defaultAmount: '0.003',
       logo: LOGOS.eth,
-    },
-  ],
-  bsc: [
-    {
-      symbol: 'USDT',
-      name: 'Tether USD (BSC)',
-      decimals: 18,
-      assetId: 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g',
-      min: '1',
-      logo: LOGOS.usdt,
-    },
-    {
-      symbol: 'USDC',
-      name: 'USD Coin (BSC)',
-      decimals: 18,
-      assetId: 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r',
-      min: '1',
-      logo: LOGOS.usdc,
-    },
-    {
-      symbol: 'BNB',
-      name: 'BNB',
-      decimals: 18,
-      assetId: 'nep245:v2_1.omni.hot.tg:56_11111111111111111111',
-      min: '0.005',
-      logo: LOGOS.bsc,
     },
   ],
   arb: [
@@ -135,7 +112,8 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (Arbitrum)',
       decimals: 6,
       assetId: 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near',
-      min: '1',
+      min: '2',
+      defaultAmount: '5',
       logo: LOGOS.usdc,
     },
     {
@@ -144,6 +122,7 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:arb.omft.near',
       min: '0.001',
+      defaultAmount: '0.003',
       logo: LOGOS.eth,
     },
   ],
@@ -153,7 +132,8 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (ERC20)',
       decimals: 6,
       assetId: 'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near',
-      min: '5',
+      min: '10',
+      defaultAmount: '15',
       logo: LOGOS.usdt,
     },
     {
@@ -161,7 +141,8 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (ERC20)',
       decimals: 6,
       assetId: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near',
-      min: '5',
+      min: '10',
+      defaultAmount: '15',
       logo: LOGOS.usdc,
     },
     {
@@ -169,7 +150,8 @@ export const CHAIN_TOKENS = {
       name: 'Ethereum',
       decimals: 18,
       assetId: 'nep141:eth.omft.near',
-      min: '0.003',
+      min: '0.005',
+      defaultAmount: '0.008',
       logo: LOGOS.eth,
     },
   ],
@@ -179,7 +161,8 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (TRC20)',
       decimals: 6,
       assetId: 'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near',
-      min: '5',
+      min: '100',
+      defaultAmount: '110',
       logo: LOGOS.usdt,
     },
     {
@@ -187,7 +170,8 @@ export const CHAIN_TOKENS = {
       name: 'Tron',
       decimals: 6,
       assetId: 'nep141:tron.omft.near',
-      min: '10',
+      min: '20',
+      defaultAmount: '50',
       logo: LOGOS.tron,
     },
   ],
@@ -197,7 +181,8 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (Polygon)',
       decimals: 6,
       assetId: 'nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L',
-      min: '1',
+      min: '2',
+      defaultAmount: '5',
       logo: LOGOS.usdc,
     },
     {
@@ -205,7 +190,8 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (Polygon)',
       decimals: 6,
       assetId: 'nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr',
-      min: '1',
+      min: '2',
+      defaultAmount: '5',
       logo: LOGOS.usdt,
     },
     {
@@ -213,11 +199,47 @@ export const CHAIN_TOKENS = {
       name: 'Polygon (POL)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:137_11111111111111111111',
-      min: '1',
+      min: '2',
+      defaultAmount: '5',
       logo: LOGOS.pol,
     },
   ],
+  bsc: [
+    {
+      symbol: 'USDT',
+      name: 'Tether USD (BSC)',
+      decimals: 18,
+      assetId: 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g',
+      min: '1000',
+      defaultAmount: '1000',
+      logo: LOGOS.usdt,
+    },
+    {
+      symbol: 'USDC',
+      name: 'USD Coin (BSC)',
+      decimals: 18,
+      assetId: 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r',
+      min: '1000',
+      defaultAmount: '1000',
+      logo: LOGOS.usdc,
+    },
+    {
+      symbol: 'BNB',
+      name: 'BNB',
+      decimals: 18,
+      assetId: 'nep245:v2_1.omni.hot.tg:56_11111111111111111111',
+      min: '2',
+      defaultAmount: '2',
+      logo: LOGOS.bsc,
+    },
+  ],
 };
+
+export function getDefaultRefundAddress(chainId) {
+  if (chainId === 'btc') return '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+  if (chainId === 'tron') return 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb';
+  return '0x0000000000000000000000000000000000000001';
+}
 
 function formatUnits(amountFloat, decimals) {
   const parts = String(amountFloat).split('.');
@@ -233,80 +255,22 @@ function formatUnits(amountFloat, decimals) {
 }
 
 /**
- * Fetch a dry-run quote from NEAR Intents 1Click API.
+ * Synchronous instant check for cached deposit address.
+ * Eliminates screen delay when switching between previously viewed tokens/chains.
  */
-export async function getBridgeQuote({
-  originAsset,
-  destinationAsset,
-  amountFloat,
-  originDecimals = 6,
-  destinationDecimals = 6,
-  destinationSymbol = 'USDT',
-  refundTo = '0x0000000000000000000000000000000000000001',
-}) {
-  const amountUnits = formatUnits(amountFloat, originDecimals);
-  if (amountUnits === '0') throw new Error('Amount too small');
-
-  const relayerPubkey = getEffectiveRelayerPublicKey();
-  const apiKey = getNearIntentsApiKey();
-
-  const body = {
-    dry: true,
-    swapType: 'EXACT_INPUT',
-    slippageTolerance: 100, // 1%
-    originAsset,
-    depositType: 'ORIGIN_CHAIN',
-    destinationAsset,
-    amount: amountUnits,
-    refundTo: refundTo || '0x0000000000000000000000000000000000000001',
-    refundType: 'ORIGIN_CHAIN',
-    recipient: relayerPubkey,
-    recipientType: 'DESTINATION_CHAIN',
-    deadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-  };
-
-  const headers = { 'Content-Type': 'application/json' };
-  if (apiKey) {
-    headers['X-API-Key'] = apiKey;
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-
-  const res = await fetch(`${NEAR_INTENTS_BASE_URL}/quote`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json();
-  if (!res.ok || data.error) {
-    throw new Error(data.message || data.error || 'Failed to get bridge quote');
-  }
-
-  const rawOut = parseFloat(data.quote?.amountOutFormatted || '0');
-  const amountInUsd = parseFloat(data.quote?.amountInUsd || '0');
-  const amountOutUsd = parseFloat(data.quote?.amountOutUsd || '0');
-
-  const isUsdToken = destinationSymbol.includes('USD');
-  let protocolFee = 0;
-  if (isUsdToken) {
-    const rawFee = rawOut * 0.004;
-    protocolFee = Math.max(0.10, Math.round(rawFee * 100) / 100);
-  } else {
-    protocolFee = rawOut * 0.004;
-  }
-
-  const netReceived = Math.max(0, rawOut - protocolFee);
-
-  return {
-    quoteRaw: data.quote,
-    amountIn: parseFloat(data.quote?.amountInFormatted || amountFloat),
-    grossOut: rawOut,
-    protocolFee,
-    netReceived: Math.round(netReceived * 1000000) / 1000000,
-    timeEstimate: data.quote?.timeEstimate || 25,
-    amountInUsd,
-    amountOutUsd,
-  };
+export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol) {
+  if (typeof localStorage === 'undefined' || !userAddress || !chain || !tokenSymbol) return null;
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ageHours = (Date.now() - (parsed.createdAt || 0)) / (1000 * 60 * 60);
+    if (ageHours < 48 && parsed.depositAddress && parsed.status !== 'COMPLETED') {
+      return parsed;
+    }
+  } catch (_) {}
+  return null;
 }
 
 /**
@@ -315,15 +279,17 @@ export async function getBridgeQuote({
 export async function createBridgeDeposit({
   originAsset,
   destinationAsset,
-  amountFloat = '5',
+  amountFloat,
   originDecimals = 6,
   destinationSymbol = 'USDT',
   userAddress,
+  chainId,
   refundTo,
 }) {
   const amountUnits = formatUnits(amountFloat, originDecimals);
   const relayerPubkey = getEffectiveRelayerPublicKey();
   const apiKey = getNearIntentsApiKey();
+  const effectiveRefund = refundTo || getDefaultRefundAddress(chainId);
 
   const body = {
     dry: false,
@@ -333,7 +299,7 @@ export async function createBridgeDeposit({
     depositType: 'ORIGIN_CHAIN',
     destinationAsset,
     amount: amountUnits,
-    refundTo: refundTo || '0x0000000000000000000000000000000000000001',
+    refundTo: effectiveRefund,
     refundType: 'ORIGIN_CHAIN',
     recipient: relayerPubkey,
     recipientType: 'DESTINATION_CHAIN',
@@ -411,31 +377,20 @@ export async function getOrCreateBridgeDeposit({
   userAddress,
   chain,
   tokenSymbol,
+  defaultAmount = '5',
   forceNew = false,
 }) {
-  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
-  if (!forceNew && typeof localStorage !== 'undefined') {
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const ageHours = (Date.now() - (parsed.createdAt || 0)) / (1000 * 60 * 60);
-        // Valid for up to 48 hours unless completed
-        if (ageHours < 48 && parsed.depositAddress && parsed.status !== 'COMPLETED') {
-          return parsed;
-        }
-      }
-    } catch (_) {}
-  }
+  const cached = !forceNew ? getCachedBridgeDeposit(userAddress, chain, tokenSymbol) : null;
+  if (cached) return cached;
 
-  // Create new deposit address instantly
   const deposit = await createBridgeDeposit({
     originAsset,
     destinationAsset,
-    amountFloat: '5',
+    amountFloat: defaultAmount,
     originDecimals,
     destinationSymbol,
     userAddress,
+    chainId: chain,
   });
 
   const record = {
@@ -446,6 +401,7 @@ export async function getOrCreateBridgeDeposit({
     userAddress,
   };
 
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(cacheKey, JSON.stringify(record));
