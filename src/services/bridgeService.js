@@ -23,15 +23,28 @@ export function getNearIntentsApiKey() {
   );
 }
 
+export const LOGOS = {
+  solana: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/solana/info/logo.png',
+  btc: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/bitcoin/info/logo.png',
+  eth: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png',
+  base: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png',
+  bsc: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png',
+  arb: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png',
+  tron: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/tron/info/logo.png',
+  pol: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png',
+  usdt: 'https://assets.coingecko.com/coins/images/325/large/Tether.png',
+  usdc: 'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
+};
+
 export const SUPPORTED_CHAINS = [
-  { id: 'solana', name: 'Solana', badge: 'SOL', isDefault: true, icon: '◎' },
-  { id: 'btc', name: 'Bitcoin', badge: 'BTC', icon: '₿' },
-  { id: 'base', name: 'Base', badge: 'BASE', icon: '🔵' },
-  { id: 'bsc', name: 'BNB Chain', badge: 'BSC', icon: '🟡' },
-  { id: 'arb', name: 'Arbitrum', badge: 'ARB', icon: '🔷' },
-  { id: 'eth', name: 'Ethereum', badge: 'ETH', icon: 'Ξ' },
-  { id: 'tron', name: 'Tron', badge: 'TRX', icon: '🔴' },
-  { id: 'pol', name: 'Polygon', badge: 'POL', icon: '🟣' },
+  { id: 'solana', name: 'Solana', badge: 'SOL', isDefault: true, logo: LOGOS.solana },
+  { id: 'btc', name: 'Bitcoin', badge: 'BTC', logo: LOGOS.btc },
+  { id: 'base', name: 'Base', badge: 'BASE', logo: LOGOS.base },
+  { id: 'bsc', name: 'BNB Chain', badge: 'BSC', logo: LOGOS.bsc },
+  { id: 'arb', name: 'Arbitrum', badge: 'ARB', logo: LOGOS.arb },
+  { id: 'eth', name: 'Ethereum', badge: 'ETH', logo: LOGOS.eth },
+  { id: 'tron', name: 'Tron', badge: 'TRX', logo: LOGOS.tron },
+  { id: 'pol', name: 'Polygon', badge: 'POL', logo: LOGOS.pol },
 ];
 
 export const SOLANA_DESTINATIONS = [
@@ -41,6 +54,7 @@ export const SOLANA_DESTINATIONS = [
     decimals: 6,
     assetId: 'nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near',
     mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+    logo: LOGOS.usdt,
   },
   {
     symbol: 'USDC',
@@ -48,6 +62,7 @@ export const SOLANA_DESTINATIONS = [
     decimals: 6,
     assetId: 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near',
     mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    logo: LOGOS.usdc,
   },
   {
     symbol: 'SOL',
@@ -55,6 +70,7 @@ export const SOLANA_DESTINATIONS = [
     decimals: 9,
     assetId: 'nep141:sol.omft.near',
     mint: 'So11111111111111111111111111111111111111112',
+    logo: LOGOS.solana,
   },
 ];
 
@@ -65,7 +81,8 @@ export const CHAIN_TOKENS = {
       name: 'Bitcoin',
       decimals: 8,
       assetId: 'nep141:btc.omft.near',
-      min: '0.0002',
+      min: '0.0001',
+      logo: LOGOS.btc,
     },
   ],
   base: [
@@ -74,7 +91,8 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (Base)',
       decimals: 6,
       assetId: 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',
-      min: '2',
+      min: '1',
+      logo: LOGOS.usdc,
     },
     {
       symbol: 'ETH',
@@ -82,6 +100,7 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:base.omft.near',
       min: '0.001',
+      logo: LOGOS.eth,
     },
   ],
   bsc: [
@@ -90,14 +109,16 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (BSC)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g',
-      min: '2',
+      min: '1',
+      logo: LOGOS.usdt,
     },
     {
       symbol: 'USDC',
       name: 'USD Coin (BSC)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r',
-      min: '2',
+      min: '1',
+      logo: LOGOS.usdc,
     },
     {
       symbol: 'BNB',
@@ -105,6 +126,7 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:56_11111111111111111111',
       min: '0.005',
+      logo: LOGOS.bsc,
     },
   ],
   arb: [
@@ -113,7 +135,8 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (Arbitrum)',
       decimals: 6,
       assetId: 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near',
-      min: '2',
+      min: '1',
+      logo: LOGOS.usdc,
     },
     {
       symbol: 'ETH',
@@ -121,6 +144,7 @@ export const CHAIN_TOKENS = {
       decimals: 18,
       assetId: 'nep141:arb.omft.near',
       min: '0.001',
+      logo: LOGOS.eth,
     },
   ],
   eth: [
@@ -129,21 +153,24 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (ERC20)',
       decimals: 6,
       assetId: 'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near',
-      min: '10',
+      min: '5',
+      logo: LOGOS.usdt,
     },
     {
       symbol: 'USDC',
       name: 'USD Coin (ERC20)',
       decimals: 6,
       assetId: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near',
-      min: '10',
+      min: '5',
+      logo: LOGOS.usdc,
     },
     {
       symbol: 'ETH',
       name: 'Ethereum',
       decimals: 18,
       assetId: 'nep141:eth.omft.near',
-      min: '0.005',
+      min: '0.003',
+      logo: LOGOS.eth,
     },
   ],
   tron: [
@@ -153,13 +180,15 @@ export const CHAIN_TOKENS = {
       decimals: 6,
       assetId: 'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near',
       min: '5',
+      logo: LOGOS.usdt,
     },
     {
       symbol: 'TRX',
       name: 'Tron',
       decimals: 6,
       assetId: 'nep141:tron.omft.near',
-      min: '20',
+      min: '10',
+      logo: LOGOS.tron,
     },
   ],
   pol: [
@@ -168,21 +197,24 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (Polygon)',
       decimals: 6,
       assetId: 'nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L',
-      min: '2',
+      min: '1',
+      logo: LOGOS.usdc,
     },
     {
       symbol: 'USDT',
       name: 'Tether USD (Polygon)',
       decimals: 6,
       assetId: 'nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr',
-      min: '2',
+      min: '1',
+      logo: LOGOS.usdt,
     },
     {
       symbol: 'POL',
       name: 'Polygon (POL)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:137_11111111111111111111',
-      min: '2',
+      min: '1',
+      logo: LOGOS.pol,
     },
   ],
 };
@@ -254,14 +286,12 @@ export async function getBridgeQuote({
   const amountInUsd = parseFloat(data.quote?.amountInUsd || '0');
   const amountOutUsd = parseFloat(data.quote?.amountOutUsd || '0');
 
-  // Protocol fee: 0.4% with $0.10 minimum floor (or token equivalent)
   const isUsdToken = destinationSymbol.includes('USD');
   let protocolFee = 0;
   if (isUsdToken) {
     const rawFee = rawOut * 0.004;
     protocolFee = Math.max(0.10, Math.round(rawFee * 100) / 100);
   } else {
-    // For native SOL
     protocolFee = rawOut * 0.004;
   }
 
@@ -280,12 +310,12 @@ export async function getBridgeQuote({
 }
 
 /**
- * Generate the real live deposit address for the bridge.
+ * Generate a real live deposit address for the bridge.
  */
 export async function createBridgeDeposit({
   originAsset,
   destinationAsset,
-  amountFloat,
+  amountFloat = '5',
   originDecimals = 6,
   destinationSymbol = 'USDT',
   userAddress,
@@ -367,6 +397,78 @@ export async function createBridgeDeposit({
     deadline: data.quote?.deadline,
     correlationId: data.correlationId,
   };
+}
+
+/**
+ * Gets or creates a persistent bridge deposit address so the user sees the same
+ * address and QR code if they exit and return.
+ */
+export async function getOrCreateBridgeDeposit({
+  originAsset,
+  destinationAsset,
+  originDecimals = 6,
+  destinationSymbol = 'USDT',
+  userAddress,
+  chain,
+  tokenSymbol,
+  forceNew = false,
+}) {
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
+  if (!forceNew && typeof localStorage !== 'undefined') {
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const ageHours = (Date.now() - (parsed.createdAt || 0)) / (1000 * 60 * 60);
+        // Valid for up to 48 hours unless completed
+        if (ageHours < 48 && parsed.depositAddress && parsed.status !== 'COMPLETED') {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Create new deposit address instantly
+  const deposit = await createBridgeDeposit({
+    originAsset,
+    destinationAsset,
+    amountFloat: '5',
+    originDecimals,
+    destinationSymbol,
+    userAddress,
+  });
+
+  const record = {
+    ...deposit,
+    createdAt: Date.now(),
+    chain,
+    tokenSymbol,
+    userAddress,
+  };
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(record));
+    } catch (_) {}
+  }
+
+  return record;
+}
+
+/**
+ * Mark a bridge deposit as completed in cache.
+ */
+export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol) {
+  if (typeof localStorage === 'undefined') return;
+  const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}`;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      parsed.status = 'COMPLETED';
+      localStorage.setItem(cacheKey, JSON.stringify(parsed));
+    }
+  } catch (_) {}
 }
 
 /**
