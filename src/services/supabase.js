@@ -699,7 +699,87 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
     throw new Error(error.message);
   }
 
+// Also sync fiat_tag into wallets table if it exists
+  try {
+    await client
+      .from('wallets')
+      .update({ fiat_tag: formattedTag, last_active_at: new Date().toISOString() })
+      .eq('wallet_address', walletAddress);
+  } catch (_) {}
+
   return data;
 }
 
+/**
+ * Record a newly created or active wallet in Supabase.
+ * If the wallet already exists, updates last_active_at without resetting created_at or trade stats.
+ */
+export async function recordWalletRegistration(walletAddress, walletType = 'created', fiatTag = null) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return null;
 
+  try {
+    const { data: existing } = await client
+      .from('wallets')
+      .select('wallet_address, fiat_tag')
+      .eq('wallet_address', walletAddress)
+      .maybeSingle();
+
+    if (existing) {
+      const updatePayload = { last_active_at: new Date().toISOString() };
+      if (fiatTag && !existing.fiat_tag) {
+        updatePayload.fiat_tag = fiatTag;
+      }
+      await client
+        .from('wallets')
+        .update(updatePayload)
+        .eq('wallet_address', walletAddress);
+      return existing;
+    }
+
+    const insertPayload = {
+      wallet_address: walletAddress,
+      wallet_type: walletType || 'created',
+      created_at: new Date().toISOString(),
+      last_active_at: new Date().toISOString(),
+      trade_count: 0,
+      total_volume_usd: 0.00,
+      fiat_tag: fiatTag || null,
+    };
+
+    const { data, error } = await client
+      .from('wallets')
+      .insert(insertPayload)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[Supabase] recordWalletRegistration note:', error.message);
+    }
+    return data;
+  } catch (err) {
+    console.warn('[Supabase] recordWalletRegistration error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch wallet statistics (creation timestamp, trade count, volume, fiat tag).
+ */
+export async function getWalletStats(walletAddress) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return null;
+
+  try {
+    const { data, error } = await client
+      .from('wallets')
+      .select('*')
+      .eq('wallet_address', walletAddress)
+      .maybeSingle();
+
+    if (error) return null;
+    return data;
+  } catch (err) {
+    return null;
+  }
+}

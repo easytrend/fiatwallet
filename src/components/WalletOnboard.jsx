@@ -6,7 +6,7 @@ import bs58 from 'bs58';
 import { createNewWallet, importFromMnemonic, importFromPrivateKey } from '../services/walletCrypto';
 import { encryptVault, saveVaultToStorage, saveWalletMeta } from '../services/walletVault';
 import { initiateSession, verifySession, getEffectiveApiKey, getEffectiveApiKeyAsync, fetchRemotePajConfig } from '../services/pajcashService';
-import { saveSession, loadSession, getFiatTagByWallet, getP2PTransactionsByUser } from '../services/supabase';
+import { saveSession, loadSession, getFiatTagByWallet, getP2PTransactionsByUser, recordWalletRegistration } from '../services/supabase';
 import BankDetailsModal from './BankDetailsModal';
 import logoImg from '../assets/logo.png';
 
@@ -371,6 +371,7 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       const vault = await encryptVault(secretMaterial, pin);
       saveVaultToStorage(vault);
       saveWalletMeta(pendingPublicKey, pendingSource);
+      recordWalletRegistration(pendingPublicKey, pendingSource || 'created');
       try {
         loadSession(pendingPublicKey).then(row => {
           if (row && row.session_token) {

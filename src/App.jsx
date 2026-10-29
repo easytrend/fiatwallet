@@ -19,7 +19,7 @@ import FloatClaimWidget from './components/FloatClaimWidget';
 import SwapWidget from './components/SwapWidget';
 import P2PPanel, { getRelayEndpoint } from './components/P2PPanel';
 import SupportChat from './components/SupportChat';
-import { logTransaction, getFiatTagByWallet } from './services/supabase';
+import { logTransaction, getFiatTagByWallet, recordWalletRegistration } from './services/supabase';
 import WalletOnboard from './components/WalletOnboard';
 import WalletUnlock from './components/WalletUnlock';
 import { useInternalWallet } from './hooks/useInternalWallet';
@@ -1693,6 +1693,7 @@ export default function App() {
           walletMeta={internalWallet.walletMeta}
           onUnlocked={(walletData) => {
             internalWallet.activate(walletData);
+            recordWalletRegistration(walletData?.publicKey, walletData?.source || 'internal');
             setGuestBypass(false);
             // Also complete the adapter connection so wallet.connected is true for dApps
             if (wallet?.adapter?._completeConnect) {
@@ -1728,6 +1729,7 @@ export default function App() {
         <WalletOnboard
           onWalletReady={(walletData) => {
             internalWallet.activate(walletData);
+            recordWalletRegistration(walletData?.publicKey, walletData?.source || 'created');
             setGuestBypass(false);
             setIsGuestMode(false);
             setActiveTab('wallet');
@@ -2669,6 +2671,7 @@ export default function App() {
               onClose={() => setShowOnboardModal(null)}
               onWalletReady={(walletData) => {
                 internalWallet.activate(walletData);
+                recordWalletRegistration(walletData?.publicKey, walletData?.source || 'created');
                 setShowOnboardModal(null);
                 setGuestBypass(false);
                 setIsGuestMode(false);
