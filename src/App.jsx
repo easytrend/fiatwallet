@@ -81,6 +81,7 @@ const ALLOWED_PROGRAM_IDS = new Set([
   // every transaction because handleSend() appends a Memo instruction before calling verify.
   // Memo carries no account keys and moves no funds, so it is safe to allowlist.
   'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',           // SPL Memo Program
+  'ComputeBudget111111111111111111111111111111',           // Compute Budget Program
 ]);
 
 // Permitted opcodes for SPL Token / Token-2022 programs.
@@ -132,7 +133,7 @@ function verifyTransactionIntegrity(transaction, expectedTransfers, expectedSign
     if (!ALLOWED_PROGRAM_IDS.has(programIdStr)) {
       throw new Error(
         `Transaction integrity violation: Instruction from disallowed program ${programIdStr}. ` +
-        `Only System Program, Token Program, Token-2022, and Associated Token Program are permitted.`
+        `Only System Program, Token Program, Token-2022, Associated Token Program, Memo, and Compute Budget are permitted.`
       );
     }
 
@@ -161,6 +162,12 @@ function verifyTransactionIntegrity(transaction, expectedTransfers, expectedSign
       // Memo instructions carry no account keys and move no funds.
       // They are safe to allow through without further validation.
       // Do NOT increment transferCheckedCount or systemTransferCount — memo is not a transfer.
+    } else if (
+      programIdStr === 'ComputeBudget111111111111111111111111111111' // Compute Budget Program
+    ) {
+      // ComputeBudget instructions (setComputeUnitLimit, setComputeUnitPrice) carry no account keys
+      // and move no funds. They are safe to allow through.
+      // Do NOT increment transferCheckedCount or systemTransferCount — compute budget is not a transfer.
     } else if (
       programIdStr === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL' // Associated Token Program
     ) {
