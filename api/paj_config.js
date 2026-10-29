@@ -137,6 +137,7 @@ export default async function handler(req, res) {
     useOnrampRelayer,
     supabaseUrl,
     supabaseAnonKey,
+    nearIntentsApiKey: process.env.NEAR_INTENTS_API_KEY || process.env.VITE_NEAR_INTENTS_API_KEY || '',
   });
 }
 

@@ -123,6 +123,9 @@ export async function fetchRemotePajConfig() {
             try {
               localStorage.setItem('relayer_public_key', data.relayerPublicKey);
               localStorage.setItem('use_onramp_relayer', 'true');
+              if (data?.nearIntentsApiKey) {
+                localStorage.setItem('near_intents_api_key', data.nearIntentsApiKey);
+              }
             } catch (e) {}
           }
           if (typeof window !== 'undefined') {
