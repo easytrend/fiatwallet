@@ -2816,18 +2816,22 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // Create PajCash off-ramp order using selected token mint
       const selectedMint = liveSelectedToken.mint || (liveSelectedToken.symbol === 'USDT' ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+      const manualOfframpPayload = {
+        bank: bankId,
+        accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
+        currency: selectedCountry.currency,
+        mint: selectedMint,
+        chain: 'SOLANA',
+        fee: platformFee,
+        webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
+      };
+      if (offrampInputMode === 'fiat') {
+        manualOfframpPayload.fiatAmount = Number(parsedAmt);
+      } else {
+        manualOfframpPayload.amount = Number(estCryptoAmount);
+      }
       const order = await createOfframpOrder(
-        {
-          bank: bankId,
-          accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
-          currency: selectedCountry.currency,
-          fiatAmount: parsedAmt,
-          amount: estCryptoAmount,
-          mint: selectedMint,
-          chain: 'SOLANA',
-          fee: platformFee,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
-        },
+        manualOfframpPayload,
         effectiveAuthToken
       );
 
@@ -3021,18 +3025,22 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // 1. Create paj_ramp off-ramp order
       const selectedMint = liveSelectedToken.mint || (liveSelectedToken.symbol === 'USDT' ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+      const offrampPayload = {
+        bank: bankId,
+        accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
+        currency: selectedCountry.currency,
+        mint: selectedMint,
+        chain: 'SOLANA',
+        fee: platformFee,
+        webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
+      };
+      if (offrampInputMode === 'fiat') {
+        offrampPayload.fiatAmount = Number(parsedAmt);
+      } else {
+        offrampPayload.amount = Number(estCryptoAmount);
+      }
       const order = await createOfframpOrder(
-        {
-          bank: bankId,
-          accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
-          currency: selectedCountry.currency,
-          fiatAmount: parsedAmt,
-          amount: estCryptoAmount,
-          mint: selectedMint,
-          chain: 'SOLANA',
-          fee: platformFee,
-          webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
-        },
+        offrampPayload,
         effectiveAuthToken
       );
 

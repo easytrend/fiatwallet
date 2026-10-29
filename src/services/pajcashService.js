@@ -314,7 +314,21 @@ export async function resolveBankAccount(sessionToken, bankId, accountNumber) {
 export async function createOfframpOrder(order, sessionToken) {
   const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkCreateOfframpOrder(order, token);
+    const cleanOrder = { ...order };
+    // PajCash API strictly rejects payloads with both amount and fiatAmount:
+    // "Cannot provide both amount and fiatAmount. Please provide only one."
+    if (cleanOrder.amount != null && cleanOrder.fiatAmount != null) {
+      if (cleanOrder.inputMode === 'fiat') {
+        delete cleanOrder.amount;
+      } else if (cleanOrder.inputMode === 'crypto') {
+        delete cleanOrder.fiatAmount;
+      } else {
+        // Default: keep amount (crypto) and remove fiatAmount
+        delete cleanOrder.fiatAmount;
+      }
+    }
+    delete cleanOrder.inputMode;
+    return await sdkCreateOfframpOrder(cleanOrder, token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
@@ -343,7 +357,16 @@ export async function getAllRate() {
 export async function createOnrampOrder(order, sessionToken) {
   const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkCreateOnrampOrder(order, token);
+    const cleanOrder = { ...order };
+    if (cleanOrder.amount != null && cleanOrder.fiatAmount != null) {
+      if (cleanOrder.inputMode === 'crypto') {
+        delete cleanOrder.fiatAmount;
+      } else {
+        delete cleanOrder.amount;
+      }
+    }
+    delete cleanOrder.inputMode;
+    return await sdkCreateOnrampOrder(cleanOrder, token);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
