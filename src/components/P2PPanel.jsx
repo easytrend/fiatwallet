@@ -2815,7 +2815,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
 
       // Create PajCash off-ramp order using selected token mint
-      const selectedMint = liveSelectedToken.mint || (liveSelectedToken.symbol === 'USDT' ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+      const selectedMint = liveSelectedToken.mint || (
+        liveSelectedToken.symbol === 'SOL'
+          ? 'So11111111111111111111111111111111111111112'
+          : liveSelectedToken.symbol === 'USDT'
+            ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+            : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+      );
       const manualOfframpPayload = {
         bank: bankId,
         accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
@@ -3024,7 +3030,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
 
       // 1. Create paj_ramp off-ramp order
-      const selectedMint = liveSelectedToken.mint || (liveSelectedToken.symbol === 'USDT' ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+      const selectedMint = liveSelectedToken.mint || (
+        liveSelectedToken.symbol === 'SOL'
+          ? 'So11111111111111111111111111111111111111112'
+          : liveSelectedToken.symbol === 'USDT'
+            ? 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+            : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+      );
       const offrampPayload = {
         bank: bankId,
         accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
