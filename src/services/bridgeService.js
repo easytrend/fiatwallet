@@ -551,3 +551,62 @@ export async function claimBridgeForward({ depositAddress, userAddress, destinat
 
   throw lastError || new Error('Relayer bridge forward failed');
 }
+
+/**
+ * Automatically sweeps and claims any pending bridge deposits that have
+ * reached SUCCESS status on NEAR Intents, forwarding net tokens to user wallet.
+ */
+export async function sweepPendingBridgesForUser(userAddress) {
+  if (!userAddress || typeof window === 'undefined') return [];
+
+  const swept = [];
+  const prefix = `fw_bridge_addr_${userAddress}_`;
+  const pendingItems = [];
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        try {
+          const item = JSON.parse(localStorage.getItem(key));
+          if (item && item.depositAddress && item.status !== 'COMPLETED') {
+            pendingItems.push({ key, item });
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  for (const { key, item } of pendingItems) {
+    try {
+      const statusRes = await checkBridgeStatus(item.depositAddress);
+      const status = String(statusRes?.status || '').toUpperCase();
+
+      if (status === 'SUCCESS') {
+        const forwardRes = await claimBridgeForward({
+          depositAddress: item.depositAddress,
+          userAddress,
+          destinationSymbol: item.destinationSymbol || 'USDT',
+        });
+        if (forwardRes?.signature || forwardRes?.alreadyForwarded) {
+          item.status = 'COMPLETED';
+          item.signature = forwardRes.signature;
+          try {
+            localStorage.setItem(key, JSON.stringify(item));
+          } catch (_) {}
+          swept.push({ depositAddress: item.depositAddress, signature: forwardRes.signature });
+          console.log(`[bridgeService] Swept & forwarded bridge deposit ${item.depositAddress} -> ${forwardRes.signature}`);
+        }
+      } else if (status === 'FAILED' || status === 'REFUNDED') {
+        item.status = status;
+        try {
+          localStorage.setItem(key, JSON.stringify(item));
+        } catch (_) {}
+      }
+    } catch (err) {
+      // Ignore background sweep errors silently
+    }
+  }
+
+  return swept;
+}

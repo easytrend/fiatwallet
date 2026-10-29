@@ -38,6 +38,7 @@ import { parseTransactionBreakdown } from './utils/txParser';
 import HistoryPanel from './components/HistoryPanel';
 import LeaderboardModal from './components/LeaderboardModal';
 import { bindReferral } from './services/referralService';
+import { sweepPendingBridgesForUser } from './services/bridgeService';
 
 
 
@@ -1148,6 +1149,23 @@ export default function App() {
         }
       }, 15000);
 
+      // 6. Automatic background sweeper for pending cross-chain bridge deposits (BTC, ETH, Base, etc.)
+      sweepPendingBridgesForUser(pubkeyStr).then(swept => {
+        if (swept && swept.length > 0) {
+          fetchBalances();
+        }
+      }).catch(() => {});
+
+      const bridgeSweepInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          sweepPendingBridgesForUser(pubkeyStr).then(swept => {
+            if (swept && swept.length > 0) {
+              fetchBalances();
+            }
+          }).catch(() => {});
+        }
+      }, 25000);
+
       return () => {
         if (subId !== null) {
           try { connection.removeAccountChangeListener(subId); } catch {}
@@ -1155,6 +1173,7 @@ export default function App() {
         window.removeEventListener('focus', handleFocus);
         document.removeEventListener('visibilitychange', handleFocus);
         clearInterval(interval);
+        clearInterval(bridgeSweepInterval);
       };
     } else {
       setSolBalance(null);
