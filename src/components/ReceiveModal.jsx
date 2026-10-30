@@ -15,6 +15,12 @@ import {
   getRealisticSettlementSpeed,
 } from '../services/bridgeService';
 
+function shortenAddress(addr, chars = 8) {
+  if (!addr || typeof addr !== 'string') return '';
+  if (addr.length <= chars * 2 + 3) return addr;
+  return `${addr.slice(0, chars)}...${addr.slice(-chars)}`;
+}
+
 export default function ReceiveModal({ address, onClose }) {
   // Selected network: 'solana' (default) or other cross-chain options
   const [selectedChainId, setSelectedChainId] = useState('solana');
@@ -469,45 +475,48 @@ export default function ReceiveModal({ address, onClose }) {
               )}
             </div>
 
+            {/* Shortened Solana Address with inline Copy Icon */}
             <div
-              style={{
-                background: 'rgba(10, 22, 40, 0.85)',
-                border: '1px solid var(--border, rgba(255, 255, 255, 0.08))',
-                borderRadius: '12px',
-                padding: '10px 12px',
-                marginBottom: '12px',
-                wordBreak: 'break-all',
-                fontFamily: 'var(--mono, monospace)',
-                fontSize: '11px',
-                color: 'var(--text, #f0f6ff)',
-                lineHeight: '1.4',
-                userSelect: 'all',
-                textAlign: 'left',
-              }}
-            >
-              {address}
-            </div>
-
-            <button
               onClick={handleCopySolana}
               style={{
-                width: '100%',
-                padding: '12px',
-                background: solanaCopied
-                  ? 'rgba(163, 230, 53, 0.25)'
-                  : 'linear-gradient(135deg, rgba(163, 230, 53, 0.18), rgba(163, 230, 53, 0.08))',
-                border: `1px solid ${solanaCopied ? 'var(--lime, #a3e635)' : 'rgba(163, 230, 53, 0.4)'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
                 borderRadius: '12px',
-                color: 'var(--lime, #a3e635)',
-                fontSize: '13px',
-                fontWeight: '700',
+                padding: '8px 14px',
+                marginBottom: '12px',
                 cursor: 'pointer',
-                fontFamily: 'var(--ff)',
-                marginBottom: '8px',
+                userSelect: 'none',
               }}
+              title="Click to copy Solana address"
             >
-              {solanaCopied ? '✓ Copied Solana Address' : 'Copy Solana Address'}
-            </button>
+              <span style={{
+                fontFamily: 'var(--mono, monospace)',
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#fff',
+                letterSpacing: '0.3px',
+              }}>
+                {shortenAddress(address, 8)}
+              </span>
+              <span style={{
+                display: 'flex',
+                alignItems: 'center',
+                color: solanaCopied ? 'var(--lime, #a3e635)' : 'rgba(255, 255, 255, 0.7)',
+              }}>
+                {solanaCopied ? (
+                  <span style={{ fontSize: '11px', fontWeight: '700' }}>✓ Copied</span>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </span>
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', fontSize: '12px', marginBottom: '10px' }}>
               <a
@@ -580,49 +589,50 @@ export default function ReceiveModal({ address, onClose }) {
                   Send at least <strong style={{ color: '#fff' }}>{selectedOriginToken?.min} {selectedOriginToken?.symbol}</strong> on <strong>{selectedChain.name}</strong> to:
                 </div>
 
-                {/* Persistent Deposit Address */}
+                {/* Persistent Deposit Address — Shortened with inline Copy Icon */}
                 <div
-                  style={{
-                    background: 'rgba(10, 22, 40, 0.9)',
-                    border: '1px solid rgba(34, 211, 238, 0.35)',
-                    borderRadius: '12px',
-                    padding: '10px 12px',
-                    marginBottom: '10px',
-                    wordBreak: 'break-all',
-                    fontFamily: 'var(--mono, monospace)',
-                    fontSize: '11px',
-                    color: 'var(--cyan, #22d3ee)',
-                    lineHeight: '1.4',
-                    userSelect: 'all',
-                    textAlign: 'left',
-                  }}
-                >
-                  {bridgeDeposit.depositAddress}
-                </div>
-
-                {/* Copy Button */}
-                <button
                   onClick={handleCopyBridge}
                   style={{
-                    width: '100%',
-                    padding: '12px',
-                    background: bridgeCopied
-                      ? 'rgba(34, 211, 238, 0.3)'
-                      : 'linear-gradient(135deg, rgba(34, 211, 238, 0.22), rgba(34, 211, 238, 0.08))',
-                    border: '1px solid rgba(34, 211, 238, 0.45)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
                     borderRadius: '12px',
-                    color: 'var(--cyan, #22d3ee)',
-                    fontSize: '13px',
-                    fontWeight: '700',
+                    padding: '8px 14px',
+                    marginBottom: '14px',
                     cursor: 'pointer',
-                    fontFamily: 'var(--ff)',
-                    marginBottom: '12px',
+                    userSelect: 'none',
                   }}
+                  title="Click to copy deposit address"
                 >
-                  {bridgeCopied ? `✓ Copied ${selectedChain.name} Address` : `Copy ${selectedChain.name} Address`}
-                </button>
+                  <span style={{
+                    fontFamily: 'var(--mono, monospace)',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#fff',
+                    letterSpacing: '0.3px',
+                  }}>
+                    {shortenAddress(bridgeDeposit.depositAddress, 8)}
+                  </span>
+                  <span style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    color: bridgeCopied ? 'var(--lime, #a3e635)' : 'rgba(255, 255, 255, 0.7)',
+                  }}>
+                    {bridgeCopied ? (
+                      <span style={{ fontSize: '11px', fontWeight: '700' }}>✓ Copied</span>
+                    ) : (
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    )}
+                  </span>
+                </div>
 
-                {/* Transparent Protocol Breakdown & Destination */}
+                {/* Transparent Protocol Breakdown — Standalone Text Rows */}
                 {(() => {
                   const nearFeeVal = bridgeDeposit.nearFee || '0.27';
                   const minDepositVal = `${selectedOriginToken?.min || '2'} ${selectedOriginToken?.symbol || ''}`;
@@ -631,29 +641,25 @@ export default function ReceiveModal({ address, onClose }) {
                   return (
                     <div
                       style={{
-                        background: 'rgba(10, 22, 40, 0.7)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                        borderRadius: '14px',
-                        padding: '12px 14px',
-                        marginBottom: '12px',
+                        margin: '8px 2px 14px 2px',
                         textAlign: 'left',
-                        fontSize: '11px',
+                        fontSize: '11.5px',
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--text2)' }}>Receive on Solana as:</span>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Receive on Solana as:</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <img
                             src={selectedDestToken.logo}
                             alt={selectedDestToken.symbol}
-                            style={{ width: '16px', height: '16px', borderRadius: '50%' }}
+                            style={{ width: '15px', height: '15px', borderRadius: '50%' }}
                           />
                           <span style={{ fontWeight: '700', color: '#fff' }}>{selectedDestToken.symbol}</span>
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--text2)' }}>Min Deposit Required:</span>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Min Deposit Required:</span>
                         <span style={{ color: '#fff', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
                           {minDepositVal}
                         </span>
@@ -661,24 +667,24 @@ export default function ReceiveModal({ address, onClose }) {
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <div>
-                          <span style={{ color: 'var(--text2)' }}>NEAR Network Fee:</span>
-                          <span style={{ display: 'block', fontSize: '9.5px', color: 'var(--text3, rgba(240, 246, 255, 0.45))' }}>
+                          <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>NEAR Network Fee:</span>
+                          <span style={{ display: 'block', fontSize: '9.5px', color: 'rgba(240, 246, 255, 0.45)' }}>
                             Collected by NEAR Intents bridge
                           </span>
                         </div>
-                        <span style={{ color: 'var(--text, #f0f6ff)', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
+                        <span style={{ color: '#fff', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
                           ~{nearFeeVal} {selectedDestToken.symbol}
                         </span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--text2)' }}>Protocol Fee:</span>
-                        <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700' }}>0.4% ($0.10 min floor)</span>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Protocol Fee:</span>
+                        <span style={{ color: '#fff', fontWeight: '700' }}>0.4% ($0.10 min floor)</span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text2)' }}>Bridge Settlement Speed:</span>
-                        <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>{settlementSpeed}</span>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Bridge Settlement Speed:</span>
+                        <span style={{ color: '#fff', fontWeight: '700' }}>{settlementSpeed}</span>
                       </div>
                     </div>
                   );
@@ -697,7 +703,7 @@ export default function ReceiveModal({ address, onClose }) {
                   return (
                     <div
                       style={{
-                        background: 'rgba(10, 22, 40, 0.7)',
+                        background: 'rgba(255, 255, 255, 0.03)',
                         border: '1px solid rgba(255, 255, 255, 0.08)',
                         borderRadius: '14px',
                         padding: '12px 14px',
@@ -708,28 +714,28 @@ export default function ReceiveModal({ address, onClose }) {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                          REFUND PROTECTION (IF SWAP FAILS)
+                          Refund Protection
                         </span>
                         <span style={{
                           fontSize: '9.5px',
                           padding: '2px 6px',
                           borderRadius: '6px',
-                          background: appliedRefund ? 'rgba(34, 211, 238, 0.15)' : 'rgba(163, 230, 53, 0.15)',
-                          color: appliedRefund ? 'var(--cyan, #22d3ee)' : 'var(--lime, #a3e635)',
-                          fontWeight: '700',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          color: 'var(--text2)',
+                          fontWeight: '600',
                         }}>
-                          {appliedRefund ? '✓ Custom Wallet Active' : (isTreasuryConfigured ? '✓ Treasury Protected' : '✓ Safe Fallback Active')}
+                          {appliedRefund ? '✓ Custom Wallet' : (isTreasuryConfigured ? '✓ Treasury Protected' : '✓ Safe Fallback')}
                         </span>
                       </div>
 
                       <div style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))', fontSize: '10.5px', lineHeight: '1.4', marginBottom: '8px' }}>
                         {appliedRefund ? (
                           <span>
-                            If bridge swap expires or fails, 100% of funds refund directly to <strong style={{ color: '#fff', wordBreak: 'break-all' }}>{appliedRefund}</strong>.
+                            If bridge swap fails, funds refund to <strong style={{ color: '#fff', wordBreak: 'break-all' }}>{appliedRefund}</strong>.
                           </span>
                         ) : (
                           <span>
-                            If bridge swap expires or fails, funds are safely safeguarded by platform treasury recovery (<strong style={{ color: '#fff' }}>{shortenedDefault}</strong>). You can also set a personal refund wallet below.
+                            If bridge swap fails, funds are safeguarded by platform recovery (<strong style={{ color: '#fff' }}>{shortenedDefault}</strong>). Or enter your personal refund wallet:
                           </span>
                         )}
                       </div>
@@ -737,14 +743,14 @@ export default function ReceiveModal({ address, onClose }) {
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <input
                           type="text"
-                          placeholder={`Enter your ${selectedChain.name} refund address (optional)`}
+                          placeholder={`Your ${selectedChain.name} refund address (optional)`}
                           value={customRefundInput}
                           onChange={e => setCustomRefundInput(e.target.value)}
                           style={{
                             flex: 1,
                             background: 'rgba(5, 11, 20, 0.8)',
                             border: trimmedInput
-                              ? (isInputValid ? '1px solid var(--lime, #a3e635)' : '1px solid #ef4444')
+                              ? (isInputValid ? '1px solid rgba(163, 230, 53, 0.6)' : '1px solid #ef4444')
                               : '1px solid rgba(255, 255, 255, 0.1)',
                             borderRadius: '8px',
                             padding: '7px 10px',
@@ -760,12 +766,12 @@ export default function ReceiveModal({ address, onClose }) {
                             onClick={() => setAppliedRefund(trimmedInput)}
                             style={{
                               padding: '0 12px',
-                              background: 'rgba(34, 211, 238, 0.2)',
-                              border: '1px solid var(--cyan, #22d3ee)',
+                              background: 'rgba(255, 255, 255, 0.12)',
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
                               borderRadius: '8px',
-                              color: 'var(--cyan, #22d3ee)',
+                              color: '#fff',
                               fontSize: '11px',
-                              fontWeight: '700',
+                              fontWeight: '600',
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
                             }}
@@ -799,7 +805,7 @@ export default function ReceiveModal({ address, onClose }) {
 
                       {trimmedInput && !isInputValid && (
                         <div style={{ color: '#ef4444', fontSize: '9.5px', marginTop: '4px' }}>
-                          ✕ Invalid {selectedChain.name} format ({selectedChainId === 'btc' ? 'bc1, 1, or 3' : selectedChainId === 'tron' ? 'starts with T (34 chars)' : 'starts with 0x (42 chars)'})
+                          ✕ Invalid format ({selectedChainId === 'btc' ? 'bc1, 1, or 3' : selectedChainId === 'tron' ? 'starts with T (34 chars)' : 'starts with 0x (42 chars)'})
                         </div>
                       )}
                     </div>
@@ -809,10 +815,10 @@ export default function ReceiveModal({ address, onClose }) {
                 {/* Live Status Tracker */}
                 <div
                   style={{
-                    background: bridgeStatus === 'COMPLETED' ? 'rgba(163, 230, 53, 0.1)' : 'rgba(34, 211, 238, 0.08)',
-                    border: `1px solid ${bridgeStatus === 'COMPLETED' ? 'rgba(163, 230, 53, 0.3)' : 'rgba(34, 211, 238, 0.2)'}`,
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '10px',
-                    padding: '8px 12px',
+                    padding: '9px 12px',
                     fontSize: '11px',
                     display: 'flex',
                     alignItems: 'center',
@@ -822,12 +828,12 @@ export default function ReceiveModal({ address, onClose }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{
                       display: 'inline-block',
-                      width: '8px',
-                      height: '8px',
+                      width: '7px',
+                      height: '7px',
                       borderRadius: '50%',
-                      background: bridgeStatus === 'COMPLETED' ? 'var(--lime, #a3e635)' : 'var(--cyan, #22d3ee)',
+                      background: bridgeStatus === 'COMPLETED' ? 'var(--lime, #a3e635)' : 'rgba(255, 255, 255, 0.6)',
                     }} />
-                    <span style={{ color: bridgeStatus === 'COMPLETED' ? 'var(--lime, #a3e635)' : '#fff', fontWeight: '600' }}>
+                    <span style={{ color: bridgeStatus === 'COMPLETED' ? 'var(--lime, #a3e635)' : '#fff', fontWeight: '500' }}>
                       {bridgeStatus === 'PENDING_DEPOSIT' && 'Waiting for deposit...'}
                       {bridgeStatus === 'PROCESSING' && 'Deposit detected! Bridging...'}
                       {bridgeStatus === 'FORWARDING' && 'Relaying to your wallet...'}
@@ -841,7 +847,7 @@ export default function ReceiveModal({ address, onClose }) {
                       href={`https://solscan.io/tx/${forwardSig}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ color: 'var(--cyan, #22d3ee)', textDecoration: 'none', fontWeight: '700' }}
+                      style={{ color: '#fff', textDecoration: 'underline', fontWeight: '600' }}
                     >
                       View Tx →
                     </a>
