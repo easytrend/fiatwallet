@@ -351,10 +351,10 @@ export function isTreasuryRefundConfigured(chainId) {
  */
 export function getRealisticSettlementSpeed(chainId, timeEstimateSeconds) {
   if (chainId === 'btc') {
-    return '~15 – 45 mins (Bitcoin confirmations)';
+    return '~15 – 45 mins';
   }
   if (chainId === 'eth') {
-    return '~5 – 15 mins (Ethereum L1)';
+    return '~5 – 15 mins';
   }
   if (chainId === 'tron') {
     return '~2 – 5 mins';
@@ -366,7 +366,7 @@ export function getRealisticSettlementSpeed(chainId, timeEstimateSeconds) {
     const mins = Math.ceil(timeEstimateSeconds / 60);
     return `~${mins} – ${mins + 5} mins`;
   }
-  return '~2 – 5 mins';
+  return '~1 – 3 mins';
 }
 
 function formatUnits(amountFloat, decimals) {

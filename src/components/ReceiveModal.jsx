@@ -291,12 +291,14 @@ export default function ReceiveModal({ address, onClose }) {
         </button>
 
         {/* Modal Header */}
-        <h3 style={{ fontSize: '18px', fontWeight: '800', margin: '0 0 4px 0', color: 'white', textAlign: 'center' }}>
+        <h3 style={{ fontSize: '18px', fontWeight: '800', margin: selectedChainId === 'solana' ? '0 0 16px 0' : '0 0 4px 0', color: 'white', textAlign: 'center' }}>
           Receive Crypto
         </h3>
-        <p style={{ fontSize: '11px', color: 'var(--text2, rgba(240, 246, 255, 0.6))', margin: '0 0 16px 0', textAlign: 'center' }}>
-          Deposit directly on Solana or bridge from another chain
-        </p>
+        {selectedChainId !== 'solana' && (
+          <p style={{ fontSize: '11px', color: 'var(--text2, rgba(240, 246, 255, 0.6))', margin: '0 0 16px 0', textAlign: 'center' }}>
+            Deposit directly on Solana from another chain
+          </p>
+        )}
 
         {/* ── Network Selector with Real Logos ── */}
         <div style={{ marginBottom: '14px', position: 'relative' }}>
@@ -666,12 +668,7 @@ export default function ReceiveModal({ address, onClose }) {
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <div>
-                          <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>NEAR Network Fee:</span>
-                          <span style={{ display: 'block', fontSize: '9.5px', color: 'rgba(240, 246, 255, 0.45)' }}>
-                            Collected by NEAR Intents bridge
-                          </span>
-                        </div>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>NEAR Network Fee:</span>
                         <span style={{ color: '#fff', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
                           ~{nearFeeVal} {selectedDestToken.symbol}
                         </span>
@@ -679,11 +676,11 @@ export default function ReceiveModal({ address, onClose }) {
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Protocol Fee:</span>
-                        <span style={{ color: '#fff', fontWeight: '700' }}>0.4% ($0.10 min floor)</span>
+                        <span style={{ color: '#fff', fontWeight: '700' }}>0.4% / $0.10</span>
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Bridge Settlement Speed:</span>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Speed:</span>
                         <span style={{ color: '#fff', fontWeight: '700' }}>{settlementSpeed}</span>
                       </div>
                     </div>
@@ -715,16 +712,6 @@ export default function ReceiveModal({ address, onClose }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                           Refund Protection
-                        </span>
-                        <span style={{
-                          fontSize: '9.5px',
-                          padding: '2px 6px',
-                          borderRadius: '6px',
-                          background: 'rgba(255, 255, 255, 0.08)',
-                          color: 'var(--text2)',
-                          fontWeight: '600',
-                        }}>
-                          {appliedRefund ? '✓ Custom Wallet' : (isTreasuryConfigured ? '✓ Treasury Protected' : '✓ Safe Fallback')}
                         </span>
                       </div>
 
