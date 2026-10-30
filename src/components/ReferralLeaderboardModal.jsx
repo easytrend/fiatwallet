@@ -110,38 +110,6 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
 
   const userCard = data.user;
   const list = data.referral_leaderboard || [];
-  const topThree = list.slice(0, 3);
-  const restList = list.slice(3);
-
-  // Reorder top 3 for podium layout: [2nd (left), 1st (center), 3rd (right)]
-  const podiumItems = [];
-  if (topThree.length >= 2) {
-    podiumItems.push({
-      item: topThree[1],
-      rankLabel: '2nd',
-      color: '#94a3b8',
-      borderColor: 'rgba(148, 163, 184, 0.45)',
-      isCenter: false,
-    });
-  }
-  if (topThree.length >= 1) {
-    podiumItems.push({
-      item: topThree[0],
-      rankLabel: '1st',
-      color: '#eab308',
-      borderColor: 'rgba(234, 179, 8, 0.65)',
-      isCenter: true,
-    });
-  }
-  if (topThree.length >= 3) {
-    podiumItems.push({
-      item: topThree[2],
-      rankLabel: '3rd',
-      color: '#d97706',
-      borderColor: 'rgba(217, 119, 6, 0.45)',
-      isCenter: false,
-    });
-  }
 
   return (
     <div
@@ -377,61 +345,6 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
             ))}
           </div>
 
-          {/* Top 3 Referral Podium (2nd on Left, 1st in Center, 3rd on Right) */}
-          {podiumItems.length > 0 && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${podiumItems.length}, 1fr)`,
-              gap: '8px',
-              alignItems: 'end',
-              marginBottom: '18px',
-              paddingTop: '6px',
-            }}>
-              {podiumItems.map(({ item, rankLabel, color, borderColor, isCenter }) => (
-                <div
-                  key={item.address}
-                  style={{
-                    background: isCenter
-                      ? 'linear-gradient(180deg, rgba(234, 179, 8, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%)'
-                      : 'rgba(255, 255, 255, 0.03)',
-                    border: `1px solid ${borderColor}`,
-                    borderRadius: '16px',
-                    padding: isCenter ? '18px 8px 14px' : '12px 8px',
-                    textAlign: 'center',
-                    transform: isCenter ? 'translateY(-6px)' : 'none',
-                    boxShadow: isCenter ? '0 8px 24px rgba(234, 179, 8, 0.18)' : 'none',
-                  }}
-                >
-                  <div style={{
-                    display: 'inline-block',
-                    fontSize: isCenter ? '12px' : '11px',
-                    fontWeight: '800',
-                    color: color,
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    marginBottom: '6px',
-                  }}>
-                    {rankLabel}
-                  </div>
-                  <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'white', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.display_name || item.short_address}
-                  </div>
-                  <div style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)', marginBottom: '4px' }}>
-                    {item.total_referred_users || 0} friends
-                  </div>
-                  <div style={{
-                    fontSize: isCenter ? '15px' : '13px',
-                    fontWeight: '800',
-                    color: 'var(--lime, #a3e635)',
-                  }}>
-                    {Math.floor(Number(item.referral_points) || 0).toLocaleString()} pts
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Referral Leaderboard Table */}
           <div style={{
             background: 'rgba(255, 255, 255, 0.02)',
@@ -441,22 +354,21 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
           }}>
             <div style={{
               display: 'flex',
-              padding: '10px 14px',
+              padding: '12px 16px',
               background: 'rgba(255, 255, 255, 0.04)',
-              fontSize: '10px',
+              fontSize: '11px',
               fontWeight: '700',
               color: 'var(--text3, #94a3b8)',
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
             }}>
-              <span style={{ width: '45px' }}>Rank</span>
-              <span style={{ flex: 1 }}>Referrer</span>
-              <span style={{ width: '70px', textAlign: 'center' }}>Friends</span>
-              <span style={{ width: '85px', textAlign: 'right' }}>Points</span>
+              <span style={{ flex: 1 }}>user</span>
+              <span style={{ width: '120px', textAlign: 'center' }}>refered_count</span>
+              <span style={{ width: '110px', textAlign: 'right' }}>total_point</span>
             </div>
 
             {loading ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text3, #94a3b8)', fontSize: '12px' }}>
+              <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text3, #94a3b8)', fontSize: '12px' }}>
                 Loading referral rankings...
               </div>
             ) : list.length === 0 ? (
@@ -484,7 +396,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 </button>
               </div>
             ) : (
-              (restList.length > 0 ? restList : topThree).map(item => {
+              list.map(item => {
                 const isMe = userCard && item.address.toLowerCase() === (walletAddress || '').toLowerCase();
                 return (
                   <div
@@ -492,23 +404,36 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      padding: '10px 14px',
+                      padding: '12px 16px',
                       borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
                       background: isMe ? 'rgba(34, 211, 238, 0.08)' : 'none',
-                      fontSize: '12px',
+                      fontSize: '12.5px',
                     }}
                   >
-                    <span style={{ width: '45px', fontWeight: '700', color: isMe ? 'var(--cyan, #22d3ee)' : 'var(--text3, #94a3b8)' }}>
-                      #{item.rank}
-                    </span>
-                    <span style={{ flex: 1, fontWeight: '600', color: isMe ? 'var(--cyan, #22d3ee)' : 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.display_name || item.short_address} {isMe && '(You)'}
-                    </span>
-                    <span style={{ width: '70px', textAlign: 'center', color: 'var(--text2, #cbd5e1)', fontWeight: '600' }}>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        color: isMe ? 'var(--cyan, #22d3ee)' : 'var(--text3, #94a3b8)',
+                        width: '26px',
+                      }}>
+                        #{item.rank}
+                      </span>
+                      <span style={{
+                        fontWeight: '600',
+                        color: isMe ? 'var(--cyan, #22d3ee)' : 'white',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {item.display_name || item.short_address} {isMe && '(You)'}
+                      </span>
+                    </div>
+                    <span style={{ width: '120px', textAlign: 'center', color: 'var(--text2, #cbd5e1)', fontWeight: '600', fontFamily: 'var(--mono, monospace)' }}>
                       {item.total_referred_users || 0}
                     </span>
-                    <span style={{ width: '85px', textAlign: 'right', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
-                      {Math.floor(Number(item.referral_points) || 0).toLocaleString()} pts
+                    <span style={{ width: '110px', textAlign: 'right', fontWeight: '700', color: 'var(--lime, #a3e635)', fontFamily: 'var(--mono, monospace)' }}>
+                      {Math.floor(Number(item.total_points !== undefined ? item.total_points : item.referral_points) || 0).toLocaleString()}
                     </span>
                   </div>
                 );

@@ -70,6 +70,26 @@ export default async function handler(req, res) {
 
   try {
     let aggregated = [];
+    let refLeaderboard = [];
+    let refereeMap = new Map(); // refereeLower -> referrerOriginal
+    let referrerRefereesCount = new Map(); // referrerLower -> count
+    let tagMap = new Map(); // lowerAddr -> tag_name
+
+    // Fetch fiat_tags mapping (walletLower -> tag_name)
+    try {
+      const { data: tagRows } = await supabase
+        .from('fiat_tags')
+        .select('wallet_address, tag_name');
+      if (Array.isArray(tagRows)) {
+        for (const t of tagRows) {
+          if (t.wallet_address && t.tag_name) {
+            tagMap.set(t.wallet_address.trim().toLowerCase(), t.tag_name.trim());
+          }
+        }
+      }
+    } catch (e) {
+      // Soft fail if fiat_tags is unavailable
+    }
 
     // Attempt 1: If timeframe is 'all', try reading from public.leaderboard_view
     if (timeframe === 'all') {
@@ -119,8 +139,6 @@ export default async function handler(req, res) {
       }
 
       // Query referrals mapping (referee -> referrer)
-      let refereeMap = new Map(); // refereeLower -> referrerOriginal
-      let referrerRefereesCount = new Map(); // referrerLower -> count
       try {
         const { data: refs, error: refsError } = await supabase
           .from('referrals')
@@ -139,23 +157,6 @@ export default async function handler(req, res) {
         }
       } catch (e) {
         // Soft fail if referrals table is not created yet
-      }
-
-      // Query fiat_tags mapping (walletLower -> tag_name)
-      let tagMap = new Map();
-      try {
-        const { data: tagRows } = await supabase
-          .from('fiat_tags')
-          .select('wallet_address, tag_name');
-        if (Array.isArray(tagRows)) {
-          for (const t of tagRows) {
-            if (t.wallet_address && t.tag_name) {
-              tagMap.set(t.wallet_address.trim().toLowerCase(), t.tag_name.trim());
-            }
-          }
-        }
-      } catch (e) {
-        // Soft fail if fiat_tags is unavailable
       }
 
       // Group and sum in memory
@@ -262,34 +263,32 @@ export default async function handler(req, res) {
         })
         .filter(e => e.total_referred_users > 0 || e.referral_points > 0)
         .sort((a, b) => {
-          if (b.referral_points !== a.referral_points) {
-            return b.referral_points - a.referral_points;
-          }
           if (b.total_referred_users !== a.total_referred_users) {
             return b.total_referred_users - a.total_referred_users;
           }
-          return b.total_points - a.total_points;
+          if (b.total_points !== a.total_points) {
+            return b.total_points - a.total_points;
+          }
+          return b.referral_points - a.referral_points;
         });
 
       let currentRefRank = 1;
       for (let i = 0; i < referralList.length; i++) {
-        if (i > 0 && (referralList[i].referral_points < referralList[i - 1].referral_points || referralList[i].total_referred_users < referralList[i - 1].total_referred_users)) {
+        if (i > 0 && (referralList[i].total_referred_users < referralList[i - 1].total_referred_users || referralList[i].total_points < referralList[i - 1].total_points)) {
           currentRefRank = i + 1;
         }
         referralList[i].rank = currentRefRank;
-        const tierInfo = getTier(referralList[i].referral_points);
+        const tierInfo = getTier(referralList[i].total_points);
         referralList[i].tier = tierInfo.name;
       }
 
       // Save referral list for response
-      var builtReferralList = referralList;
+      refLeaderboard = referralList;
     }
 
     const totalParticipants = aggregated.length;
     const totalPointsDistributed = aggregated.reduce((acc, row) => acc + (row.total_points || 0), 0);
     const totalReferralPointsDistributed = aggregated.reduce((acc, row) => acc + (row.referral_points || 0), 0);
-
-    const refLeaderboard = builtReferralList || [];
 
     // Format leaderboard page
     const pageItems = aggregated.slice(offset, offset + limit).map(item => {
