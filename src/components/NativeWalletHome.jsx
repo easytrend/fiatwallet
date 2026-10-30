@@ -86,6 +86,24 @@ export default function NativeWalletHome({
   onSelectToken,
 }) {
   const [showAllAssets, setShowAllAssets] = useState(false);
+  const [hideBalance, setHideBalance] = useState(() => {
+    try {
+      return localStorage.getItem('fiat_hide_balance') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const toggleHideBalance = (e) => {
+    e?.stopPropagation?.();
+    setHideBalance(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('fiat_hide_balance', String(next));
+      } catch (_) {}
+      return next;
+    });
+  };
 
   // ── Token data ───────────────────────────────────────────────────────────
   const usdcToken = useMemo(() => {
@@ -232,6 +250,37 @@ export default function NativeWalletHome({
         }}>
           <span>Total Balance</span>
           <button
+            type="button"
+            onClick={toggleHideBalance}
+            title={hideBalance ? 'Show balance' : 'Hide balance'}
+            aria-label={hideBalance ? 'Show balance' : 'Hide balance'}
+            style={{
+              background:     'none',
+              border:         'none',
+              color:          'var(--text3, rgba(240,246,255,0.5))',
+              cursor:         'pointer',
+              display:        'inline-flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              padding:        '0 2px',
+              transition:     'color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text3, rgba(240,246,255,0.5))'; }}
+          >
+            {hideBalance ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
+          </button>
+          <button
             onClick={onRefreshBalances}
             disabled={walletLoading}
             title="Refresh balance"
@@ -258,8 +307,14 @@ export default function NativeWalletHome({
           marginBottom:  '4px',
           lineHeight:    1.1,
         }}>
-          <span style={{ fontSize: '22px', fontWeight: '600', color: 'var(--text2)', verticalAlign: 'super', marginRight: '2px' }}>$</span>
-          {totalPortfolioUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {hideBalance ? (
+            '***'
+          ) : (
+            <>
+              <span style={{ fontSize: '22px', fontWeight: '600', color: 'var(--text2)', verticalAlign: 'super', marginRight: '2px' }}>$</span>
+              {totalPortfolioUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </>
+          )}
         </div>
         <div style={{ fontSize: '12px', color: 'var(--text3)', fontWeight: '500', marginBottom: '4px' }}>
           USD
@@ -273,8 +328,14 @@ export default function NativeWalletHome({
             fontWeight: '500',
             marginTop:  '2px',
           }}>
-            ≈ {currency === 'NGN' ? '₦' : currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : '$'}
-            {fiatValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
+            {hideBalance ? (
+              '≈ ***'
+            ) : (
+              <>
+                ≈ {currency === 'NGN' ? '₦' : currency === 'GBP' ? '£' : currency === 'EUR' ? '€' : '$'}
+                {fiatValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
+              </>
+            )}
           </div>
         )}
 
@@ -517,6 +578,7 @@ export default function NativeWalletHome({
           {/* 1. SOL — always first */}
           <AssetRow
             asset={solToken}
+            hideBalance={hideBalance}
             onSelect={() => {
               if (onSelectToken) onSelectToken('SOL');
               onNavigateTab('send');
@@ -526,6 +588,7 @@ export default function NativeWalletHome({
           {/* 2. USDC */}
           <AssetRow
             asset={usdcToken}
+            hideBalance={hideBalance}
             onSelect={() => {
               if (onSelectToken) onSelectToken('USDC');
               onNavigateTab('send');
@@ -535,6 +598,7 @@ export default function NativeWalletHome({
           {/* 3. USDT */}
           <AssetRow
             asset={usdtToken}
+            hideBalance={hideBalance}
             onSelect={() => {
               if (onSelectToken) onSelectToken('USDT');
               onNavigateTab('send');
@@ -546,6 +610,7 @@ export default function NativeWalletHome({
             <AssetRow
               key={t.mint || t.symbol || idx}
               asset={t}
+              hideBalance={hideBalance}
               onSelect={() => {
                 if (onSelectToken) onSelectToken(t.symbol);
                 onNavigateTab('send');
@@ -584,7 +649,7 @@ export default function NativeWalletHome({
 }
 
 // ── AssetRow sub-component ───────────────────────────────────────────────────
-function AssetRow({ asset, onSelect }) {
+function AssetRow({ asset, onSelect, hideBalance }) {
   const usdValue = (asset.balance || 0) * (asset.price || 0);
 
   return (
@@ -639,10 +704,10 @@ function AssetRow({ asset, onSelect }) {
       {/* Right: balance + USD value */}
       <div style={{ textAlign: 'right' }}>
         <div style={{ fontWeight: '700', fontSize: '14px', color: 'white', fontFamily: 'var(--mono, monospace)' }}>
-          {parseFloat((asset.balance || 0).toFixed(4))}
+          {hideBalance ? '***' : parseFloat((asset.balance || 0).toFixed(4))}
         </div>
         <div style={{ fontSize: '11px', color: 'var(--text2, rgba(240,246,255,0.55))' }}>
-          ${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {hideBalance ? '***' : `$${usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         </div>
       </div>
     </div>
