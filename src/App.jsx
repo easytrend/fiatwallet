@@ -37,6 +37,7 @@ import NativeWalletApprovalModal from './components/NativeWalletApprovalModal';
 import { parseTransactionBreakdown } from './utils/txParser';
 import HistoryPanel from './components/HistoryPanel';
 import LeaderboardModal from './components/LeaderboardModal';
+import ReferralLeaderboardModal from './components/ReferralLeaderboardModal';
 import { bindReferral } from './services/referralService';
 import { sweepPendingBridgesForUser } from './services/bridgeService';
 
@@ -315,6 +316,7 @@ export default function App() {
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
+  const [showReferralLeaderboardModal, setShowReferralLeaderboardModal] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -2726,6 +2728,19 @@ export default function App() {
           isOpen={showLeaderboardModal}
           onClose={() => setShowLeaderboardModal(false)}
           walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : ((typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '')}
+          onOpenReferralLeaderboard={() => {
+            setShowLeaderboardModal(false);
+            setShowReferralLeaderboardModal(true);
+          }}
+        />
+      )}
+
+      {/* ── Standalone Referral Leaderboard Modal ── */}
+      {showReferralLeaderboardModal && (
+        <ReferralLeaderboardModal
+          isOpen={showReferralLeaderboardModal}
+          onClose={() => setShowReferralLeaderboardModal(false)}
+          walletAddress={effectivePublicKey ? effectivePublicKey.toBase58() : ((typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '')}
         />
       )}
 
@@ -2737,6 +2752,7 @@ export default function App() {
         isInternal={internalWallet.isActive}
         onOpenHistory={() => setActiveTab('history')}
         onOpenLeaderboard={() => setShowLeaderboardModal(true)}
+        onOpenReferralLeaderboard={() => setShowReferralLeaderboardModal(true)}
         onOpenBankDetails={() => setShowBankDetailsModal(true)}
         onOpenSecurity={() => setShowSecurityModal(true)}
         onOpenTerms={() => setShowTermsModal(true)}
