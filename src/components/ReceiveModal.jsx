@@ -12,6 +12,7 @@ import {
   isValidRefundAddress,
   getDefaultRefundAddress,
   isTreasuryRefundConfigured,
+  getRealisticSettlementSpeed,
 } from '../services/bridgeService';
 
 export default function ReceiveModal({ address, onClose }) {
@@ -25,7 +26,7 @@ export default function ReceiveModal({ address, onClose }) {
 
   // Cross-chain active token & destination
   const [selectedOriginToken, setSelectedOriginToken] = useState(null);
-  const [selectedDestToken, setSelectedDestToken] = useState(SOLANA_DESTINATIONS[0]); // default USDC
+  const [selectedDestToken, setSelectedDestToken] = useState(SOLANA_DESTINATIONS[0]); // default USDT
 
   // Optional custom refund address
   const [customRefundInput, setCustomRefundInput] = useState('');
@@ -625,10 +626,7 @@ export default function ReceiveModal({ address, onClose }) {
                 {(() => {
                   const nearFeeVal = bridgeDeposit.nearFee || '0.27';
                   const minDepositVal = `${selectedOriginToken?.min || '2'} ${selectedOriginToken?.symbol || ''}`;
-                  const estMinReceiveVal = bridgeDeposit.minNetReceived != null
-                    ? (bridgeDeposit.minNetReceived < 1 ? bridgeDeposit.minNetReceived.toFixed(4) : bridgeDeposit.minNetReceived.toFixed(2))
-                    : (selectedOriginToken?.estMinReceive || '1.60');
-                  const settlementSpeed = bridgeDeposit.timeEstimate ? `~${bridgeDeposit.timeEstimate}s` : '~15 - 30s';
+                  const settlementSpeed = getRealisticSettlementSpeed(selectedChainId, bridgeDeposit.timeEstimate);
 
                   return (
                     <div
@@ -644,37 +642,13 @@ export default function ReceiveModal({ address, onClose }) {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <span style={{ color: 'var(--text2)' }}>Receive on Solana as:</span>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {SOLANA_DESTINATIONS.slice(0, 2).map(dest => {
-                            const isSel = selectedDestToken.symbol === dest.symbol;
-                            return (
-                              <button
-                                key={dest.symbol}
-                                type="button"
-                                onClick={() => setSelectedDestToken(dest)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '5px',
-                                  padding: '3px 8px',
-                                  borderRadius: '8px',
-                                  background: isSel ? 'rgba(34, 211, 238, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                  border: isSel ? '1px solid var(--cyan, #22d3ee)' : '1px solid rgba(255, 255, 255, 0.1)',
-                                  color: isSel ? '#fff' : 'var(--text2)',
-                                  fontSize: '11px',
-                                  fontWeight: isSel ? '700' : '500',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                <img
-                                  src={dest.logo}
-                                  alt={dest.symbol}
-                                  style={{ width: '14px', height: '14px', borderRadius: '50%' }}
-                                />
-                                <span>{dest.symbol}</span>
-                              </button>
-                            );
-                          })}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <img
+                            src={selectedDestToken.logo}
+                            alt={selectedDestToken.symbol}
+                            style={{ width: '16px', height: '16px', borderRadius: '50%' }}
+                          />
+                          <span style={{ fontWeight: '700', color: '#fff' }}>{selectedDestToken.symbol}</span>
                         </div>
                       </div>
 
@@ -698,44 +672,13 @@ export default function ReceiveModal({ address, onClose }) {
                       </div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--text2)' }}>FiatWallet Protocol Fee:</span>
+                        <span style={{ color: 'var(--text2)' }}>Protocol Fee:</span>
                         <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700' }}>0.4% ($0.10 min floor)</span>
                       </div>
 
-                      <div
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.12), rgba(34, 211, 238, 0.08))',
-                          border: '1px solid rgba(163, 230, 53, 0.35)',
-                          borderRadius: '10px',
-                          padding: '8px 10px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '8px',
-                        }}
-                      >
-                        <div>
-                          <div style={{ color: 'var(--lime, #a3e635)', fontWeight: '800', fontSize: '11px' }}>
-                            Min Guaranteed You Receive:
-                          </div>
-                          <div style={{ color: 'var(--text3, rgba(240, 246, 255, 0.5))', fontSize: '9.5px' }}>
-                            For min deposit (after all fees)
-                          </div>
-                        </div>
-                        <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '800', fontSize: '13px', fontFamily: 'var(--mono, monospace)' }}>
-                          ≥ ~{estMinReceiveVal} {selectedDestToken.symbol}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--text2)' }}>Bridge Settlement Speed:</span>
                         <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>{settlementSpeed}</span>
-                      </div>
-
-                      <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '8px 0' }} />
-
-                      <div style={{ color: 'var(--text3, rgba(240,246,255,0.5))', fontSize: '10.5px', lineHeight: '1.4' }}>
-                        Send at least {minDepositVal} to this address. Solvers will bridge it directly into your Solana wallet as {selectedDestToken.symbol}, deducting the NEAR network fee and our 0.4% protocol fee automatically.
                       </div>
                     </div>
                   );

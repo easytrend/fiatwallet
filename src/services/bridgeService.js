@@ -51,20 +51,20 @@ export const SUPPORTED_CHAINS = [
 
 export const SOLANA_DESTINATIONS = [
   {
-    symbol: 'USDC',
-    name: 'USD Coin',
-    decimals: 6,
-    assetId: 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near',
-    mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    logo: LOGOS.usdc,
-  },
-  {
     symbol: 'USDT',
     name: 'Tether USD',
     decimals: 6,
     assetId: 'nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near',
     mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
     logo: LOGOS.usdt,
+  },
+  {
+    symbol: 'USDC',
+    name: 'USD Coin',
+    decimals: 6,
+    assetId: 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near',
+    mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    logo: LOGOS.usdc,
   },
   {
     symbol: 'SOL',
@@ -346,6 +346,29 @@ export function isTreasuryRefundConfigured(chainId) {
   );
 }
 
+/**
+ * Formats a realistic, accurate arrival time based on origin network congestion and confirmation speeds.
+ */
+export function getRealisticSettlementSpeed(chainId, timeEstimateSeconds) {
+  if (chainId === 'btc') {
+    return '~15 – 45 mins (Bitcoin confirmations)';
+  }
+  if (chainId === 'eth') {
+    return '~5 – 15 mins (Ethereum L1)';
+  }
+  if (chainId === 'tron') {
+    return '~2 – 5 mins';
+  }
+  if (['base', 'arb', 'pol', 'bsc'].includes(chainId)) {
+    return '~1 – 3 mins';
+  }
+  if (timeEstimateSeconds && timeEstimateSeconds > 60) {
+    const mins = Math.ceil(timeEstimateSeconds / 60);
+    return `~${mins} – ${mins + 5} mins`;
+  }
+  return '~2 – 5 mins';
+}
+
 function formatUnits(amountFloat, decimals) {
   const parts = String(amountFloat).split('.');
   const whole = parts[0] || '0';
@@ -363,7 +386,7 @@ function formatUnits(amountFloat, decimals) {
  * Synchronous instant check for cached deposit address.
  * Eliminates screen delay when switching between previously viewed tokens/chains.
  */
-export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo = '', destSymbol = 'USDC') {
+export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo = '', destSymbol = 'USDT') {
   if (typeof localStorage === 'undefined' || !userAddress || !chain || !tokenSymbol) return null;
   const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? `_${refundTo.trim()}` : '';
   const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}_${destSymbol}${validRefund}`;
@@ -375,7 +398,7 @@ export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo
       const legacyRaw = localStorage.getItem(legacyKey);
       if (legacyRaw) {
         const legacyParsed = JSON.parse(legacyRaw);
-        if ((legacyParsed?.destinationSymbol || 'USDC') === destSymbol) {
+        if ((legacyParsed?.destinationSymbol || 'USDT') === destSymbol) {
           raw = legacyRaw;
         }
       }
@@ -390,7 +413,7 @@ export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo
       }
       if (parsed.minNetReceived == null) {
         const rawOut = parsed.grossOut || parsed.netReceived || 0;
-        const isUsd = (parsed.destinationSymbol || 'USDC').includes('USD');
+        const isUsd = (parsed.destinationSymbol || 'USDT').includes('USD');
         const minGross = rawOut * 0.99;
         const fee = isUsd ? Math.max(0.10, Math.round(minGross * 0.004 * 100) / 100) : minGross * 0.004;
         parsed.minNetReceived = Math.max(0, minGross - fee);
@@ -409,7 +432,7 @@ export async function createBridgeDeposit({
   destinationAsset,
   amountFloat,
   originDecimals = 6,
-  destinationSymbol = 'USDC',
+  destinationSymbol = 'USDT',
   originSymbol,
   userAddress,
   chainId,
@@ -539,7 +562,7 @@ export async function getOrCreateBridgeDeposit({
   originAsset,
   destinationAsset,
   originDecimals = 6,
-  destinationSymbol = 'USDC',
+  destinationSymbol = 'USDT',
   userAddress,
   chain,
   tokenSymbol,
@@ -587,7 +610,7 @@ export async function getOrCreateBridgeDeposit({
 /**
  * Mark a bridge deposit as completed in cache.
  */
-export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol, refundTo = '', destSymbol = 'USDC') {
+export function markBridgeDepositCompleted(userAddress, chain, tokenSymbol, refundTo = '', destSymbol = 'USDT') {
   if (typeof localStorage === 'undefined') return;
   const validRefund = refundTo && isValidRefundAddress(refundTo, chain) ? `_${refundTo.trim()}` : '';
   const cacheKey = `fw_bridge_addr_${userAddress}_${chain}_${tokenSymbol}_${destSymbol}${validRefund}`;
