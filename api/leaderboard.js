@@ -141,6 +141,23 @@ export default async function handler(req, res) {
         // Soft fail if referrals table is not created yet
       }
 
+      // Query fiat_tags mapping (walletLower -> tag_name)
+      let tagMap = new Map();
+      try {
+        const { data: tagRows } = await supabase
+          .from('fiat_tags')
+          .select('wallet_address, tag_name');
+        if (Array.isArray(tagRows)) {
+          for (const t of tagRows) {
+            if (t.wallet_address && t.tag_name) {
+              tagMap.set(t.wallet_address.trim().toLowerCase(), t.tag_name.trim());
+            }
+          }
+        }
+      } catch (e) {
+        // Soft fail if fiat_tags is unavailable
+      }
+
       // Group and sum in memory
       const userMap = new Map(); // lowerAddr -> record
 
@@ -160,6 +177,19 @@ export default async function handler(req, res) {
         }
         return entry;
       };
+
+      // Seed all referrers from referrals table so they appear on leaderboard
+      for (const [refLower, count] of referrerRefereesCount.entries()) {
+        let orig = refLower;
+        for (const r of refereeMap.values()) {
+          if (r.toLowerCase() === refLower) {
+            orig = r;
+            break;
+          }
+        }
+        const entry = getOrCreateEntry(orig);
+        entry.total_referred_users = count;
+      }
 
       for (const tx of (txs || [])) {
         const addr = (tx.user_address || '').trim();
@@ -211,62 +241,103 @@ export default async function handler(req, res) {
         sorted[i].rank = currentRank;
       }
       aggregated = sorted;
+
+      // Build dedicated Referral Leaderboard (Ranked by Referral Points & Friends)
+      const referralList = Array.from(userMap.values())
+        .map(e => {
+          const referralPts = Math.floor(e.referee_usd / 10);
+          const personalPts = Math.floor(e.personal_usd);
+          const tag = tagMap.get(e.address.toLowerCase());
+          return {
+            address: e.address,
+            short_address: maskAddress(e.address),
+            fiat_tag: tag || null,
+            display_name: tag ? (tag.startsWith('$') ? tag : `$${tag}`) : maskAddress(e.address),
+            referral_points: referralPts,
+            personal_points: personalPts,
+            total_points: personalPts + referralPts,
+            total_referred_users: e.total_referred_users || 0,
+            total_transactions: e.total_transactions,
+          };
+        })
+        .filter(e => e.total_referred_users > 0 || e.referral_points > 0)
+        .sort((a, b) => {
+          if (b.referral_points !== a.referral_points) {
+            return b.referral_points - a.referral_points;
+          }
+          if (b.total_referred_users !== a.total_referred_users) {
+            return b.total_referred_users - a.total_referred_users;
+          }
+          return b.total_points - a.total_points;
+        });
+
+      let currentRefRank = 1;
+      for (let i = 0; i < referralList.length; i++) {
+        if (i > 0 && (referralList[i].referral_points < referralList[i - 1].referral_points || referralList[i].total_referred_users < referralList[i - 1].total_referred_users)) {
+          currentRefRank = i + 1;
+        }
+        referralList[i].rank = currentRefRank;
+        const tierInfo = getTier(referralList[i].referral_points);
+        referralList[i].tier = tierInfo.name;
+      }
+
+      // Save referral list for response
+      var builtReferralList = referralList;
     }
 
     const totalParticipants = aggregated.length;
     const totalPointsDistributed = aggregated.reduce((acc, row) => acc + (row.total_points || 0), 0);
     const totalReferralPointsDistributed = aggregated.reduce((acc, row) => acc + (row.referral_points || 0), 0);
 
+    const refLeaderboard = builtReferralList || [];
+
     // Format leaderboard page
     const pageItems = aggregated.slice(offset, offset + limit).map(item => {
       const tierInfo = getTier(item.total_points);
+      const tag = tagMap ? tagMap.get(item.address.toLowerCase()) : null;
       return {
         rank: item.rank,
         address: item.address,
         short_address: maskAddress(item.address),
+        fiat_tag: tag || null,
+        display_name: tag ? (tag.startsWith('$') ? tag : `$${tag}`) : maskAddress(item.address),
         total_points: Math.floor(item.total_points || 0),
         personal_points: Math.floor(item.personal_points || 0),
         referral_points: Math.floor(item.referral_points || 0),
         total_transactions: item.total_transactions,
+        total_referred_users: item.total_referred_users || 0,
         tier: tierInfo.name,
       };
     });
 
+    const referralPageItems = refLeaderboard.slice(offset, offset + limit);
+
     // Resolve user's personal card if an address was passed
     let userCard = null;
     if (userAddress) {
-      const found = aggregated.find(r => r.address.toLowerCase() === userAddress.toLowerCase());
-      if (found) {
-        const tierInfo = getTier(found.total_points);
-        userCard = {
-          address: found.address,
-          short_address: maskAddress(found.address),
-          rank: found.rank,
-          total_points: Math.floor(found.total_points || 0),
-          personal_points: Math.floor(found.personal_points || 0),
-          referral_points: Math.floor(found.referral_points || 0),
-          total_transactions: found.total_transactions,
-          total_referred_users: found.total_referred_users || 0,
-          tier: tierInfo.name,
-          next_tier_target: tierInfo.nextTarget,
-          tier_progress: tierInfo.progress,
-        };
-      } else {
-        const tierInfo = getTier(0);
-        userCard = {
-          address: userAddress,
-          short_address: maskAddress(userAddress),
-          rank: null,
-          total_points: 0,
-          personal_points: 0,
-          referral_points: 0,
-          total_transactions: 0,
-          total_referred_users: 0,
-          tier: tierInfo.name,
-          next_tier_target: 250,
-          tier_progress: 0,
-        };
-      }
+      const lowerUser = userAddress.toLowerCase();
+      const found = aggregated.find(r => r.address.toLowerCase() === lowerUser);
+      const foundRef = refLeaderboard.find(r => r.address.toLowerCase() === lowerUser);
+      const tag = tagMap ? tagMap.get(lowerUser) : null;
+      const totalPts = Math.floor(found?.total_points || 0);
+      const tierInfo = getTier(totalPts);
+
+      userCard = {
+        address: userAddress,
+        short_address: maskAddress(userAddress),
+        fiat_tag: tag || null,
+        display_name: tag ? (tag.startsWith('$') ? tag : `$${tag}`) : maskAddress(userAddress),
+        rank: found ? found.rank : null,
+        referral_rank: foundRef ? foundRef.rank : null,
+        total_points: totalPts,
+        personal_points: Math.floor(found?.personal_points || 0),
+        referral_points: Math.floor(foundRef?.referral_points || found?.referral_points || 0),
+        total_transactions: found?.total_transactions || 0,
+        total_referred_users: foundRef?.total_referred_users || found?.total_referred_users || (referrerRefereesCount ? referrerRefereesCount.get(lowerUser) || 0 : 0),
+        tier: tierInfo.name,
+        next_tier_target: tierInfo.nextTarget,
+        tier_progress: tierInfo.progress,
+      };
     }
 
     return res.status(200).json({
@@ -274,7 +345,9 @@ export default async function handler(req, res) {
       timeframe,
       user: userCard,
       leaderboard: pageItems,
+      referral_leaderboard: referralPageItems,
       total_participants: totalParticipants,
+      total_referrers: refLeaderboard.length,
       total_points_distributed: Math.floor(totalPointsDistributed),
       total_referral_points_distributed: Math.floor(totalReferralPointsDistributed),
     });

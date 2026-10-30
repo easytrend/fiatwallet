@@ -148,6 +148,40 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
     });
   }
 
+  // Referral Leaderboard items
+  const referralList = data.referral_leaderboard || [];
+  const topThreeRef = referralList.slice(0, 3);
+  const restReferralList = referralList.slice(3);
+
+  const refPodiumItems = [];
+  if (topThreeRef.length >= 2) {
+    refPodiumItems.push({
+      item: topThreeRef[1],
+      rankLabel: '2nd',
+      color: '#94a3b8',
+      borderColor: 'rgba(148, 163, 184, 0.45)',
+      isCenter: false,
+    });
+  }
+  if (topThreeRef.length >= 1) {
+    refPodiumItems.push({
+      item: topThreeRef[0],
+      rankLabel: '1st',
+      color: '#eab308',
+      borderColor: 'rgba(234, 179, 8, 0.65)',
+      isCenter: true,
+    });
+  }
+  if (topThreeRef.length >= 3) {
+    refPodiumItems.push({
+      item: topThreeRef[2],
+      rankLabel: '3rd',
+      color: '#d97706',
+      borderColor: 'rgba(217, 119, 6, 0.45)',
+      isCenter: false,
+    });
+  }
+
   const getTierColor = (tier) => {
     switch ((tier || '').toLowerCase()) {
       case 'legend': return '#f59e0b';
@@ -275,12 +309,29 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
               borderBottom: activeTab === 'leaderboard' ? '2px solid var(--lime, #a3e635)' : '2px solid transparent',
               color: activeTab === 'leaderboard' ? 'white' : 'var(--text3, #94a3b8)',
               fontWeight: activeTab === 'leaderboard' ? '700' : '500',
-              fontSize: '13px',
+              fontSize: '12px',
               cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}
           >
-            Leaderboard Rankings
+            Traders
+          </button>
+          <button
+            onClick={() => setActiveTab('referrals_lb')}
+            style={{
+              flex: 1,
+              padding: '10px 0',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'referrals_lb' ? '2px solid var(--lime, #a3e635)' : '2px solid transparent',
+              color: activeTab === 'referrals_lb' ? 'white' : 'var(--text3, #94a3b8)',
+              fontWeight: activeTab === 'referrals_lb' ? '700' : '500',
+              fontSize: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Top Referrers
           </button>
           <button
             onClick={() => setActiveTab('referrals')}
@@ -292,18 +343,18 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
               borderBottom: activeTab === 'referrals' ? '2px solid var(--lime, #a3e635)' : '2px solid transparent',
               color: activeTab === 'referrals' ? 'white' : 'var(--text3, #94a3b8)',
               fontWeight: activeTab === 'referrals' ? '700' : '500',
-              fontSize: '13px',
+              fontSize: '12px',
               cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}
           >
-            Referral Program
+            My Referrals
           </button>
         </div>
 
         {/* Scrollable Content */}
         <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
-          {activeTab === 'leaderboard' ? (
+          {activeTab === 'leaderboard' && (
             <>
               {/* User Personal Card */}
               {userCard && (
@@ -629,9 +680,288 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
                 )}
               </div>
             </>
-          ) : (
-            /* Referral Program Tab */
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════════
+              TAB 2: REFERRAL LEADERBOARD (TOP REFERRERS)
+             ══════════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'referrals_lb' && (
+            <>
+              {/* User Personal Referral Card */}
+              {userCard && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(34, 211, 238, 0.08) 0%, rgba(163, 230, 53, 0.05) 100%)',
+                  border: '1px solid rgba(34, 211, 238, 0.3)',
+                  borderRadius: '18px',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
+                        Your Referral Ranking
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                        <span style={{ fontSize: '24px', fontWeight: '800', color: userCard.referral_rank ? 'var(--cyan, #22d3ee)' : '#94a3b8' }}>
+                          {userCard.referral_rank ? `#${userCard.referral_rank}` : 'Unranked'}
+                        </span>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          color: 'var(--lime, #a3e635)',
+                          background: 'rgba(163, 230, 53, 0.15)',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                        }}>
+                          {userCard.total_referred_users || 0} Friends Referred
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', fontWeight: '600' }}>
+                        Referral Points
+                      </div>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--lime, #a3e635)', marginTop: '2px' }}>
+                        {Math.floor(Number(userCard.referral_points) || 0).toLocaleString()} pts
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: '12px',
+                    paddingTop: '10px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                  }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)' }}>
+                      Earn 1 Pt for every 10 USD completed by friends
+                    </span>
+                    <button
+                      onClick={() => setActiveTab('referrals')}
+                      style={{
+                        background: 'rgba(163, 230, 53, 0.15)',
+                        border: '1px solid rgba(163, 230, 53, 0.3)',
+                        borderRadius: '8px',
+                        color: 'var(--lime, #a3e635)',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Invite Friends →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Timeframe Filter Tabs */}
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                marginBottom: '16px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                padding: '4px',
+                borderRadius: '12px',
+              }}>
+                {[
+                  { id: 'all', label: 'All Time' },
+                  { id: 'month', label: 'This Month' },
+                  { id: 'week', label: 'This Week' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setTimeframe(tab.id)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 0',
+                      background: timeframe === tab.id ? 'rgba(34, 211, 238, 0.18)' : 'none',
+                      border: timeframe === tab.id ? '1px solid rgba(34, 211, 238, 0.35)' : '1px solid transparent',
+                      borderRadius: '9px',
+                      color: timeframe === tab.id ? 'var(--cyan, #22d3ee)' : 'var(--text3, #94a3b8)',
+                      fontSize: '12px',
+                      fontWeight: timeframe === tab.id ? '700' : '500',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Top 3 Referral Podium (2nd on Left, 1st in Center, 3rd on Right) */}
+              {refPodiumItems.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${refPodiumItems.length}, 1fr)`,
+                  gap: '8px',
+                  alignItems: 'end',
+                  marginBottom: '18px',
+                  paddingTop: '6px',
+                }}>
+                  {refPodiumItems.map(({ item, rankLabel, color, borderColor, isCenter }) => (
+                    <div
+                      key={item.address}
+                      style={{
+                        background: isCenter
+                          ? 'linear-gradient(180deg, rgba(234, 179, 8, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%)'
+                          : 'rgba(255, 255, 255, 0.03)',
+                        border: `1px solid ${borderColor}`,
+                        borderRadius: '16px',
+                        padding: isCenter ? '18px 8px 14px' : '12px 8px',
+                        textAlign: 'center',
+                        transform: isCenter ? 'translateY(-6px)' : 'none',
+                        boxShadow: isCenter ? '0 8px 24px rgba(234, 179, 8, 0.18)' : 'none',
+                      }}
+                    >
+                      <div style={{
+                        display: 'inline-block',
+                        fontSize: isCenter ? '12px' : '11px',
+                        fontWeight: '800',
+                        color: color,
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        marginBottom: '6px',
+                      }}>
+                        {rankLabel}
+                      </div>
+                      <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'white', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.display_name || item.short_address}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)', marginBottom: '4px' }}>
+                        {item.total_referred_users || 0} friends
+                      </div>
+                      <div style={{
+                        fontSize: isCenter ? '15px' : '13px',
+                        fontWeight: '800',
+                        color: 'var(--lime, #a3e635)',
+                      }}>
+                        {Math.floor(Number(item.referral_points) || 0).toLocaleString()} pts
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Referral Leaderboard Table */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+                borderRadius: '16px',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  padding: '10px 14px',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  color: 'var(--text3, #94a3b8)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}>
+                  <span style={{ width: '45px' }}>Rank</span>
+                  <span style={{ flex: 1 }}>Referrer</span>
+                  <span style={{ width: '70px', textAlign: 'center' }}>Friends</span>
+                  <span style={{ width: '85px', textAlign: 'right' }}>Points</span>
+                </div>
+
+                {loading ? (
+                  <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text3, #94a3b8)', fontSize: '12px' }}>
+                    Loading referral rankings...
+                  </div>
+                ) : referralList.length === 0 ? (
+                  <div style={{ padding: '36px 20px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: 'white', marginBottom: '6px' }}>
+                      No referrers ranked yet
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text3, #94a3b8)', marginBottom: '16px' }}>
+                      Invite friends to FiatWallet and be the first to claim #1 on the referral leaderboard!
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('referrals')}
+                      style={{
+                        background: 'var(--lime, #a3e635)',
+                        color: '#0a1628',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Get Your Referral Link →
+                    </button>
+                  </div>
+                ) : (
+                  (restReferralList.length > 0 ? restReferralList : topThreeRef).map(item => {
+                    const isMe = userCard && item.address.toLowerCase() === (walletAddress || '').toLowerCase();
+                    return (
+                      <div
+                        key={item.address}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '10px 14px',
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                          background: isMe ? 'rgba(34, 211, 238, 0.08)' : 'none',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <span style={{ width: '45px', fontWeight: '700', color: isMe ? 'var(--cyan, #22d3ee)' : 'var(--text3, #94a3b8)' }}>
+                          #{item.rank}
+                        </span>
+                        <span style={{ flex: 1, fontWeight: '600', color: isMe ? 'var(--cyan, #22d3ee)' : 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {item.display_name || item.short_address} {isMe && '(You)'}
+                        </span>
+                        <span style={{ width: '70px', textAlign: 'center', color: 'var(--text2, #cbd5e1)', fontWeight: '600' }}>
+                          {item.total_referred_users || 0}
+                        </span>
+                        <span style={{ width: '85px', textAlign: 'right', fontWeight: '700', color: 'var(--lime, #a3e635)' }}>
+                          {Math.floor(Number(item.referral_points) || 0).toLocaleString()} pts
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════════
+              TAB 3: MY REFERRALS (PROGRAM & SHARE LINK)
+             ══════════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'referrals' && (
             <div>
+              {/* Shortcut to Referral Leaderboard */}
+              <div
+                onClick={() => setActiveTab('referrals_lb')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  background: 'rgba(34, 211, 238, 0.08)',
+                  border: '1px solid rgba(34, 211, 238, 0.25)',
+                  borderRadius: '12px',
+                  marginBottom: '14px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: '700', color: 'white' }}>Referral Rankings: </span>
+                  <span style={{ color: 'var(--text3, #94a3b8)' }}>See where you rank against top referrers</span>
+                </div>
+                <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700', fontSize: '12px' }}>View Leaderboard →</span>
+              </div>
+
               {/* Program Explainer Hero */}
               <div style={{
                 background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.12) 0%, rgba(34, 211, 238, 0.06) 100%)',
@@ -856,8 +1186,17 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress }) {
           fontSize: '11px',
           color: 'var(--text3, #94a3b8)',
         }}>
-          <span>{data.total_participants || 0} Traders Ranked</span>
-          <span>Total Points: {Math.floor(Number(data.total_points_distributed) || 0).toLocaleString()}</span>
+          {activeTab === 'referrals_lb' ? (
+            <>
+              <span>{data.total_referrers || referralList.length} Referrers Ranked</span>
+              <span>Total Referral Points: {Math.floor(Number(data.total_referral_points_distributed) || 0).toLocaleString()} pts</span>
+            </>
+          ) : (
+            <>
+              <span>{data.total_participants || 0} Traders Ranked</span>
+              <span>Total Points: {Math.floor(Number(data.total_points_distributed) || 0).toLocaleString()}</span>
+            </>
+          )}
         </div>
       </div>
     </div>

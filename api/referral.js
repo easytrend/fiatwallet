@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (checkError) {
-        if (checkError.code === '42P01') {
+        if (checkError.code === '42P01' || checkError.code === 'PGRST205') {
           return res.status(200).json({
             success: false,
             warning: 'Referrals table pending database creation in Supabase',
@@ -201,7 +201,7 @@ export default async function handler(req, res) {
         .ilike('referrer_address', userWallet);
 
       if (refError) {
-        if (refError.code === '42P01') {
+        if (refError.code === '42P01' || refError.code === 'PGRST205') {
           return res.status(200).json({
             success: true,
             address: userWallet,
