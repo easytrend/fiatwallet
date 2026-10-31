@@ -123,48 +123,31 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing orderId' });
     }
 
-    // 3. Resolve transaction record from Supabase first
+    // 3. Resolve canonical transaction record from Supabase first
     let { data: dbTx, error: dbError } = await supabase
       .from('p2p_transactions')
       .select('*')
       .eq('order_id', String(orderId))
       .maybeSingle();
 
-    let userAddressStr = dbTx?.user_address;
+    if (!dbTx) {
+      return res.status(404).json({
+        error: `Order ${orderId} not found in database. The onramp order must be initiated through FiatWallet.`,
+      });
+    }
 
-    // Fallback: If DB record has no user_address, use destinationAddress provided in request payload
-    if (!userAddressStr && destinationAddress) {
-      try {
-        new PublicKey(destinationAddress);
-        userAddressStr = destinationAddress;
-        if (!dbTx) {
-          const { data: insertedTx } = await supabase
-            .from('p2p_transactions')
-            .upsert({
-              order_id: String(orderId),
-              user_address: destinationAddress,
-              token_symbol: 'USDC',
-              crypto_amount: 0,
-              usd_value: 0,
-              fiat_currency: 'NGN',
-              fiat_amount: 0,
-              status: 'PENDING',
-              transaction_type: 'p2p_onramp',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'order_id' })
-            .select('*')
-            .single();
-          dbTx = insertedTx || { crypto_amount: 0, status: 'PENDING' };
-        } else {
-          await supabase
-            .from('p2p_transactions')
-            .update({ user_address: destinationAddress, updated_at: new Date().toISOString() })
-            .eq('order_id', String(orderId));
-        }
-      } catch (e) {
-        throw new Error(`Invalid destinationAddress provided: ${destinationAddress}`);
-      }
+    if (!dbTx.user_address) {
+      return res.status(400).json({
+        error: `Order ${orderId} does not have a verified user_address recorded. Cannot forward funds.`,
+      });
+    }
+
+    // Strictly enforce canonical buyer wallet address from the database record.
+    // The relayer forwards funds ONLY to the verified user who created the order,
+    // never to arbitrary or random destinations from unauthenticated requests.
+    const userAddressStr = dbTx.user_address.trim();
+    if (destinationAddress && destinationAddress.trim() !== userAddressStr) {
+      console.warn(`[relay_onramp_fee] destinationAddress in request (${destinationAddress}) does not match canonical dbTx.user_address (${userAddressStr}). Using canonical dbTx.user_address.`);
     }
 
     // Return early if order is already completed / forwarded
