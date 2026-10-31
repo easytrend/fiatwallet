@@ -261,15 +261,7 @@ export default async function handler(req, res) {
     // If the row was already FORWARDED_SUCCESS or FORWARDING, the update affects
     // 0 rows and we return early.
     // ──────────────────────────────────────────────────────────────────────────
-    const currentDbStatus = (dbTx.status || '').toUpperCase();
-    if (currentDbStatus === 'FORWARDED_SUCCESS') {
-      const gross = Number(dbTx.crypto_amount || 0);
-      const rawFee = gross * 0.004;
-      const fee = Math.max(0.10, Math.round(rawFee * 100) / 100);
-      return res.status(200).json({ signature: dbTx.signature, netAmount: Math.max(0, gross - fee), alreadyForwarded: true });
-    }
-
-    // Atomically claim this order for forwarding — only succeeds if status is NOT already FORWARDING or FORWARDED_SUCCESS
+    // Atomically claim this order for forwarding — only succeeds if status is NOT already FORWARDING, FORWARDED_SUCCESS, or COMPLETED
     const { data: claimResult, error: claimError } = await supabase
       .from('p2p_transactions')
       .update({
