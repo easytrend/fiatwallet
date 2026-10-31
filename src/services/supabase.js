@@ -215,20 +215,30 @@ export async function updateP2PTransactionStatus(orderId, status, signature = nu
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !orderId) return;
   try {
-    // Guard against overwriting terminal forwarded status
+    // Guard against overwriting terminal forwarded status or completed status
     const { data: current } = await client
       .from('p2p_transactions')
-      .select('status')
+      .select('status, signature')
       .eq('order_id', String(orderId))
       .maybeSingle();
       
-    if (current?.status === 'FORWARDED_SUCCESS') {
-      return; // Do not overwrite relayer forward status
+    if (current?.status === 'FORWARDED_SUCCESS' || current?.status === 'COMPLETED') {
+      return; // Do not overwrite completed or relayer forward status
+    }
+
+    // Safety guard: If an on-chain signature is present, never downgrade to 'ERROR' on client timeouts.
+    // Keep it as 'PENDING' so on-chain reconciliation can finalize it to 'COMPLETED'.
+    const effectiveSig = signature || current?.signature;
+    const hasRealOnChainSig = effectiveSig && !effectiveSig.startsWith('pending_') && effectiveSig.length >= 60;
+    let targetStatus = normalizeSupabaseStatus(status);
+    if (targetStatus === 'ERROR' && hasRealOnChainSig) {
+      console.warn(`[Supabase] Preserving PENDING for order ${orderId} because real on-chain signature exists: ${effectiveSig.slice(0, 8)}...`);
+      targetStatus = 'PENDING';
     }
 
     const patch = { updated_at: new Date().toISOString() };
-    if (status) {
-      patch.status = normalizeSupabaseStatus(status);
+    if (targetStatus) {
+      patch.status = targetStatus;
     }
     if (signature) {
       patch.signature = signature;
@@ -322,15 +332,12 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client) return [];
   try {
-    const token = authToken;
-    if (!token) return [];
-
     let query = client
       .from('p2p_transactions')
       .select('id, order_id, status, signature, transaction_type, crypto_amount, usd_value')
-      .in('status', ['INIT', 'PENDING'])
+      .in('status', ['INIT', 'PENDING', 'ERROR'])
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(30);
 
     if (walletAddress) {
       query = query.eq('user_address', walletAddress);
@@ -340,45 +347,90 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
     if (error || !pendingOrders || pendingOrders.length === 0) return [];
 
     const reconciled = [];
-    const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
 
-    for (const row of pendingOrders) {
-      const orderId = row.order_id;
-      if (!orderId) continue;
+    // Phase 1: On-Chain verification for orders with Solana signatures
+    const ordersWithSigs = pendingOrders.filter(row =>
+      row.signature && !row.signature.startsWith('pending_') && row.signature.length >= 60
+    );
 
-      let pajData = null;
-      for (const baseUrl of baseUrls) {
-        try {
-          const resp = await fetch(`${baseUrl}/pub/transactions/${orderId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (resp.ok) {
-            pajData = await resp.json();
-            break;
+    if (ordersWithSigs.length > 0) {
+      try {
+        const { Connection } = await import('@solana/web3.js');
+        const rpcUrl = (typeof process !== 'undefined' && (process.env.VITE_RPC_URL || process.env.RPC_URL)) || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+        const sigs = ordersWithSigs.map(o => o.signature);
+        const statuses = await connection.getSignatureStatuses(sigs, { searchTransactionHistory: true });
+
+        if (statuses?.value) {
+          for (let i = 0; i < ordersWithSigs.length; i++) {
+            const st = statuses.value[i];
+            const orderRow = ordersWithSigs[i];
+            if (st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized') && !st.err) {
+              if (orderRow.status !== 'COMPLETED') {
+                await client
+                  .from('p2p_transactions')
+                  .update({
+                    status: 'COMPLETED',
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('order_id', orderRow.order_id);
+
+                reconciled.push({ orderId: orderRow.order_id, status: 'COMPLETED', reason: 'onchain_verified' });
+                console.log(`[Supabase] Reconciled order ${orderRow.order_id} -> COMPLETED via on-chain confirmation`);
+              }
+            }
           }
-        } catch (e) {}
+        }
+      } catch (onChainErr) {
+        console.warn('[Supabase] On-chain signature reconciliation check skipped:', onChainErr.message);
       }
+    }
 
-      if (pajData) {
-        const rawStatus = (pajData.status || pajData.state || '').toUpperCase();
-        if (['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE'].includes(rawStatus)) {
-          const patch = {
-            status: 'COMPLETED',
-            updated_at: new Date().toISOString()
-          };
-          const sig = pajData.txHash || pajData.signature || pajData.tx_hash;
-          if (sig) patch.signature = sig;
+    // Phase 2: PajCash API check if authToken is provided
+    const token = authToken;
+    if (token) {
+      const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
+      for (const row of pendingOrders) {
+        const orderId = row.order_id;
+        if (!orderId || reconciled.some(r => r.orderId === orderId)) continue;
 
-          await client.from('p2p_transactions').update(patch).eq('order_id', orderId);
-          reconciled.push({ orderId, status: 'COMPLETED' });
-          console.log(`[Supabase] Reconciled pending order ${orderId} -> COMPLETED`);
-        } else if (['FAILED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(rawStatus)) {
-          await client.from('p2p_transactions').update({
-            status: 'ERROR',
-            updated_at: new Date().toISOString()
-          }).eq('order_id', orderId);
-          reconciled.push({ orderId, status: 'ERROR' });
-          console.log(`[Supabase] Reconciled pending order ${orderId} -> ERROR`);
+        let pajData = null;
+        for (const baseUrl of baseUrls) {
+          try {
+            const resp = await fetch(`${baseUrl}/pub/transactions/${orderId}`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resp.ok) {
+              pajData = await resp.json();
+              break;
+            }
+          } catch (e) {}
+        }
+
+        if (pajData) {
+          const rawStatus = (pajData.status || pajData.state || '').toUpperCase();
+          if (['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE', 'SUCCESS', 'SETTLED', 'PAID_OUT'].includes(rawStatus)) {
+            const patch = {
+              status: 'COMPLETED',
+              updated_at: new Date().toISOString()
+            };
+            const sig = pajData.txHash || pajData.signature || pajData.tx_hash;
+            if (sig) patch.signature = sig;
+
+            await client.from('p2p_transactions').update(patch).eq('order_id', orderId);
+            reconciled.push({ orderId, status: 'COMPLETED', reason: 'pajcash_verified' });
+            console.log(`[Supabase] Reconciled pending order ${orderId} -> COMPLETED`);
+          } else if (['FAILED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(rawStatus)) {
+            const hasSig = row.signature && !row.signature.startsWith('pending_') && row.signature.length >= 60;
+            if (!hasSig) {
+              await client.from('p2p_transactions').update({
+                status: 'ERROR',
+                updated_at: new Date().toISOString()
+              }).eq('order_id', orderId);
+              reconciled.push({ orderId, status: 'ERROR' });
+              console.log(`[Supabase] Reconciled pending order ${orderId} -> ERROR`);
+            }
+          }
         }
       }
     }

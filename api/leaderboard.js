@@ -91,6 +91,49 @@ export default async function handler(req, res) {
       // Soft fail if fiat_tags is unavailable
     }
 
+    // Self-healing: Check recent (last 14 days) P2P transactions in PENDING or ERROR status
+    // that have valid on-chain signatures and auto-reconcile them to COMPLETED.
+    try {
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: stuckRows } = await supabase
+        .from('p2p_transactions')
+        .select('id, order_id, signature, status')
+        .in('status', ['PENDING', 'ERROR'])
+        .gte('created_at', fourteenDaysAgo)
+        .not('signature', 'is', null)
+        .not('signature', 'like', 'pending_%')
+        .limit(20);
+
+      if (Array.isArray(stuckRows) && stuckRows.length > 0) {
+        const validStuck = stuckRows.filter(r => r.signature && r.signature.length >= 60);
+        if (validStuck.length > 0) {
+          const { Connection } = await import('@solana/web3.js');
+          const rpcUrl = process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
+          const connection = new Connection(rpcUrl, 'confirmed');
+          const sigs = validStuck.map(r => r.signature);
+          const statuses = await connection.getSignatureStatuses(sigs, { searchTransactionHistory: true });
+          if (statuses?.value) {
+            const confirmedIds = [];
+            for (let i = 0; i < validStuck.length; i++) {
+              const st = statuses.value[i];
+              if (st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized') && !st.err) {
+                confirmedIds.push(validStuck[i].id);
+              }
+            }
+            if (confirmedIds.length > 0) {
+              await supabase
+                .from('p2p_transactions')
+                .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+                .in('id', confirmedIds);
+              console.log(`[api/leaderboard] Auto-healed ${confirmedIds.length} confirmed transactions to COMPLETED`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Soft fail — do not block leaderboard if RPC has a momentary hiccup
+    }
+
     // Attempt 1: If timeframe is 'all', try reading from public.leaderboard_view
     if (timeframe === 'all') {
       try {

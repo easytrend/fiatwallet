@@ -59,7 +59,7 @@ export default async function handler(req, res) {
 
     // Map PajCash status to Supabase enum ('INIT', 'PENDING', 'COMPLETED', 'ERROR')
     let supabaseStatus = 'PENDING';
-    if (['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE'].includes(rawStatus)) {
+    if (['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE', 'SUCCESS', 'SETTLED', 'PAID_OUT', 'PROCESSED', 'DELIVERED'].includes(rawStatus)) {
       supabaseStatus = 'COMPLETED';
     } else if (['FAILED', 'ERROR', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(rawStatus)) {
       supabaseStatus = 'ERROR';
