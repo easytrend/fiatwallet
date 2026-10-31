@@ -130,6 +130,28 @@ export default async function handler(req, res) {
           }
         }
       }
+
+      // Also self-heal any recent pending/error onramps by triggering relayer forward
+      const { data: pendingOnramps } = await supabase
+        .from('p2p_transactions')
+        .select('id, order_id, user_address, status')
+        .eq('transaction_type', 'p2p_onramp')
+        .in('status', ['PENDING', 'FORWARD_FAILED', 'ERROR'])
+        .gte('created_at', fourteenDaysAgo)
+        .limit(5);
+
+      if (Array.isArray(pendingOnramps) && pendingOnramps.length > 0) {
+        const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://www.fiatwallet.app';
+        for (const onramp of pendingOnramps) {
+          try {
+            await fetch(`${host}/api/relay_onramp_fee`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orderId: onramp.order_id, destinationAddress: onramp.user_address })
+            });
+          } catch (err) {}
+        }
+      }
     } catch (e) {
       // Soft fail — do not block leaderboard if RPC has a momentary hiccup
     }

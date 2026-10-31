@@ -19,7 +19,7 @@ import FloatClaimWidget from './components/FloatClaimWidget';
 import SwapWidget from './components/SwapWidget';
 import P2PPanel, { getRelayEndpoint } from './components/P2PPanel';
 import SupportChat from './components/SupportChat';
-import { logTransaction, getFiatTagByWallet, recordWalletRegistration } from './services/supabase';
+import { logTransaction, getFiatTagByWallet, recordWalletRegistration, reconcilePendingP2PTransactions } from './services/supabase';
 import WalletOnboard from './components/WalletOnboard';
 import WalletUnlock from './components/WalletUnlock';
 import { useInternalWallet } from './hooks/useInternalWallet';
@@ -1139,6 +1139,7 @@ export default function App() {
       const handleFocus = () => {
         if (document.visibilityState === 'visible') {
           fetchBalances();
+          reconcilePendingP2PTransactions(pubkeyStr).catch(() => []);
         }
       };
       window.addEventListener('focus', handleFocus);
@@ -1168,6 +1169,19 @@ export default function App() {
         }
       }, 25000);
 
+      // 7. Frequent background auto-reconciliation to log confirmed P2P trades automatically
+      reconcilePendingP2PTransactions(pubkeyStr).catch(() => []);
+
+      const p2pReconcileInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          reconcilePendingP2PTransactions(pubkeyStr).then(reconciled => {
+            if (reconciled && reconciled.length > 0) {
+              fetchBalances();
+            }
+          }).catch(() => {});
+        }
+      }, 30000);
+
       return () => {
         if (subId !== null) {
           try { connection.removeAccountChangeListener(subId); } catch {}
@@ -1176,6 +1190,7 @@ export default function App() {
         document.removeEventListener('visibilitychange', handleFocus);
         clearInterval(interval);
         clearInterval(bridgeSweepInterval);
+        clearInterval(p2pReconcileInterval);
       };
     } else {
       setSolBalance(null);

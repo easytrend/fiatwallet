@@ -335,7 +335,7 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
     let query = client
       .from('p2p_transactions')
       .select('id, order_id, status, signature, transaction_type, crypto_amount, usd_value')
-      .in('status', ['INIT', 'PENDING', 'ERROR'])
+      .in('status', ['INIT', 'PENDING', 'ERROR', 'FORWARD_FAILED', 'FORWARDING'])
       .order('created_at', { ascending: false })
       .limit(30);
 
@@ -434,6 +434,44 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
         }
       }
     }
+
+    // Phase 3: Onramp reconciliation via /api/relay_onramp_fee
+    const pendingOnramps = pendingOrders.filter(row =>
+      (row.transaction_type === 'p2p_onramp' || row.transaction_type === 'onramp') &&
+      ['INIT', 'PENDING', 'ERROR', 'FORWARD_FAILED', 'FORWARDING'].includes((row.status || '').toUpperCase())
+    );
+
+    for (const onramp of pendingOnramps) {
+      const orderId = onramp.order_id;
+      if (!orderId || reconciled.some(r => r.orderId === orderId)) continue;
+
+      try {
+        const relayEndpoint = typeof window !== 'undefined' && window.location.origin
+          ? `${window.location.origin}/api/relay_onramp_fee`
+          : 'https://www.fiatwallet.app/api/relay_onramp_fee';
+
+        const relayRes = await fetch(relayEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId,
+            sessionToken: authToken || undefined,
+            destinationAddress: onramp.user_address || walletAddress || undefined
+          })
+        });
+
+        if (relayRes.ok) {
+          const relayData = await relayRes.json();
+          if (relayData.signature || relayData.alreadyForwarded) {
+            reconciled.push({ orderId, status: 'COMPLETED', reason: 'onramp_forwarded' });
+            console.log(`[Supabase] Reconciled onramp order ${orderId} -> COMPLETED`);
+          }
+        }
+      } catch (onrampErr) {
+        // Continue silently
+      }
+    }
+
     return reconciled;
   } catch (err) {
     console.warn('[Supabase] reconcilePendingP2PTransactions error:', err.message);
