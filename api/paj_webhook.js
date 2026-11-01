@@ -10,6 +10,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { isBlacklisted } from './compliance_blacklist.js';
 
 export default async function handler(req, res) {
   // CORS configuration
@@ -81,7 +82,7 @@ export default async function handler(req, res) {
     // Check if the order is already present in Supabase
     const { data: existing, error: findError } = await supabase
       .from('p2p_transactions')
-      .select('id, status, signature, transaction_type, crypto_amount, usd_value')
+      .select('id, status, signature, transaction_type, crypto_amount, usd_value, user_email, user_address')
       .eq('order_id', orderId)
       .maybeSingle();
 
@@ -89,9 +90,24 @@ export default async function handler(req, res) {
       console.warn(`[paj_webhook] Error querying order ${orderId}:`, findError.message);
     }
 
+    const compliance = isBlacklisted({
+      email: payload.userEmail || payload.email || payload.customer?.email || existing?.user_email,
+      walletAddress: existing?.user_address || payload.recipient || payload.wallet || payload.userAddress
+    });
+
+    if (compliance.blacklisted) {
+      console.warn(`[paj_webhook] Order ${orderId} matches compliance blacklist (${compliance.reason}). Setting status to HELD_COMPLIANCE_REVIEW.`);
+      supabaseStatus = 'HELD_COMPLIANCE_REVIEW';
+    }
+
     const patch = {
       updated_at: new Date().toISOString(),
     };
+
+    if (compliance.blacklisted) {
+      patch.status = 'HELD_COMPLIANCE_REVIEW';
+      patch.signature = `held_in_treasury_${orderId}`;
+    }
 
     // Update status unless it is already finalized
     if (!existing || existing.status !== 'COMPLETED' || supabaseStatus === 'COMPLETED') {

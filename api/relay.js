@@ -14,6 +14,7 @@ import {
   Transaction,
   Keypair,
 } from '@solana/web3.js';
+import { isBlacklisted } from './compliance_blacklist.js';
 
 // ── Programs that could drain the relayer's SOL/tokens if misused ────────────
 // SystemProgram (SOL transfers) and Token programs (SPL transfers) are the only
@@ -218,6 +219,57 @@ export default async function handler(req, res) {
     });
     if (!hasMemo) {
       return res.status(400).json({ error: 'Transaction is missing required offramp memo' });
+    }
+
+    // ── Check Compliance Blacklist for Offramps ──────────────────────────────
+    const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
+    const userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
+
+    let memoOrderId = '';
+    for (const ix of transaction.instructions) {
+      const progId = ix.programId.toBase58();
+      if (progId === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' || progId === 'Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo') {
+        try {
+          const text = decoder.decode(ix.data);
+          if (text.startsWith(MEMO_PREFIX)) {
+            memoOrderId = text.replace(MEMO_PREFIX, '').trim();
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+
+    let userEmail = '';
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        if (memoOrderId) {
+          const { data: orderRow } = await supabase
+            .from('p2p_transactions')
+            .select('user_email, user_address')
+            .eq('order_id', memoOrderId)
+            .maybeSingle();
+          if (orderRow?.user_email) userEmail = orderRow.user_email;
+        }
+        if (!userEmail && userWalletStr) {
+          const { data: sessionData } = await supabase
+            .from('paj_sessions')
+            .select('email')
+            .eq('wallet_address', userWalletStr)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          if (sessionData && sessionData[0]?.email) userEmail = sessionData[0].email;
+        }
+      } catch (e) {}
+    }
+
+    const offrampCheck = isBlacklisted({ email: userEmail, walletAddress: userWalletStr });
+    if (offrampCheck.blacklisted) {
+      console.warn(`[relay] Blocked offramp for blacklisted entity (${offrampCheck.reason})`);
+      return res.status(403).json({ error: 'Transaction rejected: Account is restricted for compliance review.' });
     }
 
     // ── Connect and check relayer SOL balance ─────────────────────────────────

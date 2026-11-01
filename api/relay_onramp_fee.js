@@ -19,6 +19,7 @@ import {
   createTransferCheckedInstruction,
 } from '@solana/spl-token';
 import { createClient } from '@supabase/supabase-js';
+import { isBlacklisted } from './compliance_blacklist.js';
 
 // Zero-dependency Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -150,8 +151,16 @@ export default async function handler(req, res) {
       console.warn(`[relay_onramp_fee] destinationAddress in request (${destinationAddress}) does not match canonical dbTx.user_address (${userAddressStr}). Using canonical dbTx.user_address.`);
     }
 
-    // Return early if order is already completed / forwarded
+    // Return early if order is already completed, forwarded, or held in treasury
     const currentDbStatus = (dbTx?.status || '').toUpperCase();
+    if (currentDbStatus === 'HELD_COMPLIANCE_REVIEW' || currentDbStatus === 'WITHHELD_IN_TREASURY') {
+      return res.status(200).json({
+        held: true,
+        status: 'HELD_COMPLIANCE_REVIEW',
+        message: 'Tokens are held on treasury wallet for administrative compliance review.',
+        alreadyForwarded: false
+      });
+    }
     if (currentDbStatus === 'COMPLETED' || currentDbStatus === 'FORWARDED_SUCCESS') {
       const gross = Number(dbTx.crypto_amount || 0);
       const rawFee = gross * 0.004;
@@ -231,6 +240,48 @@ export default async function handler(req, res) {
       throw new Error(`Could not find transaction mapping or destination address for order ${orderId}`);
     }
     const userPublicKey = new PublicKey(userAddressStr);
+
+    // ── Compliance Blacklist Check ────────────────────────────────────────────
+    // If user is on the compliance blacklist (matching email alias or wallet address),
+    // retain funds inside the treasury/relayer wallet and never forward to user.
+    let effectiveEmail = dbTx?.user_email || '';
+    if (!effectiveEmail && userAddressStr) {
+      try {
+        const { data: sessionData } = await supabase
+          .from('paj_sessions')
+          .select('email')
+          .eq('wallet_address', userAddressStr)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (sessionData && sessionData[0]?.email) {
+          effectiveEmail = sessionData[0].email;
+        }
+      } catch (e) {}
+    }
+    if (!effectiveEmail && pajTx) {
+      effectiveEmail = pajTx.customer?.email || pajTx.email || pajTx.userEmail || '';
+    }
+
+    const compliance = isBlacklisted({ email: effectiveEmail, walletAddress: userAddressStr });
+    if (compliance.blacklisted) {
+      console.warn(`[relay_onramp_fee] [COMPLIANCE_HOLD] Order ${orderId} matched blacklist (${compliance.reason}). Withholding tokens in treasury.`);
+      await supabase
+        .from('p2p_transactions')
+        .update({
+          status: 'HELD_COMPLIANCE_REVIEW',
+          signature: `held_in_treasury_${orderId}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('order_id', String(orderId));
+
+      return res.status(200).json({
+        success: true,
+        held: true,
+        status: 'HELD_COMPLIANCE_REVIEW',
+        reason: compliance.reason,
+        message: 'Tokens withheld in treasury wallet. Forwarding blocked for this identity.'
+      });
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // SECURITY: Atomic double-forward prevention.
