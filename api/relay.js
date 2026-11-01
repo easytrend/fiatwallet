@@ -14,7 +14,8 @@ import {
   Transaction,
   Keypair,
 } from '@solana/web3.js';
-import { isBlacklisted } from './compliance_blacklist.js';
+import { createClient } from '@supabase/supabase-js';
+import { isBlacklisted } from './_compliance_blacklist.js';
 
 // ── Programs that could drain the relayer's SOL/tokens if misused ────────────
 // SystemProgram (SOL transfers) and Token programs (SPL transfers) are the only
@@ -244,7 +245,6 @@ export default async function handler(req, res) {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
     if (supabaseUrl && supabaseKey) {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseKey);
         if (memoOrderId) {
           const { data: orderRow } = await supabase

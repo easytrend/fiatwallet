@@ -10,7 +10,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { isBlacklisted } from './compliance_blacklist.js';
+import { isBlacklisted } from './_compliance_blacklist.js';
 
 export default async function handler(req, res) {
   // CORS configuration

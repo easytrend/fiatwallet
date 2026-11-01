@@ -19,7 +19,7 @@ import {
   createTransferCheckedInstruction,
 } from '@solana/spl-token';
 import { createClient } from '@supabase/supabase-js';
-import { isBlacklisted } from './compliance_blacklist.js';
+import { isBlacklisted } from './_compliance_blacklist.js';
 
 // Zero-dependency Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';

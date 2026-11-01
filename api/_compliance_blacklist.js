@@ -66,3 +66,9 @@ export function isBlacklisted({ email = '', walletAddress = '' } = {}) {
 
   return { blacklisted: false };
 }
+
+export default function handler(req, res) {
+  if (res && typeof res.status === 'function') {
+    return res.status(200).json({ status: 'active', service: 'compliance_blacklist' });
+  }
+}
