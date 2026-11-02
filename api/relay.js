@@ -15,7 +15,7 @@ import {
   Keypair,
 } from '@solana/web3.js';
 import { createClient } from '@supabase/supabase-js';
-import { isBlacklisted } from './_compliance_blacklist.js';
+import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
 
 // ── Programs that could drain the relayer's SOL/tokens if misused ────────────
 // SystemProgram (SOL transfers) and Token programs (SPL transfers) are the only
@@ -266,7 +266,7 @@ export default async function handler(req, res) {
       } catch (e) {}
     }
 
-    const offrampCheck = isBlacklisted({ email: userEmail, walletAddress: userWalletStr });
+    const offrampCheck = await isBlacklistedEntityAsync({ email: userEmail, walletAddress: userWalletStr, supabase });
     if (offrampCheck.blacklisted) {
       console.warn(`[relay] Blocked offramp for blacklisted entity (${offrampCheck.reason})`);
       return res.status(403).json({ error: 'Transaction rejected: Account is restricted for compliance review.' });

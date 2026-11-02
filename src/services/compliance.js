@@ -7,6 +7,7 @@
 
 export {
   isBlacklisted,
+  isBlacklistedEntityAsync,
   normalizeEmail,
   BLACKLISTED_EMAILS,
   BLACKLISTED_WALLETS,

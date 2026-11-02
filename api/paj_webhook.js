@@ -10,7 +10,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { isBlacklisted } from './_compliance_blacklist.js';
+import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
 
 export default async function handler(req, res) {
   // CORS configuration
@@ -90,9 +90,10 @@ export default async function handler(req, res) {
       console.warn(`[paj_webhook] Error querying order ${orderId}:`, findError.message);
     }
 
-    const compliance = isBlacklisted({
+    const compliance = await isBlacklistedEntityAsync({
       email: payload.userEmail || payload.email || payload.customer?.email || existing?.user_email,
-      walletAddress: existing?.user_address || payload.recipient || payload.wallet || payload.userAddress
+      walletAddress: existing?.user_address || payload.recipient || payload.wallet || payload.userAddress,
+      supabase
     });
 
     if (compliance.blacklisted) {

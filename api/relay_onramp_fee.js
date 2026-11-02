@@ -19,7 +19,7 @@ import {
   createTransferCheckedInstruction,
 } from '@solana/spl-token';
 import { createClient } from '@supabase/supabase-js';
-import { isBlacklisted } from './_compliance_blacklist.js';
+import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
 
 // Zero-dependency Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -262,7 +262,7 @@ export default async function handler(req, res) {
       effectiveEmail = pajTx.customer?.email || pajTx.email || pajTx.userEmail || '';
     }
 
-    const compliance = isBlacklisted({ email: effectiveEmail, walletAddress: userAddressStr });
+    const compliance = await isBlacklistedEntityAsync({ email: effectiveEmail, walletAddress: userAddressStr, supabase });
     if (compliance.blacklisted) {
       console.warn(`[relay_onramp_fee] [COMPLIANCE_HOLD] Order ${orderId} matched blacklist (${compliance.reason}). Withholding tokens in treasury.`);
       await supabase

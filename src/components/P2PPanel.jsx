@@ -540,7 +540,28 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_sessionEmail') : '') ||
       (publicKey && typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '') ||
       (userTagData?.email || '');
-    return isBlacklisted({ email: userEmail, walletAddress: userWallet }).blacklisted;
+
+    // 1. Direct check on current email and wallet address
+    const directCheck = isBlacklisted({ email: userEmail, walletAddress: userWallet });
+    if (directCheck.blacklisted) {
+      // If blacklisted by email, dynamically tag this new wallet in localStorage
+      // so future interactions with this wallet remain recognized as blacklisted even if email is omitted
+      if (userWallet && typeof localStorage !== 'undefined') {
+        try { localStorage.setItem(`fw_tainted_wallet_${userWallet}`, '1'); } catch {}
+      }
+      return true;
+    }
+
+    // 2. Check if this wallet was previously associated with a blacklisted entity in this browser
+    if (userWallet && typeof localStorage !== 'undefined') {
+      try {
+        if (localStorage.getItem(`fw_tainted_wallet_${userWallet}`) === '1') {
+          return true;
+        }
+      } catch {}
+    }
+
+    return false;
   }, [publicKey, manualWalletAddress, recipientAddress, sessionEmail, userTagData]);
 
   // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
