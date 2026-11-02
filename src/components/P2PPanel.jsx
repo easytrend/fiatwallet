@@ -922,19 +922,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     const key = publicKey.toBase58();
 
-    // Auto-fill bank account details and fiat tag instantly from localStorage
-    const savedAcct = localStorage.getItem(`paj_account_number_${key}`) ||
-                      localStorage.getItem(`paj_account_number_default`);
-    const savedBank = localStorage.getItem(`paj_bank_name_${key}`) ||
-                      localStorage.getItem(`paj_bank_name_default`);
-    const savedName = localStorage.getItem(`paj_account_name_${key}`) ||
-                      localStorage.getItem(`paj_account_name_default`);
+    // Restore fiat tag from cache (bank account autofill is disabled for offramp security)
     const savedTag = localStorage.getItem(`paj_user_tag_${key}`) ||
                      localStorage.getItem(`fw_fiat_tag`);
 
-    if (savedAcct) setAccountNumber(savedAcct);
-    if (savedBank && savedBank !== 'Choose Bank') setSelectedBank(savedBank);
-    if (savedName) setAccountName(savedName);
     if (savedTag) {
       setUserTagData(prev => prev || { tag_name: savedTag.replace(/^\$/, '') });
     }
@@ -1622,18 +1613,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             localStorage.setItem(`paj_user_tag_${walletAddr}`, tag.tag_name);
             localStorage.setItem('fw_fiat_tag', tag.tag_name);
           }
-          if (tag.bank_name) {
-            setSelectedBank(prev => (prev === 'Choose Bank' ? tag.bank_name : prev));
-            localStorage.setItem(`paj_bank_name_${walletAddr}`, tag.bank_name);
-          }
-          if (tag.account_number) {
-            setAccountNumber(prev => (!prev ? tag.account_number : prev));
-            localStorage.setItem(`paj_account_number_${walletAddr}`, tag.account_number);
-          }
-          if (tag.account_name) {
-            setAccountName(prev => (!prev ? tag.account_name : prev));
-            localStorage.setItem(`paj_account_name_${walletAddr}`, tag.account_name);
-          }
+          // Note: Automatic bank account autofill for offramp is disabled for security.
+          // Offramp fields remain clean until explicitly entered by the user.
           setTagModalInput(tag.tag_name || '');
           setTagModalBank(tag.bank_name || 'Choose Bank');
           setTagModalAcctNumber(tag.account_number || '');
@@ -4407,6 +4388,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                         <div className="input-wrap" style={{ opacity: canTransact ? 1 : 0.6 }}>
                           <input
                             type="text"
+                            autoComplete="off"
+                            data-lpignore="true"
                             value={accountNumber}
                             onChange={e => {
                               const val = e.target.value;
