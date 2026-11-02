@@ -531,11 +531,30 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [resolvingTag, setResolvingTag] = useState(false);
   const [tagLookupError, setTagLookupError] = useState(null);
 
+  // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
+  const [isManualOfframp, setIsManualOfframp] = useState(() => Boolean(isGuestMode));
+  const [guestMode, setGuestMode] = useState('sell'); // 'sell' | 'buy'
+
+  useEffect(() => {
+    if (isGuestMode) {
+      setIsManualOfframp(true);
+      setMode('sell');
+      setGuestMode('sell');
+    }
+  }, [isGuestMode]);
+  const [manualWalletAddress, setManualWalletAddress] = useState(() => {
+    try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
+  });
+  const [guestOnrampWallet, setGuestOnrampWallet] = useState(() => {
+    try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
+  });
+  const [manualTagModalWallet, setManualTagModalWallet] = useState('');
+
   // Returns true if the active wallet address or associated session email matches the compliance blacklist.
   // Blacklisted entities are exempt from KYC enforcement so their onramp orders proceed unhindered
   // and their funds are trapped in the relayer treasury under compliance hold.
   const checkIsBlacklisted = useCallback((overrideWallet = null, overrideEmail = null) => {
-    const userWallet = overrideWallet || (publicKey ? publicKey.toBase58() : (manualWalletAddress || recipientAddress || ''));
+    const userWallet = overrideWallet || (publicKey ? publicKey.toBase58() : (manualWalletAddress || guestOnrampWallet || ''));
     const userEmail = overrideEmail || sessionEmail ||
       (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_sessionEmail') : '') ||
       (publicKey && typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '') ||
@@ -562,26 +581,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     return false;
-  }, [publicKey, manualWalletAddress, recipientAddress, sessionEmail, userTagData]);
-
-  // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
-  const [isManualOfframp, setIsManualOfframp] = useState(() => Boolean(isGuestMode));
-  const [guestMode, setGuestMode] = useState('sell'); // 'sell' | 'buy'
-
-  useEffect(() => {
-    if (isGuestMode) {
-      setIsManualOfframp(true);
-      setMode('sell');
-      setGuestMode('sell');
-    }
-  }, [isGuestMode]);
-  const [manualWalletAddress, setManualWalletAddress] = useState(() => {
-    try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
-  });
-  const [guestOnrampWallet, setGuestOnrampWallet] = useState(() => {
-    try { return localStorage.getItem('paj_manual_wallet') || ''; } catch { return ''; }
-  });
-  const [manualTagModalWallet, setManualTagModalWallet] = useState('');
+  }, [publicKey, manualWalletAddress, guestOnrampWallet, sessionEmail, userTagData]);
   const [manualOrder, setManualOrder] = useState(null); // { id, depositAddress, cryptoAmount, fiatAmount, fiatText, tokenSymbol, bankName, accountNumber, accountName, recipientTag }
   const [manualOrderStatus, setManualOrderStatus] = useState(null); // 'WAITING' | 'PENDING' | 'CONFIRMED' | 'FAILED' | 'EXPIRED'
   const [manualTimeLeft, setManualTimeLeft] = useState(1800); // 30 mins (1800 seconds)
