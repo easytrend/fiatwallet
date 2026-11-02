@@ -198,7 +198,7 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
   const [resolvingIds, setResolvingIds] = useState(new Set());
   useEffect(() => {
     const timer = setTimeout(async () => {
-      const target = rows.find(r => r.domain.endsWith('.sol') && !r.resolved && !resolvingIds.has(r.id));
+      const target = rows.find(r => (r.domain.endsWith('.sol') || r.domain.endsWith('.sns')) && !r.resolved && !resolvingIds.has(r.id));
       if (!target) return;
 
       setResolvingIds(prev => new Set(prev).add(target.id));
@@ -266,14 +266,16 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
         const row = validRows[i];
         let addressStr = row.domain.trim();
 
-        if (addressStr.endsWith('.sol')) {
+        if (addressStr.endsWith('.sol') || addressStr.endsWith('.sns')) {
+          const rawDomain = addressStr;
           try {
             const address = await robustResolve(addressStr, connection);
             addressStr = address.toBase58();
             // Secondary on-chain ownership verification: abort if domain has been
             // transferred to a different address since the initial resolution (TOCTOU guard).
             try {
-              const { pubkey: domainKey } = getDomainKeySync(addressStr.slice(0, -4)); // strip .sol before lookup
+              const cleanDomain = rawDomain.replace(/\.(sol|sns)$/, '').trim();
+              const { pubkey: domainKey } = getDomainKeySync(cleanDomain);
               const registry = await NameRegistryState.retrieve(connection, domainKey);
               if (registry.owner.toBase58() !== addressStr) {
                 throw new Error(`Domain ownership mismatch for "${row.domain}" — the domain may have been transferred. Aborting to prevent sending to the wrong wallet.`);
@@ -722,7 +724,7 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
               <div key={row.id} className="rt-row">
                 <div className="rt-domain">
                   <input style={{background:'transparent',border:'none',outline:'none',color:'var(--text)',fontFamily:'var(--mono)',fontSize:11,width:'100%'}}
-                    value={row.domain} placeholder="wallet or .sol" onChange={e => updateRow(row.id,'domain',e.target.value)} />
+                    value={row.domain} placeholder="wallet, .sol or .sns" onChange={e => updateRow(row.id,'domain',e.target.value)} />
                   {row.resolved && <div style={{fontSize:9,color:'var(--text3)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis'}}>{row.resolved.slice(0,12)}…</div>}
                 </div>
                 <div className="rt-amount">

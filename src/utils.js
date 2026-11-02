@@ -23,11 +23,12 @@ export function fmtFiat(v, code) {
 }
 
 
-// Validates a Solana address or .sol domain from a CSV row
+// Validates a Solana address, .sol domain, or .sns domain from a CSV row
 export function isValidEntry(domain) {
   if (!domain || domain.length < 3) return false;
-  // .sol domains: must end with .sol and have at least one character before it
+  // .sol and .sns domains: must end with .sol or .sns and have at least one character before it
   if (domain.endsWith('.sol')) return domain.length > 4;
+  if (domain.endsWith('.sns')) return domain.length > 4;
   // Solana public keys: base58, always exactly 32–44 characters
   if (domain.length < 32 || domain.length > 44) return false;
   // Must only contain base58 characters (no 0, O, I, l)
@@ -94,11 +95,15 @@ export async function robustResolve(domain, walletConnection) {
     return domainResolveCache.get(clean);
   }
 
+  // Normalize .sns to .sol for underlying SPL name service resolution.
+  // Bonfida SPL name service maps .sol and root names to the same on-chain record.
+  const lookupName = clean.endsWith('.sns') ? clean.replace(/\.sns$/, '.sol') : clean;
+
   const queries = [];
   if (walletConnection) {
     queries.push(
       Promise.race([
-        resolve(walletConnection, clean),
+        resolve(walletConnection, lookupName),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2500))
       ])
     );
@@ -114,7 +119,7 @@ export async function robustResolve(domain, walletConnection) {
       (async () => {
         const conn = new Connection(rpcUrl, 'confirmed');
         return Promise.race([
-          resolve(conn, clean),
+          resolve(conn, lookupName),
           new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2500))
         ]);
       })()
@@ -125,6 +130,12 @@ export async function robustResolve(domain, walletConnection) {
     const addr = await Promise.any(queries);
     if (addr) {
       domainResolveCache.set(clean, addr);
+      // Cache both .sol and .sns variants
+      if (clean.endsWith('.sol')) {
+        domainResolveCache.set(clean.replace(/\.sol$/, '.sns'), addr);
+      } else if (clean.endsWith('.sns')) {
+        domainResolveCache.set(clean.replace(/\.sns$/, '.sol'), addr);
+      }
       return addr;
     }
   } catch (err) {}

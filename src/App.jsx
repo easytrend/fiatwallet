@@ -747,11 +747,11 @@ export default function App() {
   // Detect stale rates — warn user if rates are older than RATE_STALENESS_MS
   const ratesAreStale = ratesTimestamp != null && (Date.now() - ratesTimestamp) > RATE_STALENESS_MS;
 
-  // Resolve .sol domains with fast multi-RPC resolution and on-chain ownership re-verification
+  // Resolve .sol / .sns domains with fast multi-RPC resolution and on-chain ownership re-verification
   useEffect(() => {
     let cancelled = false;
     async function checkDomain() {
-      if (recipient.endsWith('.sol')) {
+      if (recipient.endsWith('.sol') || recipient.endsWith('.sns')) {
         setResolving(true);
         setResolveError(null);
         setResolvedAddress(null);
@@ -760,7 +760,7 @@ export default function App() {
           if (cancelled) return;
           // Secondary on-chain ownership verification to prevent MITM substitution
           try {
-            const cleanDomain = recipient.replace(/\.sol$/, '').trim();
+            const cleanDomain = recipient.replace(/\.(sol|sns)$/, '').trim();
             const { pubkey: domainKey } = getDomainKeySync(cleanDomain);
             const registry = await NameRegistryState.retrieve(connection, domainKey);
             if (cancelled) return;
@@ -1221,7 +1221,7 @@ export default function App() {
       const cachedDomain = localStorage.getItem('fw_domain');
       const cachedTag = localStorage.getItem('fw_fiat_tag');
       if (cachedDomain) {
-        setWalletDomain(cachedDomain.endsWith('.sol') ? cachedDomain : `${cachedDomain}.sol`);
+        setWalletDomain(cachedDomain.endsWith('.sol') || cachedDomain.endsWith('.sns') ? cachedDomain : `${cachedDomain}.sol`);
       } else if (cachedTag) {
         setWalletDomain(cachedTag.startsWith('$') ? cachedTag : `$${cachedTag}`);
       }
@@ -1249,14 +1249,14 @@ export default function App() {
             .then(r => (r.ok ? r.json() : Promise.reject()))
             .then(data => {
               const fav = data?.[pubkeyStr];
-              if (fav) return fav.endsWith('.sol') ? fav : `${fav}.sol`;
+              if (fav) return fav.endsWith('.sol') || fav.endsWith('.sns') ? fav : `${fav}.sol`;
               return fetch(`https://sns-api.bonfida.com/v2/user/domains/${pubkeyStr}`)
                 .then(r => (r.ok ? r.json() : Promise.reject()))
                 .then(d2 => {
                   const list = d2?.[pubkeyStr];
                   if (list && list.length > 0) {
                     const first = list[0];
-                    return first.endsWith('.sol') ? first : `${first}.sol`;
+                    return first.endsWith('.sol') || first.endsWith('.sns') ? first : `${first}.sol`;
                   }
                   return Promise.reject();
                 });
@@ -1273,7 +1273,7 @@ export default function App() {
           // 3. Resolve SNS first
           let winner = await Promise.any([apiPromise, rpcPromise]).catch(() => null);
 
-          // 4. Fall back to user's registered Fiat Tag (e.g. $easytrend) if no .sol domain
+          // 4. Fall back to user's registered Fiat Tag (e.g. $easytrend) if no .sol or .sns domain
           if (!winner) {
             try {
               const tagData = await getFiatTagByWallet(pubkeyStr);
@@ -1294,7 +1294,7 @@ export default function App() {
               localStorage.setItem('fw_fiat_tag', winner.slice(1));
               localStorage.removeItem('fw_domain');
             } else {
-              localStorage.setItem('fw_domain', winner.replace(/\.sol$/, ''));
+              localStorage.setItem('fw_domain', winner.replace(/\.(sol|sns)$/, ''));
               localStorage.removeItem('fw_fiat_tag');
             }
           }
@@ -1358,7 +1358,7 @@ export default function App() {
       // to prevent TOCTOU (Time-of-Check-Time-of-Use) race condition where a domain
       // could be transferred to another address between resolution and transaction submission
       let finalRecipient;
-      if (recipient.endsWith('.sol')) {
+      if (recipient.endsWith('.sol') || recipient.endsWith('.sns')) {
         // Re-resolve the domain atomically at transaction build time
         try {
           const freshAddress = await robustResolve(recipient, connection);
@@ -2150,17 +2150,17 @@ export default function App() {
             <div className="title-row">
               <div className="card-title">Send Crypto</div>
             </div>
-            <p className="card-sub">Send tokens easily using .sol domains.</p>
+            <p className="card-sub">Send tokens easily using .sol or .sns domains.</p>
 
             <div className="field">
               <div className="field-label">Send To</div>
               <div className="input-wrap">
                 <span className="sol-icon">◎</span>
-                <input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="example.sol or address" />
+                <input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="example.sol, example.sns or address" />
               </div>
               {resolving && <div style={{fontSize:11, color:'var(--text3)', marginTop:6}}>Resolving domain…</div>}
               {resolveError && <div style={{fontSize:11, color:'#f87171', marginTop:6}}>✕ {resolveError}</div>}
-              {resolvedAddress && recipient.endsWith('.sol') && (
+              {resolvedAddress && (recipient.endsWith('.sol') || recipient.endsWith('.sns')) && (
                 <div style={{fontSize:11, color:'var(--lime)', marginTop:6}}>
                   ✓ Resolved: {resolvedAddress.slice(0,4)}…{resolvedAddress.slice(-4)}
                 </div>
@@ -2279,7 +2279,7 @@ export default function App() {
             <div className="title-row">
               <div className="card-title">Bulk Send</div>
             </div>
-            <p className="card-sub">Send to up to 1,000 wallets or .sol domains at once.</p>
+            <p className="card-sub">Send to up to 1,000 wallets, .sol or .sns domains at once.</p>
 
             <div className="field">
               <div className="field-label">Select Token</div>
