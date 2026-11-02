@@ -100,6 +100,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
   const [tagModalBank, setTagModalBank] = useState('Choose Bank');
   const [tagModalAcctNumber, setTagModalAcctNumber] = useState('');
   const [tagModalAcctName, setTagModalAcctName] = useState('');
+  const [tagModalPhone, setTagModalPhone] = useState('');
+  const [tagModalBvn, setTagModalBvn] = useState('');
+  const [tagModalNin, setTagModalNin] = useState('');
   const [tagModalResolving, setTagModalResolving] = useState(false);
   const [tagModalSaving, setTagModalSaving] = useState(false);
   const [tagModalError, setTagModalError] = useState('');
@@ -223,6 +226,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           setTagModalBank(tag.bank_name || 'Choose Bank');
           setTagModalAcctNumber(tag.account_number || '');
           setTagModalAcctName(tag.account_name || '');
+          setTagModalPhone(tag.phone_number || '');
+          setTagModalBvn(tag.bvn || '');
+          setTagModalNin(tag.nin || '');
         } else {
           setUserTagData(null);
         }
@@ -432,6 +438,21 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       setTagModalError('Account name could not be verified. Please check account details.');
       return;
     }
+    const cleanPhone = tagModalPhone.replace(/[^0-9+]/g, '').trim();
+    if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
+      setTagModalError('Please enter a valid Phone Number (e.g. 08012345678).');
+      return;
+    }
+    const cleanBvn = tagModalBvn.replace(/\D/g, '').trim();
+    if (cleanBvn.length !== 11) {
+      setTagModalError('Please enter a valid 11-digit BVN.');
+      return;
+    }
+    const cleanNin = tagModalNin.replace(/\D/g, '').trim();
+    if (cleanNin.length !== 11) {
+      setTagModalError('Please enter a valid 11-digit NIN.');
+      return;
+    }
 
     setTagModalSaving(true);
     setTagModalError('');
@@ -448,6 +469,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
         bankCode,
         accountNumber: cleanAcct,
         accountName: tagModalAcctName,
+        bvn: cleanBvn,
+        phoneNumber: cleanPhone,
+        nin: cleanNin,
       });
 
       localStorage.setItem('paj_manual_wallet', effectiveWallet);
@@ -468,7 +492,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     } finally {
       setTagModalSaving(false);
     }
-  }, [effectiveWallet, sessionToken, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, apiBanks, sessionEmail, emailInput, onTagSaved, onClose]);
+  }, [effectiveWallet, sessionToken, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks, sessionEmail, emailInput, onTagSaved, onClose]);
 
   return (
     <div
@@ -792,6 +816,53 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             ) : tagModalAcctName ? (
               <span>{tagModalAcctName}</span>
             ) : null}
+          </div>
+        </div>
+
+        {/* ── Phone Number Field ── */}
+        <div className="field" style={{ marginBottom: '14px' }}>
+          <div className="field-label">Phone Number</div>
+          <div className="input-wrap">
+            <input
+              type="tel"
+              value={tagModalPhone}
+              onChange={e => setTagModalPhone(e.target.value)}
+              placeholder="e.g. 08012345678"
+              style={{ fontSize: '14px', fontWeight: '500' }}
+            />
+          </div>
+        </div>
+
+        {/* ── BVN Field ── */}
+        <div className="field" style={{ marginBottom: '14px' }}>
+          <div className="field-label">Bank Verification Number (BVN)</div>
+          <div className="input-wrap">
+            <input
+              type="text"
+              maxLength={11}
+              value={tagModalBvn}
+              onChange={e => setTagModalBvn(e.target.value.replace(/\D/g, ''))}
+              placeholder="11-digit BVN"
+              style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+            />
+          </div>
+          <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>
+            11-digit BVN used to verify identity.
+          </div>
+        </div>
+
+        {/* ── NIN Field ── */}
+        <div className="field" style={{ marginBottom: '14px' }}>
+          <div className="field-label">National Identity Number (NIN)</div>
+          <div className="input-wrap">
+            <input
+              type="text"
+              maxLength={11}
+              value={tagModalNin}
+              onChange={e => setTagModalNin(e.target.value.replace(/\D/g, ''))}
+              placeholder="11-digit NIN"
+              style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+            />
           </div>
         </div>
 

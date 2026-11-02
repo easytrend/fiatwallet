@@ -722,7 +722,17 @@ export async function getFiatTagByName(tagName) {
 /**
  * Create or update a user's Fiat Tag and linked bank account details.
  */
-export async function registerFiatTag({ walletAddress, tagName, bankName, bankCode, accountNumber, accountName }) {
+export async function registerFiatTag({
+  walletAddress,
+  tagName,
+  bankName,
+  bankCode,
+  accountNumber,
+  accountName,
+  bvn,
+  phoneNumber,
+  nin,
+}) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress || !tagName || !accountNumber || !bankName) {
     throw new Error('Missing required fields for Fiat Tag registration.');
@@ -744,6 +754,9 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
     bank_code: bankCode || null,
     account_number: String(accountNumber).trim(),
     account_name: String(accountName).trim(),
+    bvn: bvn ? String(bvn).trim() : null,
+    phone_number: phoneNumber ? String(phoneNumber).trim() : null,
+    nin: nin ? String(nin).trim() : null,
     updated_at: new Date().toISOString(),
   };
 
@@ -767,21 +780,38 @@ export async function registerFiatTag({ walletAddress, tagName, bankName, bankCo
 
   let data, error;
 
-  if (existingOwn?.id) {
-    // UPDATE the existing row for this wallet
-    ({ data, error } = await client
-      .from('fiat_tags')
-      .update(payload)
-      .eq('id', existingOwn.id)
-      .select()
-      .single());
-  } else {
-    // INSERT a brand new row
-    ({ data, error } = await client
-      .from('fiat_tags')
-      .insert(payload)
-      .select()
-      .single());
+  const executeSave = async (dataPayload) => {
+    if (existingOwn?.id) {
+      return await client
+        .from('fiat_tags')
+        .update(dataPayload)
+        .eq('id', existingOwn.id)
+        .select()
+        .single();
+    } else {
+      return await client
+        .from('fiat_tags')
+        .insert(dataPayload)
+        .select()
+        .single();
+    }
+  };
+
+  ({ data, error } = await executeSave(payload));
+
+  // If table does not yet have bvn/phone_number/nin columns, gracefully fall back to base schema
+  if (error && (error.message?.includes('column') || error.code === '42703')) {
+    console.warn('[Supabase] fiat_tags table missing new KYC columns. Falling back to base payload:', error.message);
+    const fallbackPayload = {
+      wallet_address: walletAddress,
+      tag_name: formattedTag,
+      bank_name: bankName,
+      bank_code: bankCode || null,
+      account_number: String(accountNumber).trim(),
+      account_name: String(accountName).trim(),
+      updated_at: new Date().toISOString(),
+    };
+    ({ data, error } = await executeSave(fallbackPayload));
   }
 
   if (error) {

@@ -517,6 +517,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [tagModalBank, setTagModalBank] = useState('Choose Bank');
   const [tagModalAcctNumber, setTagModalAcctNumber] = useState('');
   const [tagModalAcctName, setTagModalAcctName] = useState('');
+  const [tagModalPhone, setTagModalPhone] = useState('');
+  const [tagModalBvn, setTagModalBvn] = useState('');
+  const [tagModalNin, setTagModalNin] = useState('');
   const [tagModalResolving, setTagModalResolving] = useState(false);
   const [tagModalSaving, setTagModalSaving] = useState(false);
   const [tagModalError, setTagModalError] = useState(null);
@@ -1045,6 +1048,22 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setUserTagData(tag);
           if (tag.wallet_address) {
             setGuestOnrampWallet(prev => prev || tag.wallet_address);
+          }
+          setTagModalInput(tag.tag_name || '');
+          setTagModalBank(tag.bank_name || 'Choose Bank');
+          setTagModalAcctNumber(tag.account_number || '');
+          setTagModalAcctName(tag.account_name || '');
+          setTagModalPhone(tag.phone_number || '');
+          setTagModalBvn(tag.bvn || '');
+          setTagModalNin(tag.nin || '');
+          if ((!tag.bvn || !tag.phone_number || !tag.nin) && !hasPromptedTagRef.current) {
+            hasPromptedTagRef.current = true;
+            setShowTagModal(true);
+          }
+        } else {
+          if (!hasPromptedTagRef.current) {
+            hasPromptedTagRef.current = true;
+            setShowTagModal(true);
           }
         }
       }).catch(() => {});
@@ -1618,12 +1637,23 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setTagModalBank(tag.bank_name || 'Choose Bank');
           setTagModalAcctNumber(tag.account_number || '');
           setTagModalAcctName(tag.account_name || '');
+          setTagModalPhone(tag.phone_number || '');
+          setTagModalBvn(tag.bvn || '');
+          setTagModalNin(tag.nin || '');
+          if ((!tag.bvn || !tag.phone_number || !tag.nin) && !hasPromptedTagRef.current) {
+            hasPromptedTagRef.current = true;
+            setShowTagModal(true);
+          }
         } else {
           setUserTagData(null);
+          if (!hasPromptedTagRef.current) {
+            hasPromptedTagRef.current = true;
+            setShowTagModal(true);
+          }
         }
       })
       .catch(() => {});
-  }, [publicKey, sessionToken]);
+  }, [publicKey, sessionToken, activeTab]);
 
   // ── Real-time resolution of recipient Tag in standard and tag offramp ───
   useEffect(() => {
@@ -1722,6 +1752,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       return;
     }
 
+    const cleanPhone = tagModalPhone.replace(/[^0-9+]/g, '').trim();
+    if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 15) {
+      setTagModalError('Please enter a valid Phone Number (e.g. 08012345678).');
+      return;
+    }
+
+    const cleanBvn = tagModalBvn.replace(/\D/g, '').trim();
+    if (cleanBvn.length !== 11) {
+      setTagModalError('Please enter a valid 11-digit BVN.');
+      return;
+    }
+
+    const cleanNin = tagModalNin.replace(/\D/g, '').trim();
+    if (cleanNin.length !== 11) {
+      setTagModalError('Please enter a valid 11-digit NIN.');
+      return;
+    }
+
     setTagModalSaving(true);
     setTagModalError(null);
     try {
@@ -1735,6 +1783,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         bankCode,
         accountNumber: cleanAcct,
         accountName: tagModalAcctName || 'Account Holder',
+        bvn: cleanBvn,
+        phoneNumber: cleanPhone,
+        nin: cleanNin,
       });
 
       if (!publicKey) {
@@ -1755,7 +1806,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } finally {
       setTagModalSaving(false);
     }
-  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, apiBanks]);
+  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks]);
 
   // ── Routing animation ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -2290,6 +2341,20 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     if (!parsedOnrampAmt || parsedOnrampAmt <= 0) { setOnrampError('Please enter a valid NGN amount.'); return; }
+
+    // Enforce Fiat Tag and KYC (BVN, Phone Number, NIN) on Onramp
+    const hasCompleteKyc = Boolean(
+      userTagData &&
+      userTagData.tag_name &&
+      userTagData.bvn &&
+      userTagData.phone_number &&
+      userTagData.nin
+    );
+    if (!hasCompleteKyc) {
+      setOnrampError('KYC Required: Please complete your Fiat Tag profile (BVN, Phone Number, and NIN) before buying crypto.');
+      setShowTagModal(true);
+      return;
+    }
 
     setOnrampLoading(true);
     try {
@@ -3674,7 +3739,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
         {/* Right side controls: My Tag, History, Country picker */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {!showHistoryView && sessionToken && mode === 'sell' && (
+          {!showHistoryView && (sessionToken || publicKey || manualWalletAddress) && (
             <button
               type="button"
               onClick={() => {
@@ -3683,14 +3748,17 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   setTagModalBank(userTagData.bank_name || 'Choose Bank');
                   setTagModalAcctNumber(userTagData.account_number || '');
                   setTagModalAcctName(userTagData.account_name || '');
+                  setTagModalPhone(userTagData.phone_number || '');
+                  setTagModalBvn(userTagData.bvn || '');
+                  setTagModalNin(userTagData.nin || '');
                   setManualTagModalWallet(userTagData.wallet_address || manualWalletAddress || (publicKey ? publicKey.toBase58() : ''));
                 }
                 setShowTagModal(true);
               }}
               style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                color: 'white',
+                background: userTagData?.bvn ? 'rgba(163, 230, 53, 0.12)' : 'rgba(255, 255, 255, 0.06)',
+                border: userTagData?.bvn ? '1px solid rgba(163, 230, 53, 0.3)' : '1px solid rgba(255, 255, 255, 0.15)',
+                color: userTagData?.bvn ? 'var(--lime)' : 'white',
                 fontSize: '11px',
                 fontWeight: '600',
                 padding: '5px 12px',
@@ -3698,7 +3766,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 cursor: 'pointer'
               }}
             >
-              My Tag
+              {userTagData ? (userTagData.bvn && userTagData.phone_number && userTagData.nin ? '✓ My Tag' : 'My Tag (KYC)') : 'Create Tag'}
             </button>
           )}
 
@@ -6140,7 +6208,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               maxWidth: '400px',
               position: 'relative',
               boxShadow: '0 25px 60px rgba(0,0,0,0.9), 0 0 30px rgba(163,230,53,0.15)',
-              animation: 'slideUpCard 0.3s ease'
+              animation: 'slideUpCard 0.3s ease',
+              maxHeight: '92vh',
+              overflowY: 'auto'
             }}
           >
             <button
@@ -6157,10 +6227,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', marginBottom: '6px' }}>
-                {userTagData ? 'Edit Your Fiat Tag' : 'Create & Link Fiat Tag'}
+                {userTagData ? (userTagData.bvn ? 'Edit Your Fiat Tag' : 'Complete Verification') : 'Create & Link Fiat Tag'}
               </h3>
               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.4' }}>
-                Link your bank account to a unique Fiat Tag so others can send you payouts using just your Tag.
+                {userTagData && !userTagData.bvn
+                  ? 'Please complete your BVN, Phone Number, and NIN to verify your profile and unlock buying crypto.'
+                  : 'Link your bank account to a unique Fiat Tag with BVN and NIN verification.'}
               </p>
             </div>
 
@@ -6268,14 +6340,61 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               </div>
             </div>
 
+            {/* Phone Number Field */}
+            <div className="field" style={{ marginBottom: '14px' }}>
+              <div className="field-label">Phone Number</div>
+              <div className="input-wrap">
+                <input
+                  type="tel"
+                  value={tagModalPhone}
+                  onChange={e => setTagModalPhone(e.target.value)}
+                  placeholder="e.g. 08012345678"
+                  style={{ fontSize: '14px', fontWeight: '500' }}
+                />
+              </div>
+            </div>
+
+            {/* BVN Field */}
+            <div className="field" style={{ marginBottom: '14px' }}>
+              <div className="field-label">Bank Verification Number (BVN)</div>
+              <div className="input-wrap">
+                <input
+                  type="text"
+                  maxLength={11}
+                  value={tagModalBvn}
+                  onChange={e => setTagModalBvn(e.target.value.replace(/\D/g, ''))}
+                  placeholder="11-digit BVN"
+                  style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+                />
+              </div>
+              <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>
+                11-digit BVN used to verify identity.
+              </div>
+            </div>
+
+            {/* NIN Field */}
+            <div className="field" style={{ marginBottom: '14px' }}>
+              <div className="field-label">National Identity Number (NIN)</div>
+              <div className="input-wrap">
+                <input
+                  type="text"
+                  maxLength={11}
+                  value={tagModalNin}
+                  onChange={e => setTagModalNin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="11-digit NIN"
+                  style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+                />
+              </div>
+            </div>
+
             {/* Action Button */}
             <button
               className="send-btn"
               onClick={handleSaveFiatTag}
-              disabled={tagModalSaving}
+              disabled={tagModalSaving || tagModalResolving}
               style={{ marginTop: '10px' }}
             >
-              {tagModalSaving ? 'Saving Tag...' : (userTagData ? 'Update Fiat Tag' : 'Create Fiat Tag')}
+              {tagModalSaving ? 'Saving...' : (userTagData ? (userTagData.bvn ? 'Update Fiat Tag' : 'Complete Verification') : 'Create Fiat Tag')}
             </button>
           </div>
         </div>
