@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { getBanks, resolveBankAccount, initiateSession, verifySession, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
+import { getBanks, resolveBankAccount, initiateSession, verifySession, submitUserKyc, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
 import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession } from '../services/supabase';
 
 const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
@@ -459,6 +459,27 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     setTagModalSuccess('');
 
     try {
+      // 1. Live BVN verification via PajCash (EaseID / Kora / NIBSS check)
+      if (!userTagData?.bvn || userTagData.bvn !== cleanBvn) {
+        if (!sessionToken) {
+          setTagModalError('Please verify your email above first so PajCash can verify your BVN.');
+          setTagModalSaving(false);
+          return;
+        }
+        try {
+          await submitUserKyc(sessionToken, cleanBvn, 'BVN', 'NG');
+        } catch (kycErr) {
+          const errMsg = kycErr.message || '';
+          if (errMsg.toLowerCase().includes('already used')) {
+            setTagModalError('This BVN is already registered to another account.');
+          } else {
+            setTagModalError(`BVN Verification Failed: ${errMsg}`);
+          }
+          setTagModalSaving(false);
+          return;
+        }
+      }
+
       const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
 

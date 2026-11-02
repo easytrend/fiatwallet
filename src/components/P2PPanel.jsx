@@ -18,6 +18,7 @@ import {
   cancelOnrampOrder,
   paidOnrampOrder,
   getTransaction,
+  submitUserKyc,
   getEffectiveApiKey,
   getEffectiveApiKeyAsync,
   fetchRemotePajConfig,
@@ -1770,9 +1771,30 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       return;
     }
 
+    if (!sessionToken) {
+      setTagModalError('Please enter and verify your email below so PajCash can verify your BVN.');
+      return;
+    }
+
     setTagModalSaving(true);
     setTagModalError(null);
     try {
+      // 1. Live BVN verification via PajCash (EaseID / Kora / NIBSS check)
+      if (!userTagData?.bvn || userTagData.bvn !== cleanBvn) {
+        try {
+          await submitUserKyc(sessionToken, cleanBvn, 'BVN', 'NG');
+        } catch (kycErr) {
+          const errMsg = kycErr.message || '';
+          if (errMsg.toLowerCase().includes('already used')) {
+            setTagModalError('This BVN is already registered to another account.');
+          } else {
+            setTagModalError(`BVN Verification Failed: ${errMsg}`);
+          }
+          setTagModalSaving(false);
+          return;
+        }
+      }
+
       const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
 
@@ -6239,6 +6261,75 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             {tagModalError && (
               <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '10px 12px', fontSize: '11px', color: '#f87171', marginBottom: '14px' }}>
                 {tagModalError}
+              </div>
+            )}
+
+            {/* Inline Email Verification Step if not authenticated with PajCash */}
+            {!sessionToken ? (
+              <div style={{ background: 'rgba(34, 211, 238, 0.08)', border: '1px solid rgba(34, 211, 238, 0.3)', borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '800', color: 'var(--cyan, #22d3ee)', marginBottom: '4px' }}>
+                  Verify Email for Live BVN Check
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '10px', lineHeight: '1.4' }}>
+                  PajCash requires a verified email session to validate your BVN against NIBSS.
+                </div>
+                {authStep !== 'input_otp' ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={e => setEmailInput(e.target.value)}
+                      placeholder="Enter your email"
+                      style={{ flex: 1, padding: '8px 12px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleInitiateSession}
+                      disabled={authLoading || !emailInput.trim()}
+                      style={{ padding: '8px 14px', background: 'rgba(34, 211, 238, 0.25)', border: '1px solid rgba(34, 211, 238, 0.5)', borderRadius: '8px', color: 'var(--cyan, #22d3ee)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      {authLoading ? 'Sending...' : 'Send OTP'}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={otpInput}
+                        onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="4-digit code"
+                        style={{ flex: 1, padding: '8px 12px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: 'white', fontSize: '12px', letterSpacing: '0.1em', outline: 'none' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifySession}
+                        disabled={authLoading || otpInput.trim().length !== 4}
+                        style={{ padding: '8px 14px', background: 'rgba(163, 230, 53, 0.25)', border: '1px solid rgba(163, 230, 53, 0.5)', borderRadius: '8px', color: 'var(--lime)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        {authLoading ? 'Verifying...' : 'Confirm'}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setAuthStep('input_email'); setOtpInput(''); }}
+                      style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: '10.5px', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                    >
+                      Change email
+                    </button>
+                  </div>
+                )}
+                {authError && (
+                  <div style={{ color: '#f87171', fontSize: '11px', marginTop: '6px' }}>
+                    {authError}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(163, 230, 53, 0.08)', border: '1px solid rgba(163, 230, 53, 0.25)', borderRadius: '10px', padding: '6px 12px', marginBottom: '14px', fontSize: '11px', color: 'var(--lime)', fontWeight: '600' }}>
+                <span>✓</span>
+                <span>Session Active ({sessionEmail || 'Email Verified'})</span>
               </div>
             )}
 

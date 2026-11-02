@@ -19,7 +19,8 @@ import {
   getAllRate as sdkGetAllRate,
   getAllTransactions as sdkGetAllTransactions,
   getTransaction as sdkGetTransaction,
-  Environment
+  Environment,
+  submitKyc as sdkSubmitKyc
 } from 'paj_ramp';
 
 export { observeOrder };
@@ -298,6 +299,29 @@ export async function resolveBankAccount(sessionToken, bankId, accountNumber) {
   const token = sessionToken || getEffectiveApiKey();
   try {
     return await sdkResolveBankAccount(token, bankId, accountNumber);
+  } catch (error) {
+    const msg = error.response?.data?.message || error.message || String(error);
+    throw new Error(msg);
+  }
+}
+
+/**
+ * Submit and verify government-ID KYC (BVN / NIN) with PajCash.
+ * Requires an active user session token (email-verified).
+ *
+ * @param {string} sessionToken - User JWT Session Token
+ * @param {string} idNumber     - 11-digit BVN or NIN
+ * @param {'BVN' | 'NIN'} [idType='BVN']
+ * @param {string} [country='NG']
+ */
+export async function submitUserKyc(sessionToken, idNumber, idType = 'BVN', country = 'NG') {
+  initPajSDK(import.meta.env.VITE_PAJCASH_ENV || 'production');
+  const token = sessionToken || (await getEffectiveApiKeyAsync()) || getEffectiveApiKey();
+  if (!token) {
+    throw new Error('Active session required. Please verify your email first.');
+  }
+  try {
+    return await sdkSubmitKyc(token, String(idNumber).trim(), idType, country);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);
