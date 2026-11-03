@@ -241,11 +241,12 @@ export default async function handler(req, res) {
     }
 
     let userEmail = '';
+    let supabase = null;
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
     if (supabaseUrl && supabaseKey) {
       try {
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        supabase = createClient(supabaseUrl, supabaseKey);
         if (memoOrderId) {
           const { data: orderRow } = await supabase
             .from('p2p_transactions')
@@ -263,7 +264,9 @@ export default async function handler(req, res) {
             .limit(1);
           if (sessionData && sessionData[0]?.email) userEmail = sessionData[0].email;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[relay] Supabase query failed:', e.message);
+      }
     }
 
     const offrampCheck = await isBlacklistedEntityAsync({ email: userEmail, walletAddress: userWalletStr, supabase });
@@ -302,10 +305,18 @@ export default async function handler(req, res) {
     try {
       transaction.partialSign(relayerKp);
 
-      const sig = await connection.sendRawTransaction(transaction.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-      });
+      let sig;
+      try {
+        sig = await connection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
+      } catch (preflightErr) {
+        console.warn('[relay] Preflight simulation failed, retrying with skipPreflight: true:', preflightErr.message);
+        sig = await connection.sendRawTransaction(transaction.serialize(), {
+          skipPreflight: true,
+        });
+      }
 
       console.log(`[relay] Broadcasted tx: ${sig}`);
       return res.status(200).json({ signature: sig });

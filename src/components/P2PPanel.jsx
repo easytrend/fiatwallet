@@ -3351,6 +3351,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         } catch (relayErr) {
           console.warn('[Relayer Fallback] Gasless relay failed or unfunded:', relayErr.message);
 
+          // If the user does not have enough SOL to cover gas, don't submit a doomed transaction
+          const userSolLamports = await connection.getBalance(publicKey, 'confirmed').catch(() => 0);
+          if (userSolLamports < 5000) {
+            throw new Error(`Gasless sponsorship failed (${relayErr.message}) and your wallet does not have enough SOL for the Solana network fee.`);
+          }
+
           // Re-build transaction with user as feePayer (user settles gas fee)
           const fallbackTx = new Transaction();
           fallbackTx.feePayer = publicKey;
