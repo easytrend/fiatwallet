@@ -5,13 +5,14 @@ import { getFiatTagByWallet } from '../services/supabase';
 
 export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpenReferralLeaderboard }) {
   const [activeTab, setActiveTab] = useState('leaderboard'); // 'leaderboard' | 'referrals'
-  const [timeframe, setTimeframe] = useState('all');
+  const [timeframe, setTimeframe] = useState('week');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [fiatTag, setFiatTag] = useState(null);
   const [data, setData] = useState({
     user: null,
     leaderboard: [],
+    week_info: null,
     total_participants: 0,
     total_points_distributed: 0,
   });
@@ -109,6 +110,16 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
     } else {
       handleCopyLink();
     }
+  };
+
+  const formatResetCountdown = (ms) => {
+    if (!ms || ms <= 0) return 'Resetting soon';
+    const totalHours = Math.floor(ms / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    if (days > 0) return `${days}d ${hours}h`;
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
   };
 
   if (!isOpen) return null;
@@ -317,7 +328,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
-                        Your Ranking
+                        {timeframe === 'week' ? 'Your Weekly Rank' : timeframe === 'month' ? 'Your Monthly Rank' : 'Your All-Time Rank'}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
                         <span style={{ fontSize: '24px', fontWeight: '800', color: userCard.rank ? 'var(--lime, #a3e635)' : '#94a3b8' }}>
@@ -407,7 +418,9 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     fontSize: '11px',
                     color: 'var(--text2, #cbd5e1)',
                   }}>
-                    <span style={{ color: 'var(--text3, #94a3b8)' }}>Completed Transactions:</span>
+                    <span style={{ color: 'var(--text3, #94a3b8)' }}>
+                      {timeframe === 'week' ? 'Transactions This Week:' : timeframe === 'month' ? 'Transactions This Month:' : 'Completed Transactions:'}
+                    </span>
                     <span style={{ fontWeight: '700', color: 'white' }}>{userCard.total_transactions || 0}</span>
                   </div>
                 </div>
@@ -440,15 +453,15 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
               <div style={{
                 display: 'flex',
                 gap: '8px',
-                marginBottom: '16px',
+                marginBottom: '10px',
                 background: 'rgba(255, 255, 255, 0.04)',
                 padding: '4px',
                 borderRadius: '12px',
               }}>
                 {[
+                  { id: 'week', label: 'Weekly Ranking' },
                   { id: 'all', label: 'All Time' },
                   { id: 'month', label: 'This Month' },
-                  { id: 'week', label: 'This Week' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -470,6 +483,29 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   </button>
                 ))}
               </div>
+
+              {/* Weekly Cycle Status Banner */}
+              {timeframe === 'week' && data?.week_info && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '9px 12px',
+                  background: 'rgba(163, 230, 53, 0.08)',
+                  border: '1px solid rgba(163, 230, 53, 0.25)',
+                  borderRadius: '12px',
+                  marginBottom: '16px',
+                  fontSize: '11px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '800' }}>•</span>
+                    <span style={{ color: 'white', fontWeight: '700' }}>{data.week_info.label}</span>
+                  </div>
+                  <div style={{ color: 'var(--lime, #a3e635)', fontSize: '10.5px', fontWeight: '600' }}>
+                    Resets in {formatResetCountdown(data.week_info.resets_in_ms)} (Sunday 00:00 UTC)
+                  </div>
+                </div>
+              )}
 
               {/* Top 3 Podium (2nd on Left, 1st in Center, 3rd on Right) */}
               {podiumItems.length > 0 && (

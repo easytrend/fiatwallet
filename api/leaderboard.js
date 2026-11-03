@@ -36,6 +36,28 @@ function maskAddress(addr) {
   return `${clean.slice(0, 4)}...${clean.slice(-4)}`;
 }
 
+// ── Sunday-to-Sunday Weekly Cycle Calculators ─────────────────────────────────
+export function getStartOfWeekSunday(now = new Date()) {
+  const d = new Date(now);
+  const day = d.getUTCDay(); // 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+  d.setUTCDate(d.getUTCDate() - day);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+export function getEndOfWeekSunday(startOfSunday) {
+  const end = new Date(startOfSunday);
+  end.setUTCDate(end.getUTCDate() + 7);
+  return end;
+}
+
+export function getStartOfMonth(now = new Date()) {
+  const d = new Date(now);
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
 export default async function handler(req, res) {
   // CORS & Edge Caching headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -54,7 +76,23 @@ export default async function handler(req, res) {
   const userAddress = req.query.address ? String(req.query.address).trim() : null;
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
-  const timeframe = (req.query.timeframe || 'all').toLowerCase().trim();
+  const timeframe = (req.query.timeframe || 'week').toLowerCase().trim();
+
+  // ── Calculate Calendar Week & Month starting from Sunday 00:00:00 UTC ─────
+  const now = new Date();
+  const startOfWeek = getStartOfWeekSunday(now);
+  const endOfWeek = getEndOfWeekSunday(startOfWeek);
+  const startOfMonth = getStartOfMonth(now);
+
+  const startFormatted = startOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const endFormatted = new Date(endOfWeek.getTime() - 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+  const weekInfo = {
+    start: startOfWeek.toISOString(),
+    end: endOfWeek.toISOString(),
+    resets_in_ms: Math.max(0, endOfWeek.getTime() - now.getTime()),
+    label: `Week of ${startFormatted} – ${endFormatted}`,
+  };
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -190,11 +228,12 @@ export default async function handler(req, res) {
         .not('user_address', 'is', null);
 
       if (timeframe === 'month') {
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        query = query.gte('created_at', thirtyDaysAgo);
+        query = query.gte('created_at', startOfMonth.toISOString());
       } else if (timeframe === 'week') {
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        query = query.gte('created_at', sevenDaysAgo);
+        // Strict Sunday-to-Sunday weekly boundary: refreshes automatically every Sunday at 00:00:00 UTC
+        query = query
+          .gte('created_at', startOfWeek.toISOString())
+          .lt('created_at', endOfWeek.toISOString());
       }
 
       const { data: txs, error: txError } = await query;
@@ -407,6 +446,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       timeframe,
+      week_info: weekInfo,
       user: userCard,
       leaderboard: pageItems,
       referral_leaderboard: referralPageItems,
