@@ -3631,6 +3631,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         return;
       }
 
+      // Record on-chain broadcast confirmation in Supabase immediately!
+      // Transitions from INIT -> PENDING with the on-chain signature attached.
+      updateP2PTransactionStatus(order.id, 'PENDING', sig);
+
       // Show modal immediately with PENDING status
       setSuccessDetails({
         amount: `${finalSendAmount.toFixed(4)} ${liveSelectedToken.symbol}`,

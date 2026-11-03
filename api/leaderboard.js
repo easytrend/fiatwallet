@@ -136,7 +136,7 @@ export default async function handler(req, res) {
       const { data: stuckRows } = await supabase
         .from('p2p_transactions')
         .select('id, order_id, signature, status')
-        .in('status', ['PENDING', 'ERROR'])
+        .in('status', ['INIT', 'PENDING', 'ERROR'])
         .gte('created_at', fourteenDaysAgo)
         .not('signature', 'is', null)
         .not('signature', 'like', 'pending_%')
