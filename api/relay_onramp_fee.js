@@ -19,6 +19,7 @@ import {
   createTransferCheckedInstruction,
 } from '@solana/spl-token';
 import { createClient } from '@supabase/supabase-js';
+import nacl from 'tweetnacl';
 import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
 
 // Zero-dependency Base58 Decoder
@@ -117,7 +118,7 @@ export default async function handler(req, res) {
       try { body = JSON.parse(body.toString('utf-8')); } catch (e) { return res.status(400).json({ error: 'Malformed JSON payload from Buffer' }); }
     }
 
-    const { orderId, sessionToken, destinationAddress } = body || {};
+    const { orderId, sessionToken, destinationAddress, walletSignature, signedMessage } = body || {};
     globalOrderId = orderId;
 
     if (!orderId) {
@@ -168,6 +169,41 @@ export default async function handler(req, res) {
       return res.status(200).json({ signature: dbTx.signature, netAmount: Math.max(0, gross - fee), alreadyForwarded: true });
     }
 
+    // ── Caller Authentication & Binding Guard ─────────────────────────────────
+    // An attacker cannot guess an orderId and trigger unauthorized payouts.
+    // Must provide either:
+    //   1. Valid wallet signature matching canonical user_address, OR
+    //   2. Authenticated PajCash sessionToken, OR
+    //   3. Internal service role authorization from backend reconciliation
+    const internalSecret = req.headers['x-internal-secret'] || '';
+    const authHeader = req.headers['authorization'] || '';
+    const isInternalService = (
+      (supabaseServiceKey && internalSecret === supabaseServiceKey) ||
+      (supabaseServiceKey && authHeader === `Bearer ${supabaseServiceKey}`) ||
+      (process.env.CRON_SECRET && internalSecret === process.env.CRON_SECRET)
+    );
+
+    let isWalletOwner = false;
+    if (walletSignature && userAddressStr) {
+      try {
+        const userPubkey = new PublicKey(userAddressStr);
+        const expectedMsg = signedMessage || `Authorize FiatWallet onramp forward: ${orderId}`;
+        const msgBytes = new TextEncoder().encode(expectedMsg);
+        const sigBytes = Buffer.from(walletSignature, 'base64');
+        isWalletOwner = nacl.sign.detached.verify(msgBytes, sigBytes, userPubkey.toBytes());
+      } catch (err) {
+        isWalletOwner = false;
+      }
+    }
+
+    const hasSessionToken = Boolean(sessionToken && String(sessionToken).trim());
+
+    if (!isWalletOwner && !hasSessionToken && !isInternalService) {
+      return res.status(401).json({
+        error: 'Unauthorized: Caller must provide an authenticated sessionToken, walletSignature, or internal service authorization.'
+      });
+    }
+
     const authToken = sessionToken || process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
 
     // 4. Query PajCash to verify order details & status
@@ -193,44 +229,26 @@ export default async function handler(req, res) {
       }
     }
 
-    // Verification Fallback:
-    // If PajCash session token is invalid/expired (HTTP 401) or PajCash API call is unavailable,
-    // verify against our canonical database record. If dbTx has a valid user_address and positive
-    // crypto_amount, and relayer on-chain USDC balance will be checked in step 5, proceed safely.
+    // STRICT: Never synthesize 'COMPLETED' from thin air if PajCash cannot verify the order!
     if (!pajTx) {
-      const isAuthOrSessionError = !authToken || (pajError && (
-        pajError.message.includes('401') ||
-        pajError.message.includes('Session is invalid or expired') ||
-        pajError.message.includes('Unauthorized') ||
-        pajError.message.includes('No session token')
-      ));
-
-      if (isAuthOrSessionError && dbTx && dbTx.user_address && Number(dbTx.crypto_amount) > 0) {
-        console.log(`[relay_onramp_fee] PajCash session token unavailable/expired for order ${orderId}. Falling back to verified DB record (${dbTx.crypto_amount} ${dbTx.token_symbol}).`);
-        pajTx = {
-          amount: Number(dbTx.crypto_amount),
-          usdcAmount: Number(dbTx.crypto_amount),
-          status: 'COMPLETED',
-          recipient: relayerKp.publicKey.toBase58(),
-          fiatAmount: Number(dbTx.fiat_amount || 0)
-        };
-      } else {
-        const errMsg = `Could not verify transaction with PajCash API: ${pajError?.message || 'Unauthorized or session expired'}`;
-        throw new Error(errMsg);
-      }
+      const errMsg = `Could not verify order completion with PajCash API: ${pajError?.message || 'Unauthorized or order not found'}. Forwarding rejected.`;
+      console.error(`[relay_onramp_fee] ${errMsg} (orderId: ${orderId})`);
+      return res.status(400).json({ error: errMsg });
     }
 
-    // Verify order completion
+    // Verify order completion strictly from PajCash response
     const status = (pajTx.status || '').toUpperCase();
     const isCompleted = status === 'COMPLETED' || status === 'SUCCESSFUL' || status === 'CONFIRMED' || status === 'SUCCESS';
     if (!isCompleted) {
-      throw new Error(`PajCash order status is ${status}, not completed.`);
+      return res.status(400).json({ error: `PajCash order status is ${status}, not completed. Forwarding rejected.` });
     }
 
     // Verify recipient matches relayer
     const recipient = pajTx.recipient || pajTx.wallet || pajTx.address || '';
     if (recipient && recipient !== relayerKp.publicKey.toBase58()) {
-      throw new Error(`Unauthorized: Relayer (${relayerKp.publicKey.toBase58()}) was not the recipient of this PajCash order. Got recipient: "${recipient}". Details: ${JSON.stringify(pajTx)}`);
+      return res.status(403).json({
+        error: `Unauthorized: Relayer (${relayerKp.publicKey.toBase58()}) was not the recipient of this PajCash order. Got recipient: "${recipient}". Details: ${JSON.stringify(pajTx)}`
+      });
     }
 
     if (!userAddressStr) {
@@ -332,7 +350,10 @@ export default async function handler(req, res) {
     const connection = new Connection(rpcUrl, 'confirmed');
 
     // Platform fee math: 0.4% USDC with a 0.10 USDC minimum floor
-    const grossAmount = Number(pajTx.amount ?? pajTx.usdcAmount ?? dbTx.crypto_amount ?? 0);
+    const grossAmount = Number(pajTx.amount ?? pajTx.usdcAmount ?? 0);
+    if (!grossAmount || grossAmount <= 0) {
+      throw new Error(`Invalid verified crypto amount in PajCash record: ${grossAmount}`);
+    }
     const rawFee = grossAmount * 0.004;
     const platformFeeUsd = Math.max(0.10, Math.round(rawFee * 100) / 100);
     const netAmount = Math.max(0, grossAmount - platformFeeUsd);

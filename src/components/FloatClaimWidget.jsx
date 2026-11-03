@@ -691,6 +691,17 @@ export default function FloatClaimWidget({
         if (!ALLOWED_CASHBACK_PROGRAMS.has(pid)) {
           throw new Error(`[SECURITY] Unexpected program in cashback claim transaction: ${pid}. Refusing to sign.`);
         }
+
+        // SPL Token programs: Pump.fun cashback rewards are distributed in native SOL, never tokens.
+        // Block all token drain/approval opcodes: Transfer (3), Approve (4), Revoke (5), SetAuthority (6), CloseAccount (9), TransferChecked (12), ApproveChecked (25)
+        if (pid === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' ||
+            pid === 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb') {
+          const DANGEROUS_TOKEN_OPCODES = new Set([3, 4, 5, 6, 9, 12, 25]);
+          const opcode = ix.data && ix.data.length > 0 ? ix.data[0] : -1;
+          if (DANGEROUS_TOKEN_OPCODES.has(opcode)) {
+            throw new Error(`[SECURITY] External cashback transaction attempts disallowed token operation (opcode ${opcode}). Refusing to sign.`);
+          }
+        }
         if (pid === '11111111111111111111111111111111') {
           // Decode the System Program instruction to inspect destination and amount.
           // This is the critical guard against drain attacks: a compromised pumpdev.io API
@@ -719,6 +730,9 @@ export default function FloatClaimWidget({
       }
 
       if (deserializedTx instanceof Transaction) {
+        if (!deserializedTx.feePayer || !deserializedTx.feePayer.equals(publicKey)) {
+          deserializedTx.feePayer = publicKey;
+        }
         // Validate every API-supplied instruction BEFORE appending our own
         for (const ix of deserializedTx.instructions) {
           validateCashbackInstruction(ix);
@@ -727,20 +741,36 @@ export default function FloatClaimWidget({
         deserializedTx.add(memoIx);
         if (feeIx) deserializedTx.add(feeIx);
       } else {
-        // VersionedTransaction: decompile, validate, append fee, recompile
+        // VersionedTransaction: Resolve all Address Lookup Tables, decompile, validate, append fee, recompile
+        const altLookups = deserializedTx.message?.addressTableLookups || [];
+        const altAccounts = [];
+        for (const lookup of altLookups) {
+          let altResp;
+          try {
+            altResp = await connection.getAddressLookupTable(lookup.accountKey);
+          } catch (e) {
+            throw new Error(`[SECURITY] Failed to fetch Address Lookup Table ${lookup.accountKey.toBase58()}: ${e.message}`);
+          }
+          if (!altResp?.value) {
+            throw new Error(`[SECURITY] Address Lookup Table ${lookup.accountKey.toBase58()} not found on chain. Refusing to sign.`);
+          }
+          altAccounts.push(altResp.value);
+        }
+
         try {
-          const decompiled = TransactionMessage.decompile(deserializedTx.message, { addressLookupTableAccounts: [] });
+          const decompiled = TransactionMessage.decompile(deserializedTx.message, { addressLookupTableAccounts: altAccounts });
+          if (decompiled.payerKey && !decompiled.payerKey.equals(publicKey)) {
+            throw new Error(`[SECURITY] Cashback tx fee payer mismatch. Expected ${publicKey.toBase58()}, got ${decompiled.payerKey.toBase58()}. Refusing to sign.`);
+          }
           for (const ix of decompiled.instructions) {
             validateCashbackInstruction(ix);
           }
           decompiled.instructions.push(memoIx);
           if (feeIx) decompiled.instructions.push(feeIx);
-          deserializedTx = new VersionedTransaction(decompiled.compileToV0Message());
+          deserializedTx = new VersionedTransaction(decompiled.compileToV0Message(altAccounts));
         } catch (decompileErr) {
           if (decompileErr.message.startsWith('[SECURITY]')) throw decompileErr;
-          // Any other decompile failure (e.g. unresolved Address Lookup Tables) also means
-          // we cannot run instruction-level validation — refuse to sign rather than fall through.
-          throw new Error('[SECURITY] Cannot verify external cashback transaction integrity. Refusing to sign.');
+          throw new Error(`[SECURITY] Cannot verify external cashback transaction integrity: ${decompileErr.message}. Refusing to sign.`);
         }
       }
 

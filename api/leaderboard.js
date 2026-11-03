@@ -184,7 +184,10 @@ export default async function handler(req, res) {
           try {
             await fetch(`${host}/api/relay_onramp_fee`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-internal-secret': process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+              },
               body: JSON.stringify({ orderId: onramp.order_id, destinationAddress: onramp.user_address })
             });
           } catch (err) {}

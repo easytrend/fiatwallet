@@ -436,10 +436,11 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 
 export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, effectiveSendTransaction, isGuestMode = false, onExitGuest, activeTab }) {
   const { connection } = useConnection();
-  const { publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction } = useWallet();
+  const { publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction, signMessage: adapterSignMessage } = useWallet();
   const publicKey = effectivePublicKey || adapterPublicKey;
   const signTransaction = effectiveSignTransaction || adapterSignTransaction;
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
+  const signMessage = adapterSignMessage;
 
   // ── Env config ──────────────────────────────────────────────────────────
   const [pajApiKey, setPajApiKey] = useState(() => getEffectiveApiKey());
@@ -654,10 +655,22 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         || manualWalletAddress
         || undefined;
 
+      let walletSignature = undefined;
+      const signedMessage = `Authorize FiatWallet onramp forward: ${orderId}`;
+      if (!sessionToken && publicKey && signMessage) {
+        try {
+          const msgBytes = new TextEncoder().encode(signedMessage);
+          const sig = await signMessage(msgBytes);
+          walletSignature = btoa(String.fromCharCode(...sig));
+        } catch (sigErr) {
+          // If signature is declined or not supported, proceed with sessionToken
+        }
+      }
+
       const res = await fetch(getRelayEndpoint('/api/relay_onramp_fee'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, sessionToken, destinationAddress })
+        body: JSON.stringify({ orderId, sessionToken, destinationAddress, walletSignature, signedMessage })
       });
       const result = await res.json();
       if (!res.ok) {
@@ -2845,11 +2858,23 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           || manualWalletAddress
           || undefined;
 
+        let walletSignature = undefined;
+        const signedMessage = `Authorize FiatWallet onramp forward: ${orderId}`;
+        if (!sessionToken && publicKey && signMessage) {
+          try {
+            const msgBytes = new TextEncoder().encode(signedMessage);
+            const sig = await signMessage(msgBytes);
+            walletSignature = btoa(String.fromCharCode(...sig));
+          } catch (sigErr) {
+            // If signature is declined or not supported, proceed with sessionToken
+          }
+        }
+
         // Call backend API to deduct the fee and forward USDC to user
         const res = await fetch(getRelayEndpoint('/api/relay_onramp_fee'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId, sessionToken, destinationAddress })
+          body: JSON.stringify({ orderId, sessionToken, destinationAddress, walletSignature, signedMessage })
         });
         const result = await res.json();
         if (!res.ok) {
