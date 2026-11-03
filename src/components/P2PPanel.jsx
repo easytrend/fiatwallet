@@ -294,6 +294,53 @@ function searchMatchesBank(bankNameStr, rawQuery) {
   return { isMatch: false, score: 0 };
 }
 
+export function findMatchingBankObj(banks, targetBankName) {
+  if (!Array.isArray(banks) || banks.length === 0 || !targetBankName || targetBankName === 'Choose Bank') {
+    return null;
+  }
+  const cleanTarget = String(targetBankName).trim().toLowerCase();
+  const cleanAlpha = cleanTarget.replace(/[^a-z0-9]/g, '');
+
+  // 1. Exact string match on getBankNameString
+  let match = banks.find(b => {
+    const name = getBankNameString(b).toLowerCase().trim();
+    return name === cleanTarget || (cleanAlpha && name.replace(/[^a-z0-9]/g, '') === cleanAlpha);
+  });
+  if (match) return match;
+
+  // 2. Direct code or MongoDB ObjectId match
+  match = banks.find(b => (b.id && String(b.id) === targetBankName) || (b.code && String(b.code) === targetBankName));
+  if (match) return match;
+
+  // 3. Search matches via searchMatchesBank (handles aliases like OPay/Paycom, GTBank/Guaranty, Kuda/Kuda Bank)
+  let bestMatch = null;
+  let bestScore = 0;
+  for (const b of banks) {
+    const bName = getBankNameString(b);
+    const res = searchMatchesBank(bName, targetBankName);
+    if (res.isMatch && res.score > bestScore) {
+      bestScore = res.score;
+      bestMatch = b;
+    }
+    const reverseRes = searchMatchesBank(targetBankName, bName);
+    if (reverseRes.isMatch && reverseRes.score > bestScore) {
+      bestScore = reverseRes.score;
+      bestMatch = b;
+    }
+  }
+  if (bestMatch && bestScore >= 50) return bestMatch;
+
+  // 4. Substring inclusion
+  match = banks.find(b => {
+    const bName = getBankNameString(b).toLowerCase();
+    const bClean = bName.replace(/[^a-z0-9]/g, '');
+    return (bClean && cleanAlpha && (bClean.includes(cleanAlpha) || cleanAlpha.includes(bClean)));
+  });
+  if (match) return match;
+
+  return null;
+}
+
 const getBankMetadata = (bankName) => {
   const clean = bankName.toLowerCase();
   let logo = '';
@@ -1244,21 +1291,46 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Load banks ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isLiveRoute || !effectiveAuthToken) return;
+    const isNgn = selectedCountry?.currency === 'NGN' || selectedCountry?.code === 'NGA';
+    if (!isNgn && !showTagModal) return;
 
+    let isMounted = true;
     setLoadingBanks(true);
-    setApiError(null);
-    getBanks(effectiveAuthToken)
-      .then(list => {
-        if (list?.length > 0) setApiBanks(list);
-        else setApiError('PajCash returned an empty bank list. Please try again later.');
-      })
-      .catch(e => {
+
+    const loadBanks = async () => {
+      try {
+        const auth = effectiveAuthToken || (await getEffectiveApiKeyAsync().catch(() => null)) || getEffectiveApiKey();
+        let list = [];
+        try {
+          if (auth) list = await getBanks(auth);
+        } catch (authErr) {
+          console.warn('[P2PPanel] getBanks with auth failed, trying public endpoint:', authErr.message);
+        }
+
+        // Fallback to public endpoint if auth failed or returned empty
+        if (!list || list.length === 0) {
+          const resp = await fetch('https://api.paj.cash/pub/bank');
+          const data = await resp.json();
+          list = Array.isArray(data) ? data : (data?.data || []);
+        }
+
+        if (isMounted && Array.isArray(list) && list.length > 0) {
+          setApiBanks(list);
+          setApiError(null);
+        } else if (isMounted && (!list || list.length === 0)) {
+          setApiError('PajCash returned an empty bank list. Please try again later.');
+        }
+      } catch (e) {
         console.error('Failed to fetch banks:', e);
-        setApiError(`PajCash API error: ${e.message || 'Connection failed'}.`);
-      })
-      .finally(() => setLoadingBanks(false));
-  }, [isLiveRoute, effectiveAuthToken]);
+        if (isMounted) setApiError(`PajCash API error: ${e.message || 'Connection failed'}.`);
+      } finally {
+        if (isMounted) setLoadingBanks(false);
+      }
+    };
+
+    loadBanks();
+    return () => { isMounted = false; };
+  }, [selectedCountry, effectiveAuthToken, showTagModal]);
 
   // ── Load rates ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1429,8 +1501,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setResolvingName(true);
     setAccountName('');
 
-    const bankObj = apiBanks.find(b => getBankNameString(b) === selectedBank);
-    const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : selectedBank;
+    const bankObj = findMatchingBankObj(apiBanks, selectedBank);
+    const bankId = bankObj ? bankObj.id : selectedBank;
 
     const timer = setTimeout(() => {
       resolveBankAccount(effectiveAuthToken, bankId, trimmed)
@@ -1457,14 +1529,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     return () => { clearTimeout(timer); setResolvingName(false); };
   }, [accountNumber, selectedBank, selectedCountry, apiBanks, effectiveAuthToken, resolvedTagData]);
 
-  // ── Reset on country / mode change ───────────────────────────────────────
+  // ── Reset on country change ───────────────────────────────────────────────
   useEffect(() => {
     clearAllP2PFields();
-    setApiBanks([]);
     if (PAJCASH_API_KEY) {
       setApiError(null);
     }
-  }, [selectedCountry, mode, clearAllP2PFields]);
+  }, [selectedCountry, clearAllP2PFields]);
 
   // ── Clear error on input changes ─────────────────────────────────────────
   useEffect(() => {
@@ -1724,28 +1795,60 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Auto-resolve account name in Tag Registration modal ──────────────────
   useEffect(() => {
-    if (!tagModalAcctNumber || tagModalBank === 'Choose Bank' || !effectiveAuthToken || !showTagModal) {
+    if (!tagModalAcctNumber || tagModalBank === 'Choose Bank' || !showTagModal) {
       return;
     }
     const cleanNum = tagModalAcctNumber.replace(/\D/g, '').trim();
     if (cleanNum.length !== 10) return;
 
-    setTagModalResolving(true);
-    const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
-    const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : tagModalBank;
+    // If an existing tag is already loaded and account number matches, preserve existing account name!
+    if (userTagData && userTagData.account_number === cleanNum && userTagData.account_name && userTagData.account_name !== 'No Bank Match') {
+      if (!tagModalAcctName || tagModalAcctName === 'No Bank Match') {
+        setTagModalAcctName(userTagData.account_name);
+      }
+    }
 
+    const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
+    const bankId = bankObj ? bankObj.id : null;
+
+    if (!bankId) {
+      // If banks are still loading, fetch them immediately
+      if (apiBanks.length === 0) {
+        fetch('https://api.paj.cash/pub/bank')
+          .then(r => r.json())
+          .then(list => {
+            const arr = Array.isArray(list) ? list : (list?.data || []);
+            if (arr.length > 0) setApiBanks(arr);
+          })
+          .catch(() => {});
+      }
+      return;
+    }
+
+    const authToken = sessionToken || effectiveAuthToken;
+    if (!authToken) return;
+
+    setTagModalResolving(true);
     const timer = setTimeout(() => {
-      resolveBankAccount(effectiveAuthToken, bankId, cleanNum)
+      resolveBankAccount(authToken, bankId, cleanNum)
         .then(res => {
-          const name = res?.accountName || res?.name || res?.account_name || '';
-          setTagModalAcctName(name || 'No Bank Match');
+          const name = res?.accountName || res?.name || res?.account_name || res?.data?.account_name || res?.data?.accountName || '';
+          if (name) {
+            setTagModalAcctName(name);
+            setTagModalError(null);
+          } else {
+            setTagModalAcctName(prev => (prev && prev !== 'No Bank Match' ? prev : 'No Bank Match'));
+          }
         })
-        .catch(() => setTagModalAcctName('No Bank Match'))
+        .catch(err => {
+          console.warn('[TagModal] Error resolving bank account:', err.message);
+          setTagModalAcctName(prev => (prev && prev !== 'No Bank Match' ? prev : 'No Bank Match'));
+        })
         .finally(() => setTagModalResolving(false));
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [tagModalAcctNumber, tagModalBank, effectiveAuthToken, showTagModal, apiBanks]);
+  }, [tagModalAcctNumber, tagModalBank, sessionToken, effectiveAuthToken, showTagModal, apiBanks, userTagData]);
 
   // ── Save user's Fiat Tag to Supabase ─────────────────────────────────────
   const handleSaveFiatTag = useCallback(async () => {
@@ -1793,13 +1896,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setTagModalSaving(true);
     setTagModalError(null);
     try {
-      const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
+      const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
+      const canonicalBankName = bankObj ? getBankNameString(bankObj) : tagModalBank;
 
       const registered = await registerFiatTag({
         walletAddress: effectiveWallet,
         tagName: tagModalInput,
-        bankName: tagModalBank,
+        bankName: canonicalBankName,
         bankCode,
         accountNumber: cleanAcct,
         accountName: tagModalAcctName || 'Account Holder',
@@ -2907,7 +3011,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const effectiveAcctName   = isTagOfframp ? (resolvedTagData?.account_name  || '') : (accountName || 'Account Holder');
       const effectiveTag        = isTagOfframp ? (recipientTagInput || (resolvedTagData?.tag_name ? `$${resolvedTagData.tag_name}` : undefined)) : undefined;
 
-      const bankObj = apiBanks.find(b => getBankNameString(b) === effectiveBankName);
+      const bankObj = findMatchingBankObj(apiBanks, effectiveBankName);
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
 
       // Create PajCash off-ramp order using selected token mint
@@ -3122,7 +3226,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const effectiveAcctName   = isTagOfframp ? (resolvedTagData?.account_name  || '') : accountName;
       const effectiveTag        = isTagOfframp ? (recipientTagInput || (resolvedTagData?.tag_name ? `$${resolvedTagData.tag_name}` : undefined)) : undefined;
 
-      const bankObj = apiBanks.find(b => getBankNameString(b) === effectiveBankName);
+      const bankObj = findMatchingBankObj(apiBanks, effectiveBankName);
       const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : effectiveBankName;
 
       // 1. Create paj_ramp off-ramp order

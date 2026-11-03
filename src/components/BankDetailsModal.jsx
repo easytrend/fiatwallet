@@ -90,6 +90,53 @@ function searchMatchesBank(bankNameStr, rawQuery) {
   return { isMatch: false, score: 0 };
 }
 
+export function findMatchingBankObj(banks, targetBankName) {
+  if (!Array.isArray(banks) || banks.length === 0 || !targetBankName || targetBankName === 'Choose Bank') {
+    return null;
+  }
+  const cleanTarget = String(targetBankName).trim().toLowerCase();
+  const cleanAlpha = cleanTarget.replace(/[^a-z0-9]/g, '');
+
+  // 1. Exact string match on getBankNameString
+  let match = banks.find(b => {
+    const name = getBankNameString(b).toLowerCase().trim();
+    return name === cleanTarget || (cleanAlpha && name.replace(/[^a-z0-9]/g, '') === cleanAlpha);
+  });
+  if (match) return match;
+
+  // 2. Direct code or MongoDB ObjectId match
+  match = banks.find(b => (b.id && String(b.id) === targetBankName) || (b.code && String(b.code) === targetBankName));
+  if (match) return match;
+
+  // 3. Search matches via searchMatchesBank (handles aliases like OPay/Paycom, GTBank/Guaranty, Kuda/Kuda Bank)
+  let bestMatch = null;
+  let bestScore = 0;
+  for (const b of banks) {
+    const bName = getBankNameString(b);
+    const res = searchMatchesBank(bName, targetBankName);
+    if (res.isMatch && res.score > bestScore) {
+      bestScore = res.score;
+      bestMatch = b;
+    }
+    const reverseRes = searchMatchesBank(targetBankName, bName);
+    if (reverseRes.isMatch && reverseRes.score > bestScore) {
+      bestScore = reverseRes.score;
+      bestMatch = b;
+    }
+  }
+  if (bestMatch && bestScore >= 50) return bestMatch;
+
+  // 4. Substring inclusion
+  match = banks.find(b => {
+    const bName = getBankNameString(b).toLowerCase();
+    const bClean = bName.replace(/[^a-z0-9]/g, '');
+    return (bClean && cleanAlpha && (bClean.includes(cleanAlpha) || cleanAlpha.includes(bClean)));
+  });
+  if (match) return match;
+
+  return null;
+}
+
 export default function BankDetailsModal({ walletAddress, isGuest = false, onClose, onTagSaved }) {
   const [manualTagModalWallet, setManualTagModalWallet] = useState(() => {
     return walletAddress || (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '';
@@ -298,29 +345,50 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     const cleanNum = tagModalAcctNumber.replace(/\D/g, '').trim();
     if (cleanNum.length !== 10) return;
 
+    // Preserve existing valid account name if editing
+    if (userTagData && userTagData.account_number === cleanNum && userTagData.account_name && userTagData.account_name !== 'No Bank Match') {
+      if (!tagModalAcctName || tagModalAcctName === 'No Bank Match') {
+        setTagModalAcctName(userTagData.account_name);
+      }
+    }
+
     if (sessionLoading) return;
 
     const effectiveAuth = sessionToken || PAJCASH_API_KEY || getEffectiveApiKey();
 
+    const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
+    const bankId = bankObj ? bankObj.id : null;
+
+    if (!bankId) {
+      if (apiBanks.length === 0) {
+        fetch('https://api.paj.cash/pub/bank')
+          .then(r => r.json())
+          .then(arr => {
+            const list = Array.isArray(arr) ? arr : (arr?.data || []);
+            if (list.length > 0) setApiBanks(list);
+          })
+          .catch(() => {});
+      }
+      return;
+    }
+
     setTagModalResolving(true);
     setTagModalError('');
-
-    const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
-    const bankId = bankObj ? (bankObj.id || bankObj.code || bankObj.name) : tagModalBank;
 
     const timer = setTimeout(() => {
       resolveBankAccount(effectiveAuth, bankId, cleanNum)
         .then(res => {
           const name = res?.accountName || res?.name || res?.account_name || res?.data?.account_name || res?.data?.accountName || '';
-          setTagModalAcctName(name || 'No Bank Match');
           if (name) {
+            setTagModalAcctName(name);
             setTagModalError('');
           } else {
+            setTagModalAcctName(prev => (prev && prev !== 'No Bank Match' ? prev : 'No Bank Match'));
             setTagModalError('Could not verify account name. Please check your bank and account number.');
           }
         })
         .catch(err => {
-          setTagModalAcctName('No Bank Match');
+          setTagModalAcctName(prev => (prev && prev !== 'No Bank Match' ? prev : 'No Bank Match'));
           const msg = err?.message || 'Error resolving bank account.';
           setTagModalError(msg);
           if (
@@ -340,7 +408,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [tagModalAcctNumber, tagModalBank, sessionToken, sessionLoading, apiBanks, effectiveWallet]);
+  }, [tagModalAcctNumber, tagModalBank, sessionToken, sessionLoading, apiBanks, effectiveWallet, userTagData]);
 
   // 5. Handle inline email OTP initiation
   const handleInitiateEmail = async () => {
@@ -459,13 +527,14 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     setTagModalSuccess('');
 
     try {
-      const bankObj = apiBanks.find(b => getBankNameString(b) === tagModalBank);
+      const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
+      const canonicalBankName = bankObj ? getBankNameString(bankObj) : tagModalBank;
 
       const registered = await registerFiatTag({
         walletAddress: effectiveWallet,
         tagName: `$${cleanTag}`,
-        bankName: tagModalBank,
+        bankName: canonicalBankName,
         bankCode,
         accountNumber: cleanAcct,
         accountName: tagModalAcctName,
