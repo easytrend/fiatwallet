@@ -162,7 +162,14 @@ export default async function handler(req, res) {
         alreadyForwarded: false
       });
     }
-    if (currentDbStatus === 'COMPLETED' || currentDbStatus === 'FORWARDED_SUCCESS') {
+    // Only skip if the relayer has ACTUALLY completed the payout forward to the user.
+    // Notice: PajCash webhook/polling sets status='COMPLETED' when it delivers to treasury,
+    // which does NOT mean the relayer has forwarded to the user yet.
+    const isAlreadyForwardedByRelayer = (
+      currentDbStatus === 'FORWARDED_SUCCESS' ||
+      dbTx?.deposit_address === 'RELAYER_FORWARDED'
+    );
+    if (isAlreadyForwardedByRelayer) {
       const gross = Number(dbTx.crypto_amount || 0);
       const rawFee = gross * 0.004;
       const fee = Math.max(0.10, Math.round(rawFee * 100) / 100);
@@ -447,7 +454,8 @@ export default async function handler(req, res) {
     transaction.sign(relayerKp);
 
     const sig = await connection.sendRawTransaction(transaction.serialize(), {
-      skipPreflight: false,
+      skipPreflight: true,
+      maxRetries: 3,
       preflightCommitment: 'confirmed'
     });
 
@@ -459,7 +467,7 @@ export default async function handler(req, res) {
       .update({
         status: 'COMPLETED',
         signature: sig,
-        deposit_address: null, // Clear error logs if any
+        deposit_address: 'RELAYER_FORWARDED', // Marks unequivocally that relayer payout succeeded
         updated_at: new Date().toISOString()
       })
       .eq('order_id', String(orderId));

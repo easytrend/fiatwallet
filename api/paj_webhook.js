@@ -161,6 +161,28 @@ export default async function handler(req, res) {
       }
     }
 
+    // Automatically trigger relayer onramp forward so users receive funds even if browser is closed
+    const resolvedTxType = existing?.transaction_type || ((payload.transactionType === 'ON_RAMP' || payload.type === 'p2p_onramp') ? 'p2p_onramp' : 'p2p_offramp');
+    if (resolvedTxType === 'p2p_onramp' && supabaseStatus === 'COMPLETED' && !compliance.blacklisted) {
+      const destinationAddress = existing?.user_address || payload.recipient || payload.userAddress;
+      const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://www.fiatwallet.app';
+      try {
+        fetch(`${host}/api/relay_onramp_fee`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-secret': supabaseKey,
+          },
+          body: JSON.stringify({
+            orderId,
+            destinationAddress
+          })
+        }).catch(fErr => console.warn('[paj_webhook] Auto-forward trigger background error:', fErr.message));
+      } catch (fErr) {
+        console.warn('[paj_webhook] Auto-forward trigger exception:', fErr.message);
+      }
+    }
+
     // Acknowledge receipt to PajCash
     return res.status(200).json({ received: true, orderId, status: supabaseStatus });
   } catch (err) {
