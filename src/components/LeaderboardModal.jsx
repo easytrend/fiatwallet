@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
+import WeeklyRewardClaimSlider from './WeeklyRewardClaimSlider';
 
 export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpenReferralLeaderboard }) {
   const [activeTab, setActiveTab] = useState('leaderboard'); // 'leaderboard' | 'referrals'
@@ -505,6 +506,17 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     Resets in {formatResetCountdown(data.week_info.resets_in_ms)} (Sunday 00:00 UTC)
                   </div>
                 </div>
+              )}
+
+              {/* Weekly Pullmeme ($PMEME) Reward Claim Slider */}
+              {timeframe === 'week' && (
+                <WeeklyRewardClaimSlider
+                  walletAddress={walletAddress}
+                  rank={userCard?.rank || null}
+                  points={userCard?.total_points || 0}
+                  epochId={data?.week_info?.start ? `week_${data.week_info.start}` : 'current_week'}
+                  rewardAmount={10000}
+                />
               )}
 
               {/* Top 3 Podium (2nd on Left, 1st in Center, 3rd on Right) */}
