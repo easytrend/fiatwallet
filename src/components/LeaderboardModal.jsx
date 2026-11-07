@@ -331,7 +331,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                       <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
                         {timeframe === 'week' ? 'Your Weekly Rank' : timeframe === 'month' ? 'Your Monthly Rank' : 'Your All-Time Rank'}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '24px', fontWeight: '800', color: userCard.rank ? 'var(--lime, #a3e635)' : '#94a3b8' }}>
                           {userCard.rank ? `#${userCard.rank}` : 'Unranked'}
                         </span>
@@ -345,6 +345,15 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                         }}>
                           {userCard.tier} Tier
                         </span>
+                        {/* Weekly Pullmeme ($PMEME) Claim Button */}
+                        {timeframe === 'week' && (
+                          <WeeklyRewardClaimSlider
+                            walletAddress={walletAddress}
+                            rank={userCard.rank || null}
+                            points={userCard.total_points || 0}
+                            epochId={data?.week_info?.start ? `week_${data.week_info.start}` : 'current_week'}
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -506,17 +515,6 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     Resets in {formatResetCountdown(data.week_info.resets_in_ms)} (Sunday 00:00 UTC)
                   </div>
                 </div>
-              )}
-
-              {/* Weekly Pullmeme ($PMEME) Reward Claim Slider */}
-              {timeframe === 'week' && (
-                <WeeklyRewardClaimSlider
-                  walletAddress={walletAddress}
-                  rank={userCard?.rank || null}
-                  points={userCard?.total_points || 0}
-                  epochId={data?.week_info?.start ? `week_${data.week_info.start}` : 'current_week'}
-                  rewardAmount={10000}
-                />
               )}
 
               {/* Top 3 Podium (2nd on Left, 1st in Center, 3rd on Right) */}
