@@ -2,5 +2,10 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "installCommand": "npm install", "cleanUrls": true
+  "installCommand": "npm install",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/api/webhook", "destination": "/api/paj_webhook" },
+    { "source": "/api/leaderboard_claim", "destination": "/api/leaderboard?action=claim" }
+  ]
 }

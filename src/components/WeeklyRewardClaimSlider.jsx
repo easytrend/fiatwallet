@@ -113,7 +113,7 @@ export default function WeeklyRewardClaimSlider({
 
     try {
       // 1. Request partially-signed claim transaction from backend
-      const res = await fetch('/api/leaderboard_claim', {
+      const res = await fetch('/api/leaderboard?action=claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

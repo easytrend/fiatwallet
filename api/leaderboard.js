@@ -18,6 +18,48 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  Transaction,
+  TransactionInstruction,
+  ComputeBudgetProgram,
+} from '@solana/web3.js';
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
+} from '@solana/spl-token';
+
+const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function base58Decode(str) {
+  if (!str || typeof str !== 'string') return new Uint8Array(0);
+  const bytes = [0];
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i];
+    const value = ALPHABET.indexOf(c);
+    if (value === -1) throw new Error(`Invalid base58 character '${c}'`);
+    for (let j = 0; j < bytes.length; j++) {
+      bytes[j] *= 58;
+    }
+    bytes[0] += value;
+    let carry = 0;
+    for (let j = 0; j < bytes.length; j++) {
+      bytes[j] += carry;
+      carry = bytes[j] >> 8;
+      bytes[j] &= 0xff;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (let i = 0; i < str.length && str[i] === '1'; i++) {
+    bytes.push(0);
+  }
+  return new Uint8Array(bytes.reverse());
+}
 
 function getTier(points) {
   const pts = Math.floor(Number(points) || 0);
@@ -61,17 +103,23 @@ export function getStartOfMonth(now = new Date()) {
 export default async function handler(req, res) {
   // CORS & Edge Caching headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-internal-secret');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
+  // ── Handle Weekly Reward Claims ───────────────────────────────────────────
+  if (req.method === 'POST' || req.query.action === 'claim') {
+    return handleLeaderboardClaim(req, res);
+  }
+
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
 
   const userAddress = req.query.address ? String(req.query.address).trim() : null;
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
@@ -464,5 +512,121 @@ export default async function handler(req, res) {
       success: false,
       error: err.message || 'Internal server error calculating leaderboard',
     });
+  }
+}
+
+/**
+ * Co-signed weekly Pullmeme ($PMEME) reward claim handler
+ */
+async function handleLeaderboardClaim(req, res) {
+  try {
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch (e) { return res.status(400).json({ error: 'Invalid JSON body' }); }
+    } else if (Buffer.isBuffer(body)) {
+      try { body = JSON.parse(body.toString('utf-8')); } catch (e) { return res.status(400).json({ error: 'Malformed JSON payload' }); }
+    }
+
+    const { walletAddress, epochId = 'current_week', tokenMint: requestedMint } = body || {};
+
+    if (!walletAddress) {
+      return res.status(400).json({ error: 'Missing walletAddress' });
+    }
+
+    let userPublicKey;
+    try {
+      userPublicKey = new PublicKey(walletAddress.trim());
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid Solana wallet address' });
+    }
+
+    const PMEME_MINT_STR = '8UJhknp5VGatZD9SRop2b8eeBg1ZGJLMT1Gzmf2cpump';
+    const rewardMint = new PublicKey(requestedMint || PMEME_MINT_STR);
+    const tokenDecimals = 6;
+    const defaultRewardAmount = 10000;
+
+    const relayerPrivKey = process.env.RELAYER_PRIVATE_KEY;
+    if (!relayerPrivKey) {
+      return res.status(200).json({
+        success: true,
+        mock: true,
+        message: 'Relayer key not configured. Mock claim successful.',
+        rewardAmount: defaultRewardAmount,
+        tokenMint: PMEME_MINT_STR,
+      });
+    }
+
+    let relayerKp;
+    try {
+      if (relayerPrivKey.trim().startsWith('[')) {
+        relayerKp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(relayerPrivKey.trim())));
+      } else {
+        relayerKp = Keypair.fromSecretKey(base58Decode(relayerPrivKey.trim()));
+      }
+    } catch (err) {
+      return res.status(500).json({ error: 'Invalid relayer key configuration' });
+    }
+
+    const rpcUrl = process.env.HELIUS_RPC_URL || process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    const relayerATA = getAssociatedTokenAddressSync(rewardMint, relayerKp.publicKey);
+    const userATA = getAssociatedTokenAddressSync(rewardMint, userPublicKey);
+
+    const transaction = new Transaction();
+    transaction.add(
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50000 })
+    );
+
+    // Instruction A: Idempotent ATA creation (User is payer of rent)
+    transaction.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        userPublicKey,
+        userATA,
+        userPublicKey,
+        rewardMint
+      )
+    );
+
+    // Instruction B: SPL Token transfer from Relayer to User
+    const units = BigInt(Math.round(defaultRewardAmount * (10 ** tokenDecimals)));
+    transaction.add(
+      createTransferCheckedInstruction(
+        relayerATA,
+        rewardMint,
+        userATA,
+        relayerKp.publicKey,
+        units,
+        tokenDecimals
+      )
+    );
+
+    // Instruction C: Memo
+    const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+    transaction.add(
+      new TransactionInstruction({
+        keys: [],
+        programId: MEMO_PROGRAM_ID,
+        data: Buffer.from(`fiatwallet:reward-claim:${epochId}:${walletAddress}`, 'utf-8'),
+      })
+    );
+
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = userPublicKey;
+
+    transaction.partialSign(relayerKp);
+
+    const serialized = transaction.serialize({ requireAllSignatures: false }).toString('base64');
+
+    return res.status(200).json({
+      transaction: serialized,
+      rewardAmount: defaultRewardAmount,
+      tokenSymbol: 'PMEME',
+      tokenMint: PMEME_MINT_STR,
+    });
+  } catch (error) {
+    console.error('[leaderboard_claim] Error:', error);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }
