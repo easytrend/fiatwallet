@@ -60,9 +60,9 @@ export default function WeeklyRewardClaimSlider({
     if (containerRef.current && knobRef.current) {
       const cWidth = containerRef.current.offsetWidth;
       const kWidth = knobRef.current.offsetWidth;
-      return Math.max(0, cWidth - kWidth - 6); // 3px padding
+      return Math.max(0, cWidth - kWidth - 3); // 1.5px padding each side
     }
-    return 95; // fallback
+    return 68; // fallback for ~92px width
   }, []);
 
   const handlePointerDown = (e) => {
@@ -148,8 +148,8 @@ export default function WeeklyRewardClaimSlider({
     if (!isDragging || isClaimed || isClaiming) return;
     setIsDragging(false);
 
-    // If dragged >= 65% of the pill, complete the claim
-    if (dragProgress >= 0.65) {
+    // If dragged >= 60% of the pill, complete the claim
+    if (dragProgress >= 0.6) {
       setDragProgress(1);
       handleClaimExecution();
     } else {
@@ -173,7 +173,7 @@ export default function WeeklyRewardClaimSlider({
   }, [isDragging, handlePointerMove, handlePointerUp]);
 
   const maxSlide = calculateMaxSlide();
-  const knobX = isClaimed ? maxSlide : dragProgress * maxSlide;
+  const knobSlideX = dragProgress * maxSlide;
 
   return (
     <div
@@ -182,21 +182,20 @@ export default function WeeklyRewardClaimSlider({
         position: 'relative',
         display: 'inline-flex',
         alignItems: 'center',
-        width: isClaimed ? '138px' : '130px',
-        height: '32px',
+        width: isClaimed ? '102px' : '92px',
+        height: '24px',
         background: isClaimed
           ? 'linear-gradient(90deg, #ea580c 0%, #f97316 100%)'
           : 'linear-gradient(90deg, #f97316 0%, #fb923c 50%, #f97316 100%)',
-        border: '2.5px solid #000000',
+        border: '1.5px solid #000000',
         borderRadius: '9999px',
         overflow: 'hidden',
         cursor: isClaimed ? 'default' : (isClaiming ? 'wait' : 'grab'),
         userSelect: 'none',
         touchAction: 'none',
         boxShadow: isClaimed
-          ? '0 2px 8px rgba(234, 88, 12, 0.4)'
-          : '0 2px 10px rgba(249, 115, 22, 0.55)',
-        marginLeft: '6px',
+          ? '0 2px 6px rgba(234, 88, 12, 0.35)'
+          : '0 2px 8px rgba(249, 115, 22, 0.5)',
         flexShrink: 0,
         transition: 'width 0.2s ease',
       }}
@@ -211,7 +210,7 @@ export default function WeeklyRewardClaimSlider({
       title={isClaimed ? 'Reward claimed for this week ✓' : 'Slide or tap to claim weekly $PMEME reward'}
     >
       {/* Track fill during drag */}
-      {!isClaimed && !isClaiming && (
+      {!isClaimed && !isClaiming && dragProgress > 0 && (
         <div style={{
           position: 'absolute',
           left: 0,
@@ -231,40 +230,40 @@ export default function WeeklyRewardClaimSlider({
         display: 'flex',
         alignItems: 'center',
         justifyContent: isClaimed ? 'flex-start' : 'flex-end',
-        paddingLeft: isClaimed ? '12px' : '0',
-        paddingRight: isClaimed ? '32px' : '14px',
+        paddingLeft: isClaimed ? '9px' : '0',
+        paddingRight: isClaimed ? '24px' : '9px',
         pointerEvents: 'none',
         zIndex: 1,
       }}>
         {isClaiming ? (
           <span style={{
-            fontSize: '11px',
+            fontSize: '9px',
             fontWeight: '900',
             color: '#ffffff',
-            letterSpacing: '0.04em',
+            letterSpacing: '0.02em',
             textTransform: 'uppercase',
           }}>
             CLAIMING...
           </span>
         ) : isClaimed ? (
           <span style={{
-            fontSize: '13.5px',
+            fontSize: '10.5px',
             fontWeight: '900',
             color: '#ffffff',
-            letterSpacing: '0.04em',
+            letterSpacing: '0.03em',
             textTransform: 'uppercase',
-            textShadow: '0 1px 3px rgba(0, 0, 0, 0.4)',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
           }}>
             CLAIMED
           </span>
         ) : (
           <span style={{
-            fontSize: '14.5px',
+            fontSize: '11.5px',
             fontWeight: '900',
             color: '#ffffff',
-            letterSpacing: '0.05em',
+            letterSpacing: '0.04em',
             textTransform: 'uppercase',
-            textShadow: '0 1px 3px rgba(0, 0, 0, 0.4)',
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
           }}>
             CLAIM
           </span>
@@ -276,20 +275,21 @@ export default function WeeklyRewardClaimSlider({
         ref={knobRef}
         style={{
           position: 'absolute',
-          top: '2px',
-          left: `${knobX + 2}px`,
-          width: '24px',
-          height: '24px',
+          top: '1px',
+          left: isClaimed ? undefined : `${knobSlideX + 1.5}px`,
+          right: isClaimed ? '1.5px' : undefined,
+          width: '19px',
+          height: '19px',
           borderRadius: '50%',
           background: '#000000',
           border: '1.5px solid #ffffff',
-          boxShadow: '0 0 6px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(0, 0, 0, 0.5)',
+          boxShadow: '0 0 4px rgba(255, 255, 255, 0.9), 0 1px 3px rgba(0, 0, 0, 0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 2,
           pointerEvents: 'none',
-          transition: isDragging ? 'none' : 'left 0.22s ease-out',
+          transition: isDragging ? 'none' : 'all 0.22s ease-out',
         }}
       >
         <img

@@ -331,17 +331,32 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                       <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
                         {timeframe === 'week' ? 'Your Weekly Rank' : timeframe === 'month' ? 'Your Monthly Rank' : 'Your All-Time Rank'}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '24px', fontWeight: '800', color: userCard.rank ? 'var(--lime, #a3e635)' : '#94a3b8' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'nowrap' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          fontSize: '24px',
+                          fontWeight: '800',
+                          lineHeight: 1,
+                          color: userCard.rank ? 'var(--lime, #a3e635)' : '#94a3b8',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}>
                           {userCard.rank ? `#${userCard.rank}` : 'Unranked'}
                         </span>
                         <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          height: '24px',
                           fontSize: '11px',
                           fontWeight: '700',
+                          lineHeight: 1,
                           color: getTierColor(userCard.tier),
                           background: 'rgba(255, 255, 255, 0.05)',
-                          padding: '2px 8px',
+                          padding: '0 8px',
                           borderRadius: '6px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
                         }}>
                           {userCard.tier} Tier
                         </span>
@@ -357,11 +372,11 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', fontWeight: '600' }}>
                         Total Points
                       </div>
-                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'white', marginTop: '2px' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'white', marginTop: '2px', lineHeight: 1 }}>
                         {Math.floor(Number(userCard.total_points) || 0).toLocaleString()}
                       </div>
                     </div>
