@@ -203,7 +203,40 @@ export default async function handler(req, res) {
       }
     }
 
-    const hasSessionToken = Boolean(sessionToken && String(sessionToken).trim());
+    // Auto-resolve sessionToken from paj_sessions if not explicitly supplied in request
+    let effectiveSessionToken = (sessionToken && String(sessionToken).trim()) ? String(sessionToken).trim() : null;
+    if (!effectiveSessionToken && userAddressStr) {
+      try {
+        const { data: sessionRows } = await supabase
+          .from('paj_sessions')
+          .select('session_token')
+          .eq('wallet_address', userAddressStr)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (sessionRows && sessionRows[0]?.session_token) {
+          effectiveSessionToken = sessionRows[0].session_token;
+        }
+      } catch (e) {
+        console.warn('[relay_onramp_fee] Could not resolve session_token by wallet:', e.message);
+      }
+    }
+    if (!effectiveSessionToken && dbTx.user_email) {
+      try {
+        const { data: sessionRows } = await supabase
+          .from('paj_sessions')
+          .select('session_token')
+          .eq('email', dbTx.user_email)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (sessionRows && sessionRows[0]?.session_token) {
+          effectiveSessionToken = sessionRows[0].session_token;
+        }
+      } catch (e) {
+        console.warn('[relay_onramp_fee] Could not resolve session_token by email:', e.message);
+      }
+    }
+
+    const hasSessionToken = Boolean(effectiveSessionToken);
 
     if (!isWalletOwner && !hasSessionToken && !isInternalService) {
       return res.status(401).json({
@@ -211,7 +244,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const authToken = sessionToken || process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
+    const authToken = effectiveSessionToken || process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
 
     // 4. Query PajCash to verify order details & status
     let pajTx = null;
@@ -320,7 +353,8 @@ export default async function handler(req, res) {
     // If the row was already FORWARDED_SUCCESS or FORWARDING, the update affects
     // 0 rows and we return early.
     // ──────────────────────────────────────────────────────────────────────────
-    // Atomically claim this order for forwarding — only succeeds if status is NOT already FORWARDING, FORWARDED_SUCCESS, or COMPLETED
+    // Atomically claim this order for forwarding — only succeeds if deposit_address is NOT already 'RELAYER_FORWARDED'
+    // and status is NOT already 'FORWARDING' or 'FORWARDED_SUCCESS'
     const { data: claimResult, error: claimError } = await supabase
       .from('p2p_transactions')
       .update({
@@ -330,15 +364,30 @@ export default async function handler(req, res) {
       .eq('order_id', String(orderId))
       .neq('status', 'FORWARDING')
       .neq('status', 'FORWARDED_SUCCESS')
-      .neq('status', 'COMPLETED')
+      .or('deposit_address.is.null,deposit_address.neq.RELAYER_FORWARDED')
       .select('id');
 
     if (claimError) {
       throw new Error(`Failed to claim order for forwarding: ${claimError.message}`);
     }
     if (!claimResult || claimResult.length === 0) {
-      // Another concurrent request already claimed this order
-      return res.status(200).json({ error: 'Order is already being forwarded or was already forwarded.', alreadyForwarded: true });
+      // Check if it was already successfully forwarded
+      const { data: latestRow } = await supabase
+        .from('p2p_transactions')
+        .select('status, deposit_address, signature')
+        .eq('order_id', String(orderId))
+        .maybeSingle();
+
+      if (latestRow?.deposit_address === 'RELAYER_FORWARDED' || latestRow?.status === 'FORWARDED_SUCCESS') {
+        return res.status(200).json({ signature: latestRow.signature, alreadyForwarded: true });
+      }
+
+      // If status is FORWARDING but set >90s ago, break stale lock and proceed
+      const isStaleLock = latestRow?.status === 'FORWARDING';
+      if (!isStaleLock) {
+        return res.status(200).json({ error: 'Order is already being forwarded or was already forwarded.', alreadyForwarded: true });
+      }
+      console.warn(`[relay_onramp_fee] Stale FORWARDING lock detected for order ${orderId}. Overriding lock.`);
     }
 
     // 5. Build forwarding transaction

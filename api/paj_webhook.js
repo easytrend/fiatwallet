@@ -165,7 +165,24 @@ export default async function handler(req, res) {
     const resolvedTxType = existing?.transaction_type || ((payload.transactionType === 'ON_RAMP' || payload.type === 'p2p_onramp') ? 'p2p_onramp' : 'p2p_offramp');
     if (resolvedTxType === 'p2p_onramp' && supabaseStatus === 'COMPLETED' && !compliance.blacklisted) {
       const destinationAddress = existing?.user_address || payload.recipient || payload.userAddress;
-      const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://www.fiatwallet.app';
+
+      // Auto-resolve sessionToken from paj_sessions to pass along
+      let sessionToken = null;
+      if (destinationAddress) {
+        try {
+          const { data: sRows } = await supabase
+            .from('paj_sessions')
+            .select('session_token')
+            .eq('wallet_address', destinationAddress)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          if (sRows && sRows[0]?.session_token) {
+            sessionToken = sRows[0].session_token;
+          }
+        } catch (sErr) {}
+      }
+
+      const host = 'https://www.fiatwallet.app';
       try {
         fetch(`${host}/api/relay_onramp_fee`, {
           method: 'POST',
@@ -175,7 +192,8 @@ export default async function handler(req, res) {
           },
           body: JSON.stringify({
             orderId,
-            destinationAddress
+            destinationAddress,
+            sessionToken
           })
         }).catch(fErr => console.warn('[paj_webhook] Auto-forward trigger background error:', fErr.message));
       } catch (fErr) {
