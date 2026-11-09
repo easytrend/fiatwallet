@@ -587,8 +587,8 @@ export default function ReceiveModal({ address, onClose }) {
                 </div>
 
                 {/* Instruction with Minimum Deposit highlighted */}
-                <div style={{ fontSize: '11px', color: 'var(--text2)', marginBottom: '8px', lineHeight: '1.4' }}>
-                  Send at least <strong style={{ color: '#fff' }}>{selectedOriginToken?.min} {selectedOriginToken?.symbol}</strong> on <strong>{selectedChain.name}</strong> to:
+                <div style={{ fontSize: '11px', color: 'var(--text2)', marginBottom: '8px', lineHeight: '1.45' }}>
+                  Send <strong style={{ color: '#fff' }}>any amount ≥ {selectedOriginToken?.min} {selectedOriginToken?.symbol}</strong> on <strong>{selectedChain.name}</strong> to:
                 </div>
 
                 {/* Persistent Deposit Address — Shortened with inline Copy Icon */}
@@ -664,6 +664,13 @@ export default function ReceiveModal({ address, onClose }) {
                         <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Min Deposit Required:</span>
                         <span style={{ color: '#fff', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
                           {minDepositVal}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Deposit Flexibility:</span>
+                        <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>
+                          Any amount ≥ min is 100% bridged
                         </span>
                       </div>
 

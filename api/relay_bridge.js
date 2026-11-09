@@ -263,15 +263,20 @@ export default async function handler(req, res) {
 
     // 6. Update database record to COMPLETED in dedicated bridge_transactions table
     if (supabase) {
+      const updatePayload = {
+        status: 'COMPLETED',
+        signature: sig,
+        net_amount: netAmount,
+        protocol_fee: platformFee,
+        updated_at: new Date().toISOString(),
+      };
+      if (grossAmount) updatePayload.gross_amount = grossAmount;
+      const actualDeposited = parseFloat(statusData.swapDetails?.depositedAmountFormatted || '0');
+      if (actualDeposited > 0) updatePayload.deposit_amount = actualDeposited;
+
       await supabase
         .from('bridge_transactions')
-        .update({
-          status: 'COMPLETED',
-          signature: sig,
-          net_amount: netAmount,
-          protocol_fee: platformFee,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('deposit_address', String(depositAddress));
     }
 

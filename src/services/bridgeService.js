@@ -407,6 +407,11 @@ export function getCachedBridgeDeposit(userAddress, chain, tokenSymbol, refundTo
     const parsed = JSON.parse(raw);
     const ageHours = (Date.now() - (parsed.createdAt || 0)) / (1000 * 60 * 60);
     if (ageHours < 48 && parsed.depositAddress && parsed.status !== 'COMPLETED') {
+      // Must be a FLEX_INPUT deposit so that users are never stuck with old EXACT_INPUT addresses
+      if (parsed.swapType !== 'FLEX_INPUT') {
+        localStorage.removeItem(cacheKey);
+        return null;
+      }
       // Backwards-compatible hydration for fees and minimum guaranteed net receive
       if (!parsed.nearFee) {
         parsed.nearFee = '0.27';
@@ -447,7 +452,7 @@ export async function createBridgeDeposit({
 
   const body = {
     dry: false,
-    swapType: 'EXACT_INPUT',
+    swapType: 'FLEX_INPUT',
     slippageTolerance: 100, // 1%
     originAsset,
     depositType: 'ORIGIN_CHAIN',
@@ -538,6 +543,7 @@ export async function createBridgeDeposit({
 
   return {
     depositAddress,
+    swapType: 'FLEX_INPUT',
     timeEstimate: quote.timeEstimate || 25,
     grossOut: rawOut,
     protocolFee,
@@ -588,6 +594,7 @@ export async function getOrCreateBridgeDeposit({
 
   const record = {
     ...deposit,
+    swapType: 'FLEX_INPUT',
     createdAt: Date.now(),
     chain,
     tokenSymbol,
