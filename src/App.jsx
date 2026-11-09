@@ -1140,6 +1140,9 @@ export default function App() {
         if (document.visibilityState === 'visible') {
           fetchBalances();
           reconcilePendingP2PTransactions(pubkeyStr).catch(() => []);
+          sweepPendingBridgesForUser(pubkeyStr).then(swept => {
+            if (swept && swept.length > 0) fetchBalances();
+          }).catch(() => {});
         }
       };
       window.addEventListener('focus', handleFocus);

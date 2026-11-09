@@ -726,6 +726,28 @@ export async function sweepPendingBridgesForUser(userAddress) {
     }
   } catch (_) {}
 
+  // Also sweep pending deposits recorded in Supabase (cross-device & offline recovery)
+  try {
+    const dbRows = await getBridgeTransactionsByUser(userAddress);
+    if (Array.isArray(dbRows)) {
+      for (const row of dbRows) {
+        if (row?.deposit_address && row.status === 'PENDING') {
+          const alreadyInList = pendingItems.some(p => p.item.depositAddress === row.deposit_address);
+          if (!alreadyInList) {
+            pendingItems.push({
+              key: null,
+              item: {
+                depositAddress: row.deposit_address,
+                destinationSymbol: row.destination_symbol || 'USDT',
+                status: 'PENDING',
+              },
+            });
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
   for (const { key, item } of pendingItems) {
     try {
       const statusRes = await checkBridgeStatus(item.depositAddress);
@@ -740,9 +762,11 @@ export async function sweepPendingBridgesForUser(userAddress) {
         if (forwardRes?.signature || forwardRes?.alreadyForwarded) {
           item.status = 'COMPLETED';
           item.signature = forwardRes.signature;
-          try {
-            localStorage.setItem(key, JSON.stringify(item));
-          } catch (_) {}
+          if (key) {
+            try {
+              localStorage.setItem(key, JSON.stringify(item));
+            } catch (_) {}
+          }
           updateBridgeTransactionStatus({
             depositAddress: item.depositAddress,
             status: 'COMPLETED',
@@ -753,9 +777,11 @@ export async function sweepPendingBridgesForUser(userAddress) {
         }
       } else if (status === 'FAILED' || status === 'REFUNDED') {
         item.status = status;
-        try {
-          localStorage.setItem(key, JSON.stringify(item));
-        } catch (_) {}
+        if (key) {
+          try {
+            localStorage.setItem(key, JSON.stringify(item));
+          } catch (_) {}
+        }
         updateBridgeTransactionStatus({
           depositAddress: item.depositAddress,
           status,

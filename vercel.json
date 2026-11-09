@@ -7,5 +7,11 @@
   "rewrites": [
     { "source": "/api/webhook", "destination": "/api/paj_webhook" },
     { "source": "/api/leaderboard_claim", "destination": "/api/leaderboard?action=claim" }
+  ],
+  "crons": [
+    {
+      "path": "/api/relay_bridge?sweep=1",
+      "schedule": "0 * * * *"
+    }
   ]
 }
