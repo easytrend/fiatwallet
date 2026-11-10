@@ -1,6 +1,6 @@
 # FiatWallet P2P Gateway
 
-FiatWallet is an onchain P2P gateway, cross-chain deposit bridge, and non-custodial wallet infrastructure built for the Solana ecosystem. It enables zero-KYC fiat-to-crypto and crypto-to-fiat settlements, multi-chain bridge deposits from EVM networks, and instant decentralized finance operations.
+FiatWallet is an onchain P2P gateway, cross-chain deposit bridge, and non-custodial wallet infrastructure built for the Solana ecosystem. It enables zero-KYC fiat-to-crypto and crypto-to-fiat settlements, multi-chain bridge deposits from Bitcoin (BTC), Tron (TRX/USDT), and EVM networks (Base, Arbitrum, Polygon, Ethereum, BNB Chain) into Solana, and instant decentralized finance operations.
 
 ---
 
@@ -47,16 +47,19 @@ FiatWallet is an onchain P2P gateway, cross-chain deposit bridge, and non-custod
 • **Offramp (Sell Crypto)**: Sell Solana tokens for local currency deposited directly into any verified domestic bank account.
 • **Gasless Relayer**: Supported offramps and forwarding transactions utilize relayer fee sponsorship so users are never stranded without SOL for gas.
 
-### 2. Cross-Chain Bridge & Multi-Chain Deposits
-• **Multi-Chain Funding**: Deposit assets directly from EVM networks into Solana via NEAR Intents (Chain Defuser).
-• **Supported Networks & Minimums**:
-  - Base: Minimum $1 (USDC)
-  - Arbitrum: Minimum $1 (USDC)
-  - Polygon: Minimum $1 (USDC / USDT)
-  - Ethereum Mainnet: Minimum $10 (USDC / USDT) or 0.005 ETH
-• **Flexible Input (`FLEX_INPUT`)**: Any deposit amount $\ge$ the network minimum is 100% bridged to the destination Solana address without fixed-size slippage rejections.
-• **Offline Recovery Sweeper**: Built-in background sweeping (`api/relay_bridge.js` + client focus/interval triggers) detects onchain delivery and completes token forwarding even if the user closed the window or lost connectivity.
-• **Automated Refunds**: Failed or expired bridge deposits automatically route refunds to the sender address or configured treasury fallback.
+### 2. Cross-Chain Bridge & Multi-Chain Deposits (NEAR Intents / Chain Defuser)
+• **Universal Chain Abstraction**: Deposit native assets directly from non-EVM networks (Bitcoin, Tron) and major EVM chains straight into Solana without wrapped tokens or bridging friction.
+• **Supported Networks & Assets**:
+  - **Bitcoin (BTC)**: Native BTC deposits (minimum: 0.0002 BTC) directly converted to Solana USDT/USDC/SOL.
+  - **Tron (TRX & USDT-TRC20)**: Native TRON and TRC-20 USDT deposits (minimum: 105 USDT / 350 TRX) directly delivered to Solana.
+  - **Base**: Minimum $1 (USDC) or 0.0005 ETH
+  - **Arbitrum**: Minimum $1 (USDC) or 0.0005 ETH
+  - **Polygon**: Minimum $1 (USDC / USDT)
+  - **Ethereum Mainnet**: Minimum $10 (USDC / USDT) or 0.005 ETH
+  - **BNB Chain**: Supported BEP-20 assets
+• **Flexible Input (`FLEX_INPUT`)**: Any deposit amount $\ge$ the network minimum is 100% bridged to the destination Solana address without fixed-size slippage or order-size mismatches.
+• **Autonomous Offline Recovery Sweeper**: Built-in background sweeping (`api/relay_bridge.js` + client focus/interval triggers) detects onchain delivery and completes token forwarding even if the user closed the window or lost connectivity during the bridge deposit.
+• **Multi-Chain Refund Fallbacks**: Failed or expired bridge deposits automatically route refunds to user-configured or platform-safeguarded refund addresses for each respective chain (BTC native address, Tron T-address, or EVM 0x-address).
 
 ### 3. Frictionless Guest Room (Zero-Wallet Mode)
 • **No Wallet Required**: Users can execute onramps and offramps without connecting a Web3 wallet, ideal for mobile or first-time crypto users.
@@ -106,10 +109,10 @@ Vercel Serverless Functions power the backend infrastructure while maintaining s
 ## Technology Stack
 
 • **Frontend**: React 19, Vite 8, Rolldown / Rollup bundler, CSS Modules  
-• **Blockchain SDKs**: `@solana/web3.js`, `@solana/spl-token`, `@solana/wallet-adapter`  
+• **Blockchain & Protocols**: Solana (`@solana/web3.js`, `@solana/spl-token`), Bitcoin (Native BTC deposit routing), Tron (TRX & TRC-20 routing)  
 • **Mobile Protocol**: `@solana-mobile/wallet-adapter-mobile` (MWA), `@capacitor/core`  
 • **DEX Engine**: Jupiter Aggregator API  
-• **Cross-Chain Bridge**: NEAR Intents 1Click API (`1click.chaindefuser.com`)  
+• **Cross-Chain Chain Abstraction**: NEAR Intents 1Click API (`1click.chaindefuser.com`)  
 • **Database & Auth**: Supabase PostgreSQL with Row Level Security (RLS)  
 • **Fiat Gateway**: PajCash Merchant Platform  
 • **Hosting & Deployment**: Vercel Serverless Edge Infrastructure  
@@ -154,7 +157,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 RELAYER_SECRET_KEY=your_base58_or_json_private_key
 VITE_RELAYER_PUBLIC_KEY=your_relayer_public_key
 
-# NEAR Intents Bridge Refunds
+# NEAR Intents Bridge Refunds (Multi-Chain Fallback Safeguards)
+BRIDGE_REFUND_BTC_ADDRESS=your_btc_refund_address
+BRIDGE_REFUND_TRON_ADDRESS=your_tron_refund_address
 BRIDGE_REFUND_EVM_ADDRESS=0x5e3e46e896e1c3d3cceced17474ccf48ec89f324
 
 # WalletConnect / Reown
