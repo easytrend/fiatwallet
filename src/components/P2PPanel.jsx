@@ -3549,6 +3549,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         try { return JSON.parse(localStorage.getItem(`paj_user_orders_${walletKey}`) || '[]'); }
         catch { return []; }
       })();
+
+      const cryptoLogged = finalSendAmount;
+      const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
+      // Net crypto converted to fiat payout (gross crypto minus platform fee)
+      // This ensures usd_value in Supabase accurately reflects the net amount actually offramped
+      const netCryptoLogged = Math.max(0, cryptoLogged - platformFeeInToken);
+      const usdLogged = selectedCountry.currency === 'USD'
+        ? fiatLogged
+        : netCryptoLogged * (tokenPriceUsd || 1);
+
       existing.unshift({
         id: order.id,
         sig,
@@ -3556,7 +3566,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         bank: isTagOfframp ? effectiveBankName : displayBank,
         account: effectiveAcctNumber.trim(),
         name: effectiveAcctName || 'Account Holder',
-        recipient_tag: effectiveTag
+        recipient_tag: effectiveTag,
+        tokenSymbol: liveSelectedToken.symbol,
+        token_symbol: liveSelectedToken.symbol,
+        cryptoAmount: cryptoLogged,
+        amount: cryptoLogged,
+        fiatAmount: fiatLogged,
+        fiatCurrency: selectedCountry.currency,
+        usdValue: usdLogged,
+        type: 'p2p_offramp',
+        depositAddress: order.address,
       });
       localStorage.setItem(`paj_user_orders_${walletKey}`, JSON.stringify(existing.slice(0, 100)));
       // Only persist Offramp details to localStorage (not TAG — those are private)
@@ -3569,22 +3588,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         localStorage.setItem(`paj_account_name_default`, effectiveAcctName || 'Account Holder');
       }
 
-      // BUG FIX 1: Use parsedAmt (always the fiat-side value) instead of
-      // Number(amount) which is the raw input string and is wrong when the
-      // user typed in crypto mode (e.g. typing "2" USDC logged fiatLogged=2
-      // instead of the correct NGN equivalent like 3100).
-      const cryptoLogged = finalSendAmount;
-      const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
-      // Net crypto converted to fiat payout (gross crypto minus platform fee)
-      // This ensures usd_value in Supabase accurately reflects the net amount actually offramped
-      const netCryptoLogged = Math.max(0, cryptoLogged - platformFeeInToken);
-      const usdLogged = selectedCountry.currency === 'USD'
-        ? fiatLogged
-        : netCryptoLogged * (tokenPriceUsd || 1);
-
-      // BUG FIX 2: Log to Supabase immediately with PENDING status so the
+      // Log to Supabase immediately with PENDING status so the
       // record exists even if the confirmation poll times out due to a blip.
-      logP2PTransaction({
+      await logP2PTransaction({
         signature: sig,
         userAddress: walletKey,
         orderId: order.id,
@@ -3600,7 +3606,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         userEmail: sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${walletKey}`) : '') || localStorage.getItem('paj_manual_sessionEmail') || undefined,
         depositAddress: order.address,
         recipientTag: effectiveTag,
-      });
+        type: 'p2p_offramp',
+      }).catch(err => console.warn('[Offramp] Initial logP2PTransaction notice:', err));
 
       // 8. Poll for on-chain confirmation
       let confirmed = false;

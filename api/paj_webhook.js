@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     // Check if the order is already present in Supabase
     const { data: existing, error: findError } = await supabase
       .from('p2p_transactions')
-      .select('id, status, signature, transaction_type, crypto_amount, usd_value, user_email, user_address')
+      .select('id, status, signature, transaction_type, crypto_amount, fiat_amount, usd_value, token_symbol, user_email, user_address, deposit_address')
       .eq('order_id', orderId)
       .maybeSingle();
 
@@ -118,6 +118,29 @@ export default async function handler(req, res) {
     // Attach signature if newly discovered
     if (signature && (!existing?.signature || existing.signature.startsWith('pending_'))) {
       patch.signature = signature;
+    }
+
+    // Heal zero amounts or missing metadata if webhook provides them
+    const webhookCrypto = Number(payload.amount || payload.cryptoAmount || payload.usdcAmount || 0);
+    const webhookFiat = Number(payload.fiatAmount || 0);
+    if ((!existing?.crypto_amount || Number(existing.crypto_amount) === 0) && webhookCrypto > 0) {
+      patch.crypto_amount = webhookCrypto;
+      if (!existing?.usd_value || Number(existing.usd_value) === 0) patch.usd_value = webhookCrypto;
+    }
+    if ((!existing?.fiat_amount || Number(existing.fiat_amount) === 0) && webhookFiat > 0) {
+      patch.fiat_amount = webhookFiat;
+    }
+    if (payload.currency && payload.currency !== 'NGN' && (!existing?.token_symbol || existing.token_symbol === 'USDC')) {
+      patch.token_symbol = payload.currency;
+    }
+    if (payload.mint && payload.mint.includes('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')) {
+      patch.token_symbol = 'USDT';
+    }
+    if (!existing?.deposit_address && (payload.recipient || payload.depositAddress)) {
+      patch.deposit_address = payload.recipient || payload.depositAddress;
+    }
+    if (!existing?.user_email && (payload.userEmail || payload.email || payload.customer?.email)) {
+      patch.user_email = payload.userEmail || payload.email || payload.customer?.email;
     }
 
     if (existing?.id) {

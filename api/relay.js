@@ -319,6 +319,21 @@ export default async function handler(req, res) {
       }
 
       console.log(`[relay] Broadcasted tx: ${sig}`);
+
+      if (supabase && memoOrderId) {
+        supabase
+          .from('p2p_transactions')
+          .update({
+            signature: sig,
+            updated_at: new Date().toISOString()
+          })
+          .eq('order_id', memoOrderId)
+          .then(({ error: upErr }) => {
+            if (upErr) console.warn('[relay] Supabase sig update note:', upErr.message);
+          })
+          .catch(() => {});
+      }
+
       return res.status(200).json({ signature: sig });
     } catch (e) {
       console.error('[relay] Broadcast failed:', e.message);

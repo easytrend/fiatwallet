@@ -141,15 +141,19 @@ export async function logP2PTransaction({
     // Check if a record with this order_id already exists; update it, otherwise insert fresh.
     const { data: existingP2P } = await client
       .from('p2p_transactions')
-      .select('id')
+      .select('id, status, crypto_amount, fiat_amount, token_symbol')
       .eq('order_id', String(orderId))
       .maybeSingle();
 
     let p2pError;
     if (existingP2P?.id) {
+      const updatePayload = { ...payload };
+      if (existingP2P.status === 'COMPLETED' || existingP2P.status === 'FORWARDED_SUCCESS') {
+        updatePayload.status = existingP2P.status;
+      }
       ({ error: p2pError } = await client
         .from('p2p_transactions')
-        .update(payload)
+        .update(updatePayload)
         .eq('order_id', String(orderId)));
     } else {
       ({ error: p2pError } = await client
@@ -275,7 +279,7 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
       // Check if order already exists in Supabase
       const { data: existing } = await client
         .from('p2p_transactions')
-        .select('id, status, signature')
+        .select('id, status, signature, crypto_amount, fiat_amount, usd_value, token_symbol')
         .eq('order_id', orderId)
         .maybeSingle();
 
@@ -288,6 +292,25 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
         if (signature && (!existing.signature || existing.signature.startsWith('pending_')) && signature !== existing.signature) {
           patch.signature = signature;
         }
+
+        // Heal zero amounts if incoming order has valid positive amounts
+        const candCrypto = parseFloat(order.cryptoAmount || order.amount || order.crypto_amount) || 0;
+        const candFiat = parseFloat(order.fiatAmount || order.fiat_amount) || 0;
+        const candUsd = parseFloat(order.usdValue || order.usd_value) || 0;
+        const candSymbol = order.tokenSymbol || order.token_symbol;
+        if ((!existing.crypto_amount || Number(existing.crypto_amount) === 0) && candCrypto > 0) {
+          patch.crypto_amount = candCrypto;
+        }
+        if ((!existing.fiat_amount || Number(existing.fiat_amount) === 0) && candFiat > 0) {
+          patch.fiat_amount = candFiat;
+        }
+        if ((!existing.usd_value || Number(existing.usd_value) === 0) && candUsd > 0) {
+          patch.usd_value = candUsd;
+        }
+        if (candSymbol && candSymbol !== 'USDC' && (!existing.token_symbol || existing.token_symbol === 'USDC')) {
+          patch.token_symbol = candSymbol;
+        }
+
         if (Object.keys(patch).length > 0) {
           patch.updated_at = new Date().toISOString();
           await client.from('p2p_transactions').update(patch).eq('order_id', orderId);
@@ -295,28 +318,36 @@ export async function syncP2PTransactionStatuses(orders = [], walletAddress = nu
       } else if (userAddr) {
         // Order is missing from Supabase! Auto-backfill/insert it now.
         const txType = order.type || order.transaction_type || (order.depositAddress || order.deposit_address ? 'p2p_offramp' : 'p2p_onramp');
-        const payload = {
-          order_id: orderId,
-          signature: signature || `pending_${txType}_${orderId}`,
-          user_address: userAddr,
-          transaction_type: txType,
-          token_symbol: order.tokenSymbol || order.token_symbol || 'USDC',
-          crypto_amount: parseFloat(order.cryptoAmount || order.amount || order.crypto_amount) || 0,
-          fiat_currency: order.fiatCurrency || order.fiat_currency || 'NGN',
-          fiat_amount: parseFloat(order.fiatAmount || order.fiat_amount) || 0,
-          usd_value: parseFloat(order.usdValue || order.usd_value) || 0,
-          bank_name: order.bankName || order.bank_name || order.bank || null,
-          account_number: order.accountNumber || order.account_number || order.account || null,
-          account_name: order.accountName || order.account_name || order.name || null,
-          recipient_tag: order.recipientTag || order.recipient_tag || null,
-          status,
-          user_email: order.userEmail || order.user_email || order.email || null,
-          deposit_address: order.depositAddress || order.deposit_address || order.address || null,
-          updated_at: new Date().toISOString(),
-        };
+        const candCrypto = parseFloat(order.cryptoAmount || order.amount || order.crypto_amount) || 0;
+        const candFiat = parseFloat(order.fiatAmount || order.fiat_amount) || 0;
+        const candUsd = parseFloat(order.usdValue || order.usd_value) || 0;
+        const hasRealSig = signature && !signature.startsWith('pending_');
 
-        await client.from('p2p_transactions').insert(payload);
-        console.log(`[Supabase] Auto-backfilled missing historical order ${orderId} into p2p_transactions`);
+        // Only insert if order has non-zero amounts or a real on-chain signature
+        if (candCrypto > 0 || candFiat > 0 || hasRealSig) {
+          const payload = {
+            order_id: orderId,
+            signature: signature || `pending_${txType}_${orderId}`,
+            user_address: userAddr,
+            transaction_type: txType,
+            token_symbol: order.tokenSymbol || order.token_symbol || 'USDC',
+            crypto_amount: candCrypto,
+            fiat_currency: order.fiatCurrency || order.fiat_currency || 'NGN',
+            fiat_amount: candFiat,
+            usd_value: candUsd || candCrypto,
+            bank_name: order.bankName || order.bank_name || order.bank || null,
+            account_number: order.accountNumber || order.account_number || order.account || null,
+            account_name: order.accountName || order.account_name || order.name || null,
+            recipient_tag: order.recipientTag || order.recipient_tag || null,
+            status,
+            user_email: order.userEmail || order.user_email || order.email || null,
+            deposit_address: order.depositAddress || order.deposit_address || order.address || null,
+            updated_at: new Date().toISOString(),
+          };
+
+          await client.from('p2p_transactions').insert(payload);
+          console.log(`[Supabase] Auto-backfilled missing historical order ${orderId} into p2p_transactions`);
+        }
       }
     }
   } catch (err) {
