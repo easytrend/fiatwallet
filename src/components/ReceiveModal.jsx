@@ -82,6 +82,8 @@ export default function ReceiveModal({ address, onClose }) {
         if (cached?.depositAddress) {
           setBridgeDeposit(cached);
           setBridgeError('');
+          setBridgeStatus('PENDING_DEPOSIT');
+          setForwardSig(null);
           QRCode.toDataURL(cached.depositAddress, {
             width: 240,
             margin: 2,
@@ -111,6 +113,8 @@ export default function ReceiveModal({ address, onClose }) {
       setBridgeDeposit(cached);
       setBridgeError('');
       setBridgeLoading(false);
+      setBridgeStatus('PENDING_DEPOSIT');
+      setForwardSig(null);
       QRCode.toDataURL(cached.depositAddress, {
         width: 240,
         margin: 2,
@@ -195,8 +199,8 @@ export default function ReceiveModal({ address, onClose }) {
               userAddress: address,
               destinationSymbol: selectedDestToken.symbol,
             });
-            if (forwardRes?.signature) {
-              setForwardSig(forwardRes.signature);
+            if (forwardRes?.signature || forwardRes?.alreadyForwarded) {
+              if (forwardRes.signature) setForwardSig(forwardRes.signature);
               setBridgeStatus('COMPLETED');
               markBridgeDepositCompleted(address, selectedChainId, selectedOriginToken?.symbol, appliedRefund, selectedDestToken.symbol);
             }

@@ -267,7 +267,7 @@ async function executeForward({
   return {
     signature: sig,
     netAmount,
-    protocolFee,
+    protocolFee: platformFee,
     status: 'COMPLETED',
   };
 }

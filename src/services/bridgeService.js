@@ -225,9 +225,9 @@ export const CHAIN_TOKENS = {
       name: 'Tether USD (BSC)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g',
-      min: '1000',
-      defaultAmount: '1000',
-      estMinReceive: '992.50',
+      min: '1',
+      defaultAmount: '1',
+      estMinReceive: '0.88',
       logo: LOGOS.usdt,
     },
     {
@@ -235,9 +235,9 @@ export const CHAIN_TOKENS = {
       name: 'USD Coin (BSC)',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r',
-      min: '1000',
-      defaultAmount: '1000',
-      estMinReceive: '992.50',
+      min: '1',
+      defaultAmount: '1',
+      estMinReceive: '0.88',
       logo: LOGOS.usdc,
     },
     {
@@ -245,9 +245,9 @@ export const CHAIN_TOKENS = {
       name: 'BNB',
       decimals: 18,
       assetId: 'nep245:v2_1.omni.hot.tg:56_11111111111111111111',
-      min: '2',
-      defaultAmount: '2',
-      estMinReceive: '1450.15',
+      min: '0.005',
+      defaultAmount: '0.005',
+      estMinReceive: '3.20',
       logo: LOGOS.bsc,
     },
   ],
@@ -267,44 +267,57 @@ export function isValidRefundAddress(address, chainId) {
 }
 
 let remoteBridgeRefunds = { btc: '', evm: '', tron: '' };
+let remoteBridgeConfigPromise = null;
+let remoteBridgeConfigLoaded = false;
 
 export async function fetchRemoteBridgeConfig() {
-  try {
-    const isCapacitorOrLocal = typeof window !== 'undefined' && (
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.protocol === 'capacitor:' ||
-      window.location.protocol === 'file:'
-    );
-    const endpoints = isCapacitorOrLocal
-      ? ['https://fiatwallet.app/api/paj_config', '/api/paj_config']
-      : ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+  if (remoteBridgeConfigLoaded) return;
+  if (remoteBridgeConfigPromise) return remoteBridgeConfigPromise;
 
-    for (const ep of endpoints) {
-      const res = await fetch(ep).catch(() => null);
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data) {
-          if (data.nearIntentsApiKey) {
-            setNearIntentsApiKey(data.nearIntentsApiKey);
+  remoteBridgeConfigPromise = (async () => {
+    try {
+      const isCapacitorOrLocal = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.protocol === 'capacitor:' ||
+        window.location.protocol === 'file:'
+      );
+      const endpoints = isCapacitorOrLocal
+        ? ['https://fiatwallet.app/api/paj_config', '/api/paj_config']
+        : ['/api/paj_config', 'https://fiatwallet.app/api/paj_config'];
+
+      for (const ep of endpoints) {
+        const res = await fetch(ep, { cache: 'no-store' }).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data) {
+            if (data.nearIntentsApiKey) {
+              setNearIntentsApiKey(data.nearIntentsApiKey);
+            }
+            if (data.bridgeRefundBtc) {
+              remoteBridgeRefunds.btc = data.bridgeRefundBtc.trim();
+              try { localStorage.setItem('bridge_refund_btc', remoteBridgeRefunds.btc); } catch (_) {}
+            }
+            if (data.bridgeRefundEvm) {
+              remoteBridgeRefunds.evm = data.bridgeRefundEvm.trim();
+              try { localStorage.setItem('bridge_refund_evm', remoteBridgeRefunds.evm); } catch (_) {}
+            }
+            if (data.bridgeRefundTron) {
+              remoteBridgeRefunds.tron = data.bridgeRefundTron.trim();
+              try { localStorage.setItem('bridge_refund_tron', remoteBridgeRefunds.tron); } catch (_) {}
+            }
+            remoteBridgeConfigLoaded = true;
+            return;
           }
-          if (data.bridgeRefundBtc) {
-            remoteBridgeRefunds.btc = data.bridgeRefundBtc.trim();
-            try { localStorage.setItem('bridge_refund_btc', remoteBridgeRefunds.btc); } catch (_) {}
-          }
-          if (data.bridgeRefundEvm) {
-            remoteBridgeRefunds.evm = data.bridgeRefundEvm.trim();
-            try { localStorage.setItem('bridge_refund_evm', remoteBridgeRefunds.evm); } catch (_) {}
-          }
-          if (data.bridgeRefundTron) {
-            remoteBridgeRefunds.tron = data.bridgeRefundTron.trim();
-            try { localStorage.setItem('bridge_refund_tron', remoteBridgeRefunds.tron); } catch (_) {}
-          }
-          return;
         }
       }
+    } catch (_) {
+    } finally {
+      remoteBridgeConfigPromise = null;
     }
-  } catch (_) {}
+  })();
+
+  return remoteBridgeConfigPromise;
 }
 
 if (typeof window !== 'undefined') {
@@ -443,6 +456,10 @@ export async function createBridgeDeposit({
   chainId,
   refundTo,
 }) {
+  if (typeof window !== 'undefined' && (!getNearIntentsApiKey() || !isTreasuryRefundConfigured(chainId) || remoteBridgeConfigPromise)) {
+    await fetchRemoteBridgeConfig();
+  }
+
   const amountUnits = formatUnits(amountFloat, originDecimals);
   const relayerPubkey = getEffectiveRelayerPublicKey();
   const apiKey = getNearIntentsApiKey();
@@ -731,7 +748,8 @@ export async function sweepPendingBridgesForUser(userAddress) {
     const dbRows = await getBridgeTransactionsByUser(userAddress);
     if (Array.isArray(dbRows)) {
       for (const row of dbRows) {
-        if (row?.deposit_address && row.status === 'PENDING') {
+        const rowStatus = String(row?.status || '').toUpperCase();
+        if (row?.deposit_address && (rowStatus === 'PENDING' || rowStatus === 'FORWARDING')) {
           const alreadyInList = pendingItems.some(p => p.item.depositAddress === row.deposit_address);
           if (!alreadyInList) {
             pendingItems.push({
@@ -739,7 +757,7 @@ export async function sweepPendingBridgesForUser(userAddress) {
               item: {
                 depositAddress: row.deposit_address,
                 destinationSymbol: row.destination_symbol || 'USDT',
-                status: 'PENDING',
+                status: rowStatus,
               },
             });
           }
