@@ -671,13 +671,6 @@ export default function ReceiveModal({ address, onClose }) {
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>Deposit Flexibility:</span>
-                        <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700' }}>
-                          Any amount ≥ min is 100% bridged
-                        </span>
-                      </div>
-
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <span style={{ color: 'var(--text2, rgba(240, 246, 255, 0.65))' }}>NEAR Network Fee:</span>
                         <span style={{ color: '#fff', fontWeight: '700', fontFamily: 'var(--mono, monospace)' }}>
