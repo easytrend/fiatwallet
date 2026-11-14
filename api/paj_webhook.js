@@ -235,7 +235,7 @@ export default async function handler(req, res) {
     // Check if the order is already present in Supabase
     const { data: existing, error: findError } = await supabase
       .from('p2p_transactions')
-      .select('id, status, signature, transaction_type, crypto_amount, fiat_amount, usd_value, token_symbol, user_email, user_address, deposit_address')
+      .select('id, status, signature, transaction_type, crypto_amount, fiat_amount, usd_value, token_symbol, user_email, user_address, deposit_address, bank_name, account_number, account_name')
       .eq('order_id', orderId)
       .maybeSingle();
 
@@ -243,8 +243,26 @@ export default async function handler(req, res) {
       console.warn(`[paj_webhook] Error querying order ${orderId}:`, findError.message);
     }
 
+    // If the row exists but has no user_email, try to resolve it from paj_sessions via wallet address
+    let resolvedEmail = existing?.user_email
+      || payload.userEmail || payload.email || payload.customer?.email || null;
+    if (!resolvedEmail && existing?.user_address) {
+      try {
+        const { data: sRows } = await supabase
+          .from('paj_sessions')
+          .select('email')
+          .eq('wallet_address', existing.user_address)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (sRows?.[0]?.email) {
+          resolvedEmail = sRows[0].email;
+          console.log(`[paj_webhook] Resolved email from paj_sessions for order ${orderId}: ${resolvedEmail}`);
+        }
+      } catch (_) {}
+    }
+
     const compliance = await isBlacklistedEntityAsync({
-      email: payload.userEmail || payload.email || payload.customer?.email || existing?.user_email,
+      email: resolvedEmail,
       walletAddress: existing?.user_address || payload.recipient || payload.wallet || payload.userAddress,
       supabase
     });
@@ -292,8 +310,8 @@ export default async function handler(req, res) {
     if (!existing?.deposit_address && (payload.recipient || payload.depositAddress)) {
       patch.deposit_address = payload.recipient || payload.depositAddress;
     }
-    if (!existing?.user_email && (payload.userEmail || payload.email || payload.customer?.email)) {
-      patch.user_email = payload.userEmail || payload.email || payload.customer?.email;
+    if (!existing?.user_email && resolvedEmail) {
+      patch.user_email = resolvedEmail;
     }
 
     if (existing?.id) {
@@ -340,8 +358,7 @@ export default async function handler(req, res) {
     // Send transaction receipt email (fire-and-forget — never delays webhook response)
     const resolvedTxType = existing?.transaction_type || ((payload.transactionType === 'ON_RAMP' || payload.type === 'p2p_onramp') ? 'p2p_onramp' : 'p2p_offramp');
     if (supabaseStatus === 'COMPLETED' && !compliance.blacklisted) {
-      const userEmail = existing?.user_email || patch.user_email
-        || payload.userEmail || payload.email || payload.customer?.email;
+      const userEmail = resolvedEmail || patch.user_email;
       if (userEmail) {
         sendTransactionEmail({
           type: resolvedTxType,
@@ -357,6 +374,8 @@ export default async function handler(req, res) {
           walletAddress:existing?.user_address  ?? payload.recipient ?? payload.userAddress,
           signature:    signature ?? existing?.signature,
         }).catch(e => console.warn('[paj_webhook] Email fire-and-forget error:', e.message));
+      } else {
+        console.warn(`[paj_webhook] No email found for COMPLETED order ${orderId} (type: ${resolvedTxType}) — skipping receipt`);
       }
     }
 
