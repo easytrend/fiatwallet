@@ -18,7 +18,7 @@ import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist
 async function sendTransactionEmail({
   type, email, orderId,
   cryptoAmount, tokenSymbol, fiatAmount, fiatCurrency,
-  bankName, accountNumber, accountName,
+  bankName, accountNumber, accountName, recipientTag,
   walletAddress, signature,
 }) {
   const resendKey = process.env.RESEND_API_KEY;
@@ -117,6 +117,11 @@ async function sendTransactionEmail({
           <span style="color:#9ca3af;font-size:14px;">Crypto debited</span>
           <span style="color:#e5e7eb;font-size:14px;">${displayCrypto} ${symbol}</span>
         </div>
+        ${recipientTag ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:#9ca3af;font-size:14px;">Sent to</span>
+          <span style="color:#a3e635;font-size:15px;font-weight:600;letter-spacing:0.3px;">$${String(recipientTag).replace(/^\$/, '')}</span>
+        </div>` : `
         ${bankName ? `
         <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
           <span style="color:#9ca3af;font-size:14px;">Bank</span>
@@ -130,7 +135,7 @@ async function sendTransactionEmail({
         <div style="display:flex;justify-content:space-between;">
           <span style="color:#9ca3af;font-size:14px;">Account name</span>
           <span style="color:#e5e7eb;font-size:14px;">${accountName}</span>
-        </div>` : ''}
+        </div>` : ''}`}
       </div>
       ${ctaButton}
       ${footer}
@@ -235,7 +240,7 @@ export default async function handler(req, res) {
     // Check if the order is already present in Supabase
     const { data: existing, error: findError } = await supabase
       .from('p2p_transactions')
-      .select('id, status, signature, transaction_type, crypto_amount, fiat_amount, usd_value, token_symbol, user_email, user_address, deposit_address, bank_name, account_number, account_name')
+      .select('id, status, signature, transaction_type, crypto_amount, fiat_amount, usd_value, token_symbol, user_email, user_address, deposit_address, bank_name, account_number, account_name, recipient_tag')
       .eq('order_id', orderId)
       .maybeSingle();
 
@@ -368,6 +373,7 @@ export default async function handler(req, res) {
           tokenSymbol:  existing?.token_symbol  ?? patch.token_symbol  ?? payload.currency ?? 'USDC',
           fiatAmount:   existing?.fiat_amount   ?? patch.fiat_amount   ?? payload.fiatAmount,
           fiatCurrency: existing?.fiat_currency ?? payload.fiatCurrency ?? 'NGN',
+          recipientTag: existing?.recipient_tag ?? payload.recipientTag ?? payload.fiatTag ?? null,
           bankName:     existing?.bank_name     ?? payload.bank    ?? payload.bankName,
           accountNumber:existing?.account_number ?? payload.accountNumber,
           accountName:  existing?.account_name  ?? payload.accountName,
