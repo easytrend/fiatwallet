@@ -187,7 +187,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 cursor: 'pointer',
               }}
             >
-              Γå╗
+              ↻
             </button>
             <button
               onClick={onClose}
@@ -202,7 +202,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 fontWeight: '700',
               }}
             >
-              Γ£ò
+              ✕
             </button>
           </div>
         </div>
