@@ -1,17 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
 
 export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddress }) {
-  const [timeframe, setTimeframe] = useState('week');
+  const [timeframe, setTimeframe] = useState('all');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [fiatTag, setFiatTag] = useState(null);
   const [data, setData] = useState({
     user: null,
     referral_leaderboard: [],
-    week_info: null,
     total_referrers: 0,
     total_referral_points_distributed: 0,
   });
@@ -107,15 +106,6 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
     }
   };
 
-  const formatResetCountdown = (ms) => {
-    if (!ms || ms <= 0) return 'Shortly';
-    const hours = Math.floor(ms / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-  };
-
   if (!isOpen) return null;
 
   const userCard = data.user;
@@ -197,7 +187,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 cursor: 'pointer',
               }}
             >
-              ↻
+              Γå╗
             </button>
             <button
               onClick={onClose}
@@ -212,7 +202,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 fontWeight: '700',
               }}
             >
-              ✕
+              Γ£ò
             </button>
           </div>
         </div>
@@ -231,7 +221,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
-                    {timeframe === 'week' ? 'Your Weekly Referral Rank' : timeframe === 'month' ? 'Your Monthly Referral Rank' : 'Your Referral Ranking'}
+                    Your Referral Ranking
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
                     <span style={{ fontSize: '24px', fontWeight: '800', color: userCard.referral_rank ? 'var(--cyan, #22d3ee)' : '#94a3b8' }}>
@@ -298,7 +288,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {copied ? 'Copied ✓' : 'Copy'}
+                  {copied ? 'Copied Γ£ô' : 'Copy'}
                 </button>
                 <button
                   onClick={handleShareLink}
@@ -324,15 +314,15 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
           <div style={{
             display: 'flex',
             gap: '8px',
-            marginBottom: '10px',
+            marginBottom: '16px',
             background: 'rgba(255, 255, 255, 0.04)',
             padding: '4px',
             borderRadius: '12px',
           }}>
             {[
-              { id: 'week', label: 'Weekly Ranking' },
               { id: 'all', label: 'All Time' },
               { id: 'month', label: 'This Month' },
+              { id: 'week', label: 'This Week' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -354,29 +344,6 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
               </button>
             ))}
           </div>
-
-          {/* Weekly Cycle Status Banner */}
-          {timeframe === 'week' && data?.week_info && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '9px 12px',
-              background: 'rgba(34, 211, 238, 0.08)',
-              border: '1px solid rgba(34, 211, 238, 0.25)',
-              borderRadius: '12px',
-              marginBottom: '16px',
-              fontSize: '11px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '800' }}>•</span>
-                <span style={{ color: 'white', fontWeight: '700' }}>{data.week_info.label}</span>
-              </div>
-              <div style={{ color: 'var(--cyan, #22d3ee)', fontSize: '10.5px', fontWeight: '600' }}>
-                Resets in {formatResetCountdown(data.week_info.resets_in_ms)} (Sunday 00:00 UTC)
-              </div>
-            </div>
-          )}
 
           {/* Referral Leaderboard Table */}
           <div style={{
@@ -425,7 +392,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     cursor: 'pointer',
                   }}
                 >
-                  Share Referral Link →
+                  Share Referral Link ΓåÆ
                 </button>
               </div>
             ) : (

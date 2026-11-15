@@ -1,19 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
-import WeeklyRewardClaimSlider from './WeeklyRewardClaimSlider';
 
 export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpenReferralLeaderboard }) {
   const [activeTab, setActiveTab] = useState('leaderboard'); // 'leaderboard' | 'referrals'
-  const [timeframe, setTimeframe] = useState('week');
+  const [timeframe, setTimeframe] = useState('all');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [fiatTag, setFiatTag] = useState(null);
   const [data, setData] = useState({
     user: null,
     leaderboard: [],
-    week_info: null,
     total_participants: 0,
     total_points_distributed: 0,
   });
@@ -111,16 +109,6 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
     } else {
       handleCopyLink();
     }
-  };
-
-  const formatResetCountdown = (ms) => {
-    if (!ms || ms <= 0) return 'Resetting soon';
-    const totalHours = Math.floor(ms / (1000 * 60 * 60));
-    const days = Math.floor(totalHours / 24);
-    const hours = totalHours % 24;
-    if (days > 0) return `${days}d ${hours}h`;
-    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
   };
 
   if (!isOpen) return null;
@@ -249,7 +237,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 cursor: 'pointer',
               }}
             >
-              ↻
+              Γå╗
             </button>
             <button
               onClick={onClose}
@@ -264,7 +252,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 fontWeight: '700',
               }}
             >
-              ✕
+              Γ£ò
             </button>
           </div>
         </div>
@@ -329,54 +317,30 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
-                        {timeframe === 'week' ? 'Your Weekly Rank' : timeframe === 'month' ? 'Your Monthly Rank' : 'Your All-Time Rank'}
+                        Your Ranking
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'nowrap' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          fontSize: '24px',
-                          fontWeight: '800',
-                          lineHeight: 1,
-                          color: userCard.rank ? 'var(--lime, #a3e635)' : '#94a3b8',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                        }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                        <span style={{ fontSize: '24px', fontWeight: '800', color: userCard.rank ? 'var(--lime, #a3e635)' : '#94a3b8' }}>
                           {userCard.rank ? `#${userCard.rank}` : 'Unranked'}
                         </span>
                         <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          height: '24px',
                           fontSize: '11px',
                           fontWeight: '700',
-                          lineHeight: 1,
                           color: getTierColor(userCard.tier),
                           background: 'rgba(255, 255, 255, 0.05)',
-                          padding: '0 8px',
+                          padding: '2px 8px',
                           borderRadius: '6px',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
                         }}>
                           {userCard.tier} Tier
                         </span>
-                        {/* Weekly Pullmeme ($PMEME) Claim Button */}
-                        {timeframe === 'week' && (
-                          <WeeklyRewardClaimSlider
-                            walletAddress={walletAddress}
-                            rank={userCard.rank || null}
-                            points={userCard.total_points || 0}
-                            epochId={data?.week_info?.start ? `week_${data.week_info.start}` : 'current_week'}
-                          />
-                        )}
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', fontWeight: '600' }}>
                         Total Points
                       </div>
-                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'white', marginTop: '2px', lineHeight: 1 }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: 'white', marginTop: '2px' }}>
                         {Math.floor(Number(userCard.total_points) || 0).toLocaleString()}
                       </div>
                     </div>
@@ -443,9 +407,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     fontSize: '11px',
                     color: 'var(--text2, #cbd5e1)',
                   }}>
-                    <span style={{ color: 'var(--text3, #94a3b8)' }}>
-                      {timeframe === 'week' ? 'Transactions This Week:' : timeframe === 'month' ? 'Transactions This Month:' : 'Completed Transactions:'}
-                    </span>
+                    <span style={{ color: 'var(--text3, #94a3b8)' }}>Completed Transactions:</span>
                     <span style={{ fontWeight: '700', color: 'white' }}>{userCard.total_transactions || 0}</span>
                   </div>
                 </div>
@@ -471,22 +433,22 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   <span style={{ fontWeight: '700', color: 'white' }}>Invite Friends & Earn Points: </span>
                   <span style={{ color: 'var(--text3, #94a3b8)' }}>Get 1 Point for every 10 USD completed by friends</span>
                 </div>
-                <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700', fontSize: '12px' }}>→</span>
+                <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700', fontSize: '12px' }}>ΓåÆ</span>
               </div>
 
               {/* Timeframe Filter Tabs */}
               <div style={{
                 display: 'flex',
                 gap: '8px',
-                marginBottom: '10px',
+                marginBottom: '16px',
                 background: 'rgba(255, 255, 255, 0.04)',
                 padding: '4px',
                 borderRadius: '12px',
               }}>
                 {[
-                  { id: 'week', label: 'Weekly Ranking' },
                   { id: 'all', label: 'All Time' },
                   { id: 'month', label: 'This Month' },
+                  { id: 'week', label: 'This Week' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -508,29 +470,6 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   </button>
                 ))}
               </div>
-
-              {/* Weekly Cycle Status Banner */}
-              {timeframe === 'week' && data?.week_info && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '9px 12px',
-                  background: 'rgba(163, 230, 53, 0.08)',
-                  border: '1px solid rgba(163, 230, 53, 0.25)',
-                  borderRadius: '12px',
-                  marginBottom: '16px',
-                  fontSize: '11px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '800' }}>•</span>
-                    <span style={{ color: 'white', fontWeight: '700' }}>{data.week_info.label}</span>
-                  </div>
-                  <div style={{ color: 'var(--lime, #a3e635)', fontSize: '10.5px', fontWeight: '600' }}>
-                    Resets in {formatResetCountdown(data.week_info.resets_in_ms)} (Sunday 00:00 UTC)
-                  </div>
-                </div>
-              )}
 
               {/* Top 3 Podium (2nd on Left, 1st in Center, 3rd on Right) */}
               {podiumItems.length > 0 && (
@@ -723,7 +662,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     </div>
                   </div>
                   <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700', fontSize: '12px' }}>
-                    View Rankings →
+                    View Rankings ΓåÆ
                   </span>
                 </div>
               )}
@@ -765,7 +704,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                         {fiatTag.startsWith('$') ? fiatTag : `$${fiatTag}`}
                       </span>
                     </div>
-                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active ✓</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active Γ£ô</span>
                   </div>
                 )}
 
@@ -805,7 +744,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {copied ? 'Copied ✓' : 'Copy Link'}
+                    {copied ? 'Copied Γ£ô' : 'Copy Link'}
                   </button>
                   <button
                     onClick={handleShareLink}
@@ -830,15 +769,15 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', marginTop: '8px', lineHeight: '1.4' }}>
                   {fiatTag ? (
                     <>
-                      • Your referral link is personalized with your Fiat Tag.
+                      ΓÇó Your referral link is personalized with your Fiat Tag.
                       <br />
-                      • Previous referral links using your wallet address also still work seamlessly.
+                      ΓÇó Previous referral links using your wallet address also still work seamlessly.
                     </>
                   ) : (
                     <>
-                      • Share this link with friends to earn points on their ramp volume.
+                      ΓÇó Share this link with friends to earn points on their ramp volume.
                       <br />
-                      • <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
+                      ΓÇó <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
                     </>
                   )}
                 </div>
