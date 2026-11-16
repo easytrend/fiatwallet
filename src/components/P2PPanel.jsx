@@ -436,18 +436,11 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 
 export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, effectiveSendTransaction, isGuestMode = false, onExitGuest, activeTab }) {
   const { connection } = useConnection();
-  const { wallet, publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction, signMessage: adapterSignMessage } = useWallet();
+  const { publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction, signMessage: adapterSignMessage } = useWallet();
   const publicKey = effectivePublicKey || adapterPublicKey;
   const signTransaction = effectiveSignTransaction || adapterSignTransaction;
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
   const signMessage = adapterSignMessage;
-
-  // Detect Solana Mobile Wallet Adapter (e.g. Seeker / Seed Vault)
-  const isMobileWalletAdapter = Boolean(
-    wallet?.adapter?.name === 'Solana Mobile Wallet Adapter' ||
-    wallet?.adapter?.name?.toLowerCase?.().includes('mobile') ||
-    (typeof navigator !== 'undefined' && /Solana Mobile/i.test(navigator.userAgent) && wallet?.adapter?.name !== 'FiatWallet')
-  );
 
   // ── Env config ──────────────────────────────────────────────────────────
   const [pajApiKey, setPajApiKey] = useState(() => getEffectiveApiKey());
@@ -3290,26 +3283,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
 
-      // 2. Determine whether to use server-side relayer (gasless) or direct wallet settlement.
-      // On Solana Mobile (Seeker / Seed Vault via MWA), Seed Vault hardware simulates the transaction
-      // before allowing the user to sign. If feePayer is a remote relayer that hasn't signed yet,
-      // or if relayer is short on rent lamports, Seed Vault simulation fails, shows "This transaction couldn't be simulated",
-      // and locks the Approve button. For MWA, we ALWAYS settle directly with feePayer = user (publicKey)
-      // so Seed Vault simulates clean token balance changes and enables 1-tap Approve without warning.
+      // 2. Check if server-side relayer is configured
       await getEffectiveRelayerConfigAsync().catch(() => {});
       const relayerPubkeyStr = getEffectiveRelayerPublicKey() || import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
       let relayerPublicKey = null;
       let usingRelayer = false;
-      if (relayerPubkeyStr && !isMobileWalletAdapter) {
+      if (relayerPubkeyStr) {
         try {
           relayerPublicKey = new PublicKey(relayerPubkeyStr);
-          // Only attempt gasless relay if relayer is sufficiently funded to pay gas & ATA rent
-          const relayerBalanceLamports = await connection.getBalance(relayerPublicKey, 'confirmed').catch(() => 0);
-          if (relayerBalanceLamports >= 5_000_000) { // at least 0.005 SOL
-            usingRelayer = true;
-          } else {
-            console.warn(`[Offramp] Relayer balance (${relayerBalanceLamports / 1e9} SOL) is below 0.005 SOL; defaulting to direct user settlement.`);
-          }
+          usingRelayer = true;
         } catch {
           relayerPublicKey = null;
           usingRelayer = false;
@@ -3416,15 +3398,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           throw new Error(`Insufficient ${liveSelectedToken.symbol} balance to complete transfer.`);
         }
 
-        // Check if receiver ATA already exists on-chain before adding creation instruction
-        const receiverATAInfo = await connection.getAccountInfo(receiverATA).catch(() => null);
-        if (!receiverATAInfo) {
-          transaction.add(
-            createAssociatedTokenAccountIdempotentInstruction(
-              usingRelayer ? relayerPublicKey : publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
-            )
-          );
-        }
+        transaction.add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            usingRelayer ? relayerPublicKey : publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
+          )
+        );
         transaction.add(
           createTransferCheckedInstruction(
             senderATA, mintPubkey, receiverATA, publicKey, units, decimals, [], tokenProgram
@@ -3533,14 +3511,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             let decimals = typeof liveSelectedToken.decimals === 'number' ? liveSelectedToken.decimals : 6;
             const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
 
-            const receiverATAInfo = await connection.getAccountInfo(receiverATA).catch(() => null);
-            if (!receiverATAInfo) {
-              fallbackTx.add(
-                createAssociatedTokenAccountIdempotentInstruction(
-                  publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
-                )
-              );
-            }
+            fallbackTx.add(
+              createAssociatedTokenAccountIdempotentInstruction(
+                publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
+              )
+            );
             fallbackTx.add(
               createTransferCheckedInstruction(
                 senderATA, mintPubkey, receiverATA, publicKey, units, decimals, [], tokenProgram
@@ -3636,9 +3611,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       // 8. Poll for on-chain confirmation
       let confirmed = false;
-      const deadline = Date.now() + 75_000;
+      const deadline = Date.now() + 60_000;
       while (Date.now() < deadline) {
-        const status = await connection.getSignatureStatus(sig, { searchTransactionHistory: true }).catch(() => null);
+        const status = await connection.getSignatureStatus(sig).catch(() => null);
         const conf = status?.value?.confirmationStatus;
         if (conf === 'confirmed' || conf === 'finalized') { confirmed = true; break; }
         if (status?.value?.err) throw new Error('Transaction rejected: ' + JSON.stringify(status.value.err));
@@ -3646,19 +3621,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       }
 
       if (!confirmed) {
-        // Last-chance check — query getSignatureStatus with history and getTransaction
-        const finalStatus = await connection.getSignatureStatus(sig, { searchTransactionHistory: true }).catch(() => null);
+        // Last-chance check — one final RPC call in case the poll window expired
+        // during a brief network hiccup while the tx was actually confirming.
+        const finalStatus = await connection.getSignatureStatus(sig).catch(() => null);
         const finalConf = finalStatus?.value?.confirmationStatus;
         if (finalConf === 'confirmed' || finalConf === 'finalized') {
           confirmed = true;
-        } else {
-          const txCheck = await connection.getTransaction(sig, {
-            commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0,
-          }).catch(() => null);
-          if (txCheck && !txCheck.meta?.err) {
-            confirmed = true;
-          }
         }
       }
 

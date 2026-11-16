@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
@@ -187,7 +187,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 cursor: 'pointer',
               }}
             >
-              ↻
+              Γå╗
             </button>
             <button
               onClick={onClose}
@@ -202,7 +202,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 fontWeight: '700',
               }}
             >
-              ✕
+              Γ£ò
             </button>
           </div>
         </div>
@@ -288,7 +288,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {copied ? 'Copied ✔' : 'Copy'}
+                  {copied ? 'Copied Γ£ô' : 'Copy'}
                 </button>
                 <button
                   onClick={handleShareLink}
@@ -392,7 +392,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     cursor: 'pointer',
                   }}
                 >
-                  Share Referral Link →
+                  Share Referral Link ΓåÆ
                 </button>
               </div>
             ) : (

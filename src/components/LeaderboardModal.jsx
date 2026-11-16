@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
@@ -237,7 +237,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 cursor: 'pointer',
               }}
             >
-              ↻
+              Γå╗
             </button>
             <button
               onClick={onClose}
@@ -252,7 +252,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 fontWeight: '700',
               }}
             >
-              ✕
+              Γ£ò
             </button>
           </div>
         </div>
@@ -433,7 +433,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   <span style={{ fontWeight: '700', color: 'white' }}>Invite Friends & Earn Points: </span>
                   <span style={{ color: 'var(--text3, #94a3b8)' }}>Get 1 Point for every 10 USD completed by friends</span>
                 </div>
-                <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700', fontSize: '12px' }}>→</span>
+                <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700', fontSize: '12px' }}>ΓåÆ</span>
               </div>
 
               {/* Timeframe Filter Tabs */}
@@ -662,7 +662,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     </div>
                   </div>
                   <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700', fontSize: '12px' }}>
-                    View Rankings →
+                    View Rankings ΓåÆ
                   </span>
                 </div>
               )}
@@ -704,7 +704,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                         {fiatTag.startsWith('$') ? fiatTag : `$${fiatTag}`}
                       </span>
                     </div>
-                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active ✔</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active Γ£ô</span>
                   </div>
                 )}
 
@@ -744,7 +744,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {copied ? 'Copied ✔' : 'Copy Link'}
+                    {copied ? 'Copied Γ£ô' : 'Copy Link'}
                   </button>
                   <button
                     onClick={handleShareLink}
@@ -769,15 +769,15 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', marginTop: '8px', lineHeight: '1.4' }}>
                   {fiatTag ? (
                     <>
-                      • Your referral link is personalized with your Fiat Tag.
+                      ΓÇó Your referral link is personalized with your Fiat Tag.
                       <br />
-                      • Previous referral links using your wallet address also still work seamlessly.
+                      ΓÇó Previous referral links using your wallet address also still work seamlessly.
                     </>
                   ) : (
                     <>
-                      • Share this link with friends to earn points on their ramp volume.
+                      ΓÇó Share this link with friends to earn points on their ramp volume.
                       <br />
-                      • <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
+                      ΓÇó <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
                     </>
                   )}
                 </div>
