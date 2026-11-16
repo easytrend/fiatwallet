@@ -93,22 +93,14 @@ export default async function handler(req, res) {
     }
     const relayerKp = loadKeypair(relayerSecret);
 
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return res.status(503).json({ error: 'Supabase credentials missing' });
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('[relay_onramp_fee] CRITICAL SECURITY FAULT: SUPABASE_SERVICE_ROLE_KEY is required to prevent RLS bypass attacks and protect treasury payouts.');
+      return res.status(503).json({ error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for secure relayer payouts' });
     }
 
-    // SECURITY: Use service-role key for server-side DB operations.
-    // The anon key is the PUBLIC client-side key — if RLS is misconfigured,
-    // an attacker can directly UPDATE p2p_transactions via the Supabase REST API
-    // to change user_address to their own wallet before calling this endpoint.
-    // The service-role key bypasses RLS and is meant for trusted server-side use only.
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseServiceKey) {
-      console.warn('[relay_onramp_fee] WARNING: SUPABASE_SERVICE_ROLE_KEY not set. Falling back to anon key. Set the service-role key in production to prevent RLS bypass attacks.');
-    }
-    supabase = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // 2. Parse request body
     let body = req.body;
@@ -184,10 +176,12 @@ export default async function handler(req, res) {
     //   3. Internal service role authorization from backend reconciliation
     const internalSecret = req.headers['x-internal-secret'] || '';
     const authHeader = req.headers['authorization'] || '';
-    const isInternalService = (
-      (supabaseServiceKey && internalSecret === supabaseServiceKey) ||
-      (supabaseServiceKey && authHeader === `Bearer ${supabaseServiceKey}`) ||
-      (process.env.CRON_SECRET && internalSecret === process.env.CRON_SECRET)
+    const publicAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+    // Under no circumstances can client-exposed anon keys authorize internal service calls
+    const isInternalService = Boolean(
+      (supabaseServiceKey && internalSecret === supabaseServiceKey && internalSecret !== publicAnonKey) ||
+      (supabaseServiceKey && authHeader === `Bearer ${supabaseServiceKey}` && authHeader !== `Bearer ${publicAnonKey}`) ||
+      (process.env.CRON_SECRET && internalSecret === process.env.CRON_SECRET && internalSecret !== publicAnonKey)
     );
 
     let isWalletOwner = false;
