@@ -835,8 +835,24 @@ export default function SwapWidget({
       setInputAmount('');
       if (onSwapSuccess) onSwapSuccess();
     } catch (err) {
-      
       setSwapError(err.message || 'Swap failed.');
+      try {
+        if (publicKey) {
+          const inputPrice = inputToken?.price || 0;
+          const n = parseFloat(inputAmount) || 0;
+          logTransaction({
+            signature: `failed_swap_${Date.now()}`,
+            userAddress: publicKey.toBase58(),
+            type: 'swap',
+            symbol: inputToken?.symbol || 'UNKNOWN',
+            tokenAmount: n,
+            usdValue: n * inputPrice,
+            status: 'ERROR',
+          });
+        }
+      } catch (logErr) {
+        console.warn('[Swap] Failed to log error:', logErr);
+      }
     }
     setSwapping(false);
   }, [swapping, publicKey, connected, quote, inputAmount, inputToken, outputToken, outputAmount, connection, sendTransaction, onSwapSuccess]);
