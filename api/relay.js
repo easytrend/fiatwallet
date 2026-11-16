@@ -238,6 +238,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Transaction is missing required offramp memo' });
     }
 
+    // 4. Structural integrity: Offramp transactions have strict bounds
+    if (transaction.instructions.length > 5) {
+      return res.status(400).json({ error: 'Transaction exceeds maximum instruction count for offramp' });
+    }
+
+    const ataInstructions = transaction.instructions.filter(ix =>
+      ix.programId.toBase58() === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
+    );
+    if (ataInstructions.length > 1) {
+      return res.status(400).json({ error: 'At most one ATA creation instruction allowed per offramp' });
+    }
+
     // ── Check Compliance Blacklist for Offramps ──────────────────────────────
     const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
     const userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
