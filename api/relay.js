@@ -108,29 +108,45 @@ function validateRelayerNotDrained(transaction, relayerPubkey) {
   for (const ix of transaction.instructions) {
     const progId = ix.programId.toBase58();
 
-    // SystemProgram: instruction discriminator is first 4 bytes (little-endian uint32)
-    // Transfer = 2, TransferWithSeed = 11, AdvanceNonceAccount = 4
-    if (progId === SYSTEM_PROGRAM_ID && ix.data.length >= 4) {
-      const ixType = ix.data.readUInt32LE(0);
-      // Transfer (2): accounts[0] = from (writable, signer)
-      // TransferWithSeed (11): accounts[0] = from
-      if ((ixType === 2 || ixType === 11) && ix.keys.length > 0) {
-        if (ix.keys[0].pubkey.equals(relayerPubkey)) {
-          return 'Blocked: relayer cannot be the source of a SOL transfer';
+    // 1. SystemProgram: The relayer must NEVER appear as a writable or signer account in ANY SystemProgram instruction.
+    // In an offramp, SOL is transferred from the user's wallet to the deposit address.
+    // The relayer is ONLY the feePayer in the transaction header and has no reason to be in ix.keys.
+    if (progId === SYSTEM_PROGRAM_ID) {
+      for (let k = 0; k < ix.keys.length; k++) {
+        const keyMeta = ix.keys[k];
+        if (keyMeta.pubkey.equals(relayerPubkey) && (keyMeta.isWritable || keyMeta.isSigner)) {
+          return `Blocked: relayer cannot be a writable or signer account in SystemProgram (index ${k})`;
+        }
+      }
+      if (ix.data.length >= 4) {
+        const ixType = ix.data.readUInt32LE(0);
+        // 0 = CreateAccount, 1 = Assign, 2 = Transfer, 3 = CreateAccountWithSeed, 11 = TransferWithSeed
+        if ([0, 1, 2, 3, 11].includes(ixType) && ix.keys.length > 0) {
+          if (ix.keys[0].pubkey.equals(relayerPubkey)) {
+            return `Blocked: relayer cannot be the source of SystemProgram instruction type ${ixType}`;
+          }
         }
       }
     }
 
-    // SPL Token / Token-2022: instruction discriminator is first byte
-    // Transfer = 3, TransferChecked = 12
-    if (TOKEN_PROGRAMS.has(progId) && ix.data.length >= 1) {
-      const ixType = ix.data[0];
-      // Transfer (3): accounts[0] = source
-      // TransferChecked (12): accounts[0] = source
-      if ((ixType === 3 || ixType === 12) && ix.keys.length > 0) {
-        if (ix.keys[0].pubkey.equals(relayerPubkey)) {
-          return 'Blocked: relayer cannot be the source of a token transfer';
+    // 2. Token Programs (SPL Token & Token-2022):
+    // The relayer must NEVER appear in ANY Token Program instruction.
+    // In an offramp, tokens are transferred from the user's ATA to the deposit ATA.
+    if (TOKEN_PROGRAMS.has(progId)) {
+      for (let k = 0; k < ix.keys.length; k++) {
+        const keyMeta = ix.keys[k];
+        if (keyMeta.pubkey.equals(relayerPubkey)) {
+          return `Blocked: relayer cannot appear in any Token program instruction (index ${k})`;
         }
+      }
+    }
+
+    // 3. Associated Token Account Program:
+    // Only allow createIdempotent or create where relayer is payer (keys[0]).
+    // Relayer must NEVER be the target wallet (keys[2]) or mint!
+    if (progId === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') {
+      if (ix.keys.length >= 3 && ix.keys[2].pubkey.equals(relayerPubkey)) {
+        return 'Blocked: relayer cannot be the target wallet of an ATA creation instruction';
       }
     }
   }

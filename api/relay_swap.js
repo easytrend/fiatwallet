@@ -197,18 +197,25 @@ export default async function handler(req, res) {
       if (!programKey) continue;
       const programId = programKey.toBase58();
 
-      // 2b. SystemProgram: block if relayer is the 'from' (source) in a transfer.
-      //     SystemProgram.transfer discriminator = 2 (u32 LE), from = accountKeyIndexes[0].
+      // 2b. SystemProgram: block if relayer is involved in ANY SystemProgram instruction
+      //     as a source/writable account (CreateAccount = 0, Assign = 1, Transfer = 2, CreateAccountWithSeed = 3, TransferWithSeed = 11).
       if (programId === SYSTEM_PROGRAM_ID) {
         if (ix.data && ix.data.length >= 4) {
           const discriminator = ix.data[0] | (ix.data[1] << 8) | (ix.data[2] << 16) | (ix.data[3] << 24);
-          if (discriminator === 2) { // SystemProgram::transfer
+          if ([0, 1, 2, 3, 11].includes(discriminator)) {
             const fromIndex = ix.accountKeyIndexes[0];
             if (relayerIndices.has(fromIndex)) {
               return res.status(400).json({
-                error: 'Blocked: Transaction attempts to transfer SOL from relayer wallet (detected via full account key resolution).'
+                error: `Blocked: Transaction attempts to transfer or create account from relayer wallet (SystemProgram opcode ${discriminator}).`
               });
             }
+          }
+        }
+        for (const accIdx of ix.accountKeyIndexes) {
+          if (relayerIndices.has(accIdx)) {
+            return res.status(400).json({
+              error: 'Blocked: Relayer wallet cannot appear in SystemProgram instructions in swap.'
+            });
           }
         }
       }
