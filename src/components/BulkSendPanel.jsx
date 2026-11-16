@@ -586,22 +586,6 @@ export default function BulkSendPanel({ tok, connected, getLiveRate, connection,
       setErrorMsg(msg);
       setSendingState('error');
       setToast({ type: 'error', title: 'Bulk send failed', message: msg });
-      try {
-        if (publicKey) {
-          const totalUSD = (parseFloat(totalRequested) || 0) * (tok?.price || 1);
-          logTransaction({
-            signature: `failed_bulk_${Date.now()}`,
-            userAddress: publicKey.toBase58(),
-            type: 'bulk_send',
-            symbol: tok?.symbol || 'UNKNOWN',
-            tokenAmount: parseFloat(totalRequested) || 0,
-            usdValue: totalUSD,
-            status: 'ERROR',
-          });
-        }
-      } catch (logErr) {
-        console.warn('[BulkSend] Failed to log error:', logErr);
-      }
     }
   };
 

@@ -8,7 +8,6 @@ import {
   getOrCreateBridgeDeposit,
   markBridgeDepositCompleted,
   checkBridgeStatus,
-  updateBridgeTransactionStatus,
   claimBridgeForward,
   isValidRefundAddress,
   getDefaultRefundAddress,
@@ -214,10 +213,6 @@ export default function ReceiveModal({ address, onClose }) {
           }
         } else if (status === 'FAILED' || status === 'REFUNDED') {
           setBridgeStatus('FAILED');
-          updateBridgeTransactionStatus({
-            depositAddress: address,
-            status: 'FAILED',
-          }).catch(() => {});
           clearInterval(pollTimerRef.current);
         }
       } catch (err) {

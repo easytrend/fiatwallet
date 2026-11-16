@@ -48,33 +48,24 @@ export const supabase = new Proxy({}, {
 /**
  * Log a general on-chain transaction (send, swap, bulk_send, claims).
  */
-export async function logTransaction({ signature, userAddress, type, symbol, tokenAmount, usdValue, status = 'COMPLETED' }) {
+export async function logTransaction({ signature, userAddress, type, symbol, tokenAmount, usdValue }) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !signature) return;
 
   try {
-    const payload = {
-      signature,
-      user_address: userAddress,
-      transaction_type: type,
-      token_symbol: symbol,
-      token_amount: parseFloat(tokenAmount) || 0,
-      usd_value: parseFloat(usdValue) || 0,
-    };
-    if (status) {
-      payload.status = status;
-    }
-
-    let { error } = await client
+    const { error } = await client
       .from('transactions')
-      .upsert(payload, { onConflict: 'signature' });
-
-    if (error && error.message && error.message.includes('status')) {
-      delete payload.status;
-      ({ error } = await client
-        .from('transactions')
-        .upsert(payload, { onConflict: 'signature' }));
-    }
+      .upsert(
+        {
+          signature,
+          user_address: userAddress,
+          transaction_type: type,
+          token_symbol: symbol,
+          token_amount: parseFloat(tokenAmount) || 0,
+          usd_value: parseFloat(usdValue) || 0,
+        },
+        { onConflict: 'signature' }
+      );
 
     if (error) console.warn('[Supabase] logTransaction failed:', error.message);
   } catch (err) {

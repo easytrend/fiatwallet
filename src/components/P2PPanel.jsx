@@ -1099,9 +1099,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         if (prev <= 1) {
           clearInterval(interval);
           setManualOrderStatus('EXPIRED');
-          if (manualOrder?.id) {
-            updateP2PTransactionStatus(manualOrder.id, 'ERROR');
-          }
           return 0;
         }
         return prev - 1;
@@ -2627,24 +2624,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       observer.connect().catch(() => { /* socket unavailable */ });
     } catch (err) {
       setOnrampError(err.message || 'Failed to create onramp order.');
-      // Record failed onramp attempt to Supabase so daily user interactions are captured
-      try {
-        const failedId = `failed_onramp_${Date.now()}`;
-        logP2PTransaction({
-          orderId: failedId,
-          userAddress: userWalletAddress || 'guest_onramp',
-          tokenSymbol: liveSelectedToken?.symbol || 'USDC',
-          cryptoAmount: parseFloat(displayOnrampAmount) || parseFloat(netOnrampCrypto) || 0,
-          fiatCurrency: 'NGN',
-          fiatAmount: parseFloat(parsedOnrampAmt) || 0,
-          usdValue: (parseFloat(displayOnrampAmount) || parseFloat(netOnrampCrypto) || 0) * (tokenPriceUsd || 1),
-          status: 'ERROR',
-          userEmail: effectiveEmail || sessionEmail || undefined,
-          type: 'p2p_onramp',
-        }).catch(() => {});
-      } catch (logErr) {
-        console.warn('[Onramp] Failed to log failure:', logErr);
-      }
     } finally {
       setOnrampLoading(false);
     }
@@ -3050,7 +3029,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     setSubmitting(true);
-    let currentOrder = null;
     try {
       const isTagOfframp = Boolean(resolvedTagData);
       const effectiveBankName   = isTagOfframp ? (resolvedTagData?.bank_name   || '') : selectedBank;
@@ -3089,7 +3067,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       );
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
-      currentOrder = order;
 
       const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
 
@@ -3236,31 +3213,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } catch (err) {
       console.error('[Manual Offramp] Error creating order:', err);
       setP2pError(err?.message || 'Failed to create offramp order.');
-
-      // Record failed manual offramp to Supabase so daily user interaction is captured
-      try {
-        const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
-        const failedId = `failed_manual_${Date.now()}`;
-        const isTag = Boolean(resolvedTagData);
-        logP2PTransaction({
-          orderId: failedId,
-          userAddress: effectiveUserWallet,
-          tokenSymbol: liveSelectedToken?.symbol || 'USDC',
-          cryptoAmount: parseFloat(baseCryptoAmount) || parseFloat(amount) || 0,
-          fiatCurrency: selectedCountry?.currency || 'NGN',
-          fiatAmount: parseFloat(parsedAmt) || 0,
-          usdValue: parseFloat(parsedAmt) || 0,
-          bankName: isTag ? (resolvedTagData?.bank_name || '') : selectedBank,
-          accountNumber: isTag ? (resolvedTagData?.account_number || '') : accountNumber,
-          accountName: isTag ? (resolvedTagData?.account_name || '') : accountName,
-          status: 'ERROR',
-          userEmail: effectiveEmail || sessionEmail || undefined,
-          recipientTag: isTag ? (recipientTagInput || (resolvedTagData?.tag_name ? `$${resolvedTagData.tag_name}` : undefined)) : undefined,
-          type: 'p2p_offramp',
-        }).catch(() => {});
-      } catch (logErr) {
-        console.warn('[Manual Offramp] Failed to log failure:', logErr);
-      }
     } finally {
       setSubmitting(false);
     }
@@ -3283,7 +3235,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }
 
     setSubmitting(true);
-    let currentOrder = null;
     try {
       const balance = liveSelectedToken.balance || 0;
       if (baseCryptoAmount > (balance + 0.0001)) {
@@ -3331,36 +3282,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       );
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
-      currentOrder = order;
-
-      // Log transaction to Supabase immediately with INIT status
-      // Guarantees transaction is recorded in Supabase so daily user interaction is captured
-      // even if signing, simulation, user rejection, or relayer fails!
-      const walletKey = publicKey.toBase58();
-      const initialCryptoLogged = baseCryptoAmount;
-      const initialFiatLogged = parsedAmt;
-      const netCryptoLoggedInit = Math.max(0, initialCryptoLogged - platformFeeInToken);
-      const usdLoggedInit = selectedCountry.currency === 'USD'
-        ? initialFiatLogged
-        : netCryptoLoggedInit * (tokenPriceUsd || 1);
-
-      logP2PTransaction({
-        userAddress: walletKey,
-        orderId: order.id,
-        tokenSymbol: liveSelectedToken.symbol,
-        cryptoAmount: initialCryptoLogged,
-        fiatCurrency: selectedCountry.currency,
-        fiatAmount: initialFiatLogged,
-        usdValue: usdLoggedInit,
-        bankName: isTagOfframp ? effectiveBankName : displayBank,
-        accountNumber: effectiveAcctNumber.replace(/\D/g, '').trim(),
-        accountName: effectiveAcctName || 'Account Holder',
-        status: 'INIT',
-        userEmail: sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${walletKey}`) : '') || localStorage.getItem('paj_manual_sessionEmail') || undefined,
-        depositAddress: order.address,
-        recipientTag: effectiveTag,
-        type: 'p2p_offramp',
-      }).catch(err => console.warn('[Offramp] Initial logP2PTransaction notice:', err));
 
       // 2. Check if server-side relayer is configured
       await getEffectiveRelayerConfigAsync().catch(() => {});
@@ -3623,6 +3544,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // 7. Persist order to localStorage and log to Supabase IMMEDIATELY after
       //    sig is known — before polling. This ensures a network blip during
       //    the confirmation poll never loses the record from the history panel.
+      const walletKey = publicKey.toBase58();
       const existing = (() => {
         try { return JSON.parse(localStorage.getItem(`paj_user_orders_${walletKey}`) || '[]'); }
         catch { return []; }
@@ -3787,37 +3709,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } catch (err) {
       console.error('Transaction failed:', err);
       setP2pError(err.message || 'Transaction failed');
-
-      // Guarantee failed transaction is recorded in Supabase for daily interaction tracking
-      try {
-        const walletKey = publicKey ? publicKey.toBase58() : 'unknown_wallet';
-        const userEmailVal = sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${walletKey}`) : '') || localStorage.getItem('paj_manual_sessionEmail') || undefined;
-        if (currentOrder?.id) {
-          updateP2PTransactionStatus(currentOrder.id, 'ERROR');
-        } else {
-          const failedId = `failed_offramp_${Date.now()}`;
-          const isTag = Boolean(resolvedTagData);
-          logP2PTransaction({
-            orderId: failedId,
-            userAddress: walletKey,
-            tokenSymbol: liveSelectedToken?.symbol || 'USDC',
-            cryptoAmount: parseFloat(baseCryptoAmount) || parseFloat(amount) || 0,
-            fiatCurrency: selectedCountry?.currency || 'NGN',
-            fiatAmount: parseFloat(parsedAmt) || 0,
-            usdValue: parseFloat(parsedAmt) || 0,
-            bankName: isTag ? (resolvedTagData?.bank_name || '') : selectedBank,
-            accountNumber: isTag ? (resolvedTagData?.account_number || '') : accountNumber,
-            accountName: isTag ? (resolvedTagData?.account_name || '') : accountName,
-            status: 'ERROR',
-            userEmail: userEmailVal,
-            recipientTag: isTag ? (recipientTagInput || (resolvedTagData?.tag_name ? `$${resolvedTagData.tag_name}` : undefined)) : undefined,
-            type: 'p2p_offramp',
-          }).catch(() => {});
-        }
-      } catch (logErr) {
-        console.warn('[Offramp] Failed to record failed transaction:', logErr);
-      }
-
       if (err.message?.toLowerCase().includes('session') || err.message?.toLowerCase().includes('expired') || err.message?.toLowerCase().includes('unauthorized') || err.message?.toLowerCase().includes('invalid token')) {
         handleLogoutSession();
       }
@@ -6727,9 +6618,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 if (manualPollingTimerRef.current) {
                   clearInterval(manualPollingTimerRef.current);
                 }
-                if (manualOrder?.id && manualOrderStatus !== 'CONFIRMED') {
-                  updateP2PTransactionStatus(manualOrder.id, 'ERROR');
-                }
                 setManualOrder(null);
                 setManualOrderStatus(null);
               }}
@@ -6978,9 +6866,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   if (manualPollingTimerRef.current) {
                     clearInterval(manualPollingTimerRef.current);
                   }
-                  if (manualOrder?.id && manualOrderStatus !== 'CONFIRMED') {
-                    updateP2PTransactionStatus(manualOrder.id, 'ERROR');
-                  }
                   setManualOrder(null);
                   setManualOrderStatus(null);
                   clearAllP2PFields();
@@ -6998,9 +6883,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   }
                   if (manualPollingTimerRef.current) {
                     clearInterval(manualPollingTimerRef.current);
-                  }
-                  if (manualOrder?.id && manualOrderStatus !== 'CONFIRMED') {
-                    updateP2PTransactionStatus(manualOrder.id, 'ERROR');
                   }
                   setManualOrder(null);
                   setManualOrderStatus(null);
