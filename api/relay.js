@@ -297,8 +297,8 @@ export default async function handler(req, res) {
       return res.status(503).json({ error: 'Could not fetch relayer wallet balance from Solana: ' + e.message });
     }
 
-    if (relayerBalance < 10_000) {
-      return res.status(503).json({ error: `Relayer wallet has insufficient SOL (${(relayerBalance / 1e9).toFixed(5)} SOL). Please fund it.` });
+    if (relayerBalance < 2_000_000) {
+      return res.status(503).json({ error: `Relayer wallet has insufficient SOL (${(relayerBalance / 1e9).toFixed(5)} SOL). Please fund it with at least 0.005 SOL.` });
     }
 
     // ── Sign as feePayer and broadcast ───────────────────────────────────────
@@ -312,6 +312,13 @@ export default async function handler(req, res) {
           preflightCommitment: 'confirmed',
         });
       } catch (preflightErr) {
+        const errMsg = (preflightErr?.message || '').toLowerCase();
+        // If simulation failed due to insufficient lamports or custom instruction error,
+        // do NOT skip preflight and broadcast a doomed transaction. Fail fast so client falls back!
+        if (errMsg.includes('insufficient') || errMsg.includes('custom') || errMsg.includes('0x1')) {
+          console.warn('[relay] Preflight simulation failed with instruction/funds error:', preflightErr.message);
+          throw preflightErr;
+        }
         console.warn('[relay] Preflight simulation failed, retrying with skipPreflight: true:', preflightErr.message);
         sig = await connection.sendRawTransaction(transaction.serialize(), {
           skipPreflight: true,
