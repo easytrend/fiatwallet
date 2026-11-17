@@ -3,6 +3,7 @@
  *
  * Receives a user-signed Solana transaction (serialized, base64),
  * validates it, adds the relayer's signature as feePayer, and broadcasts it.
+ * Supports both legacy Transactions and VersionedTransactions (v0).
  *
  * Required server-side env vars (NO VITE_ prefix — never sent to browser):
  *   RELAYER_SECRET_KEY  — JSON array of 64 bytes, e.g. [12, 34, ...] OR Base58 private key string
@@ -12,7 +13,9 @@
 import {
   Connection,
   Transaction,
+  VersionedTransaction,
   Keypair,
+  PublicKey,
 } from '@solana/web3.js';
 import { createClient } from '@supabase/supabase-js';
 import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
@@ -101,25 +104,32 @@ function loadKeypair(secretEnv) {
 }
 
 /**
+ * Extracts instructions uniformly from either a legacy Transaction or VersionedTransaction.
+ */
+function extractInstructions(transaction, isVersioned) {
+  if (!isVersioned) return transaction.instructions || [];
+  const staticKeys = transaction.message.staticAccountKeys;
+  return transaction.message.compiledInstructions.map(ix => ({
+    programId: staticKeys[ix.programIdIndex],
+    keys: ix.accountKeyIndexes.map(idx => ({
+      pubkey: staticKeys[idx],
+      isSigner: transaction.message.isAccountSigner(idx),
+      isWritable: transaction.message.isAccountWritable(idx),
+    })),
+    data: Buffer.from(ix.data),
+  }));
+}
+
+/**
  * Checks that the relayer's public key is never used as the SOURCE of any
  * fund transfer. This prevents a malicious user from crafting a transaction
  * that drains the relayer's SOL or tokens while using it as the fee payer.
- *
- * The relayer IS expected to appear as:
- *   - feePayer (pays gas)
- *   - payer for ATA creation (pays rent for new token accounts)
- *
- * The relayer must NEVER appear as:
- *   - fromPubkey in SystemProgram.transfer (would drain SOL)
- *   - source in SPL Token transfer/transferChecked (would drain tokens)
  */
-function validateRelayerNotDrained(transaction, relayerPubkey) {
-  for (const ix of transaction.instructions) {
-    const progId = ix.programId.toBase58();
+function validateRelayerNotDrained(instructions, relayerPubkey) {
+  for (const ix of instructions) {
+    const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
 
     // 1. SystemProgram: The relayer must NEVER appear as a writable or signer account in ANY SystemProgram instruction.
-    // In an offramp, SOL is transferred from the user's wallet to the deposit address.
-    // The relayer is ONLY the feePayer in the transaction header and has no reason to be in ix.keys.
     if (progId === SYSTEM_PROGRAM_ID) {
       for (let k = 0; k < ix.keys.length; k++) {
         const keyMeta = ix.keys[k];
@@ -127,9 +137,10 @@ function validateRelayerNotDrained(transaction, relayerPubkey) {
           return `Blocked: relayer cannot be a writable or signer account in SystemProgram (index ${k})`;
         }
       }
-      if (ix.data.length >= 4) {
-        const ixType = ix.data.readUInt32LE(0);
-        // 0 = CreateAccount, 1 = Assign, 2 = Transfer, 3 = CreateAccountWithSeed, 11 = TransferWithSeed
+      if (ix.data && ix.data.length >= 4) {
+        const ixType = Buffer.isBuffer(ix.data)
+          ? ix.data.readUInt32LE(0)
+          : (ix.data[0] | (ix.data[1] << 8) | (ix.data[2] << 16) | (ix.data[3] << 24));
         if ([0, 1, 2, 3, 11].includes(ixType) && ix.keys.length > 0) {
           if (ix.keys[0].pubkey.equals(relayerPubkey)) {
             return `Blocked: relayer cannot be the source of SystemProgram instruction type ${ixType}`;
@@ -140,7 +151,6 @@ function validateRelayerNotDrained(transaction, relayerPubkey) {
 
     // 2. Token Programs (SPL Token & Token-2022):
     // The relayer must NEVER appear in ANY Token Program instruction.
-    // In an offramp, tokens are transferred from the user's ATA to the deposit ATA.
     if (TOKEN_PROGRAMS.has(progId)) {
       for (let k = 0; k < ix.keys.length; k++) {
         const keyMeta = ix.keys[k];
@@ -219,44 +229,56 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid serializedTransaction parameter' });
     }
 
-    // ── Deserialize transaction ───────────────────────────────────────────────
+    // ── Deserialize transaction (support both legacy and VersionedTransaction) ─
     let transaction;
+    let isVersioned = false;
     try {
       const txBuffer = Buffer.from(serializedTransaction, 'base64');
-      transaction = Transaction.from(txBuffer);
+      try {
+        transaction = Transaction.from(txBuffer);
+      } catch (legacyErr) {
+        transaction = VersionedTransaction.deserialize(txBuffer);
+        isVersioned = true;
+      }
     } catch (e) {
       return res.status(400).json({ error: 'Could not deserialize transaction: ' + e.message });
     }
 
     // ── Security validation ───────────────────────────────────────────────────
-    // Instead of whitelisting specific programs (which breaks when wallets inject
-    // utility programs like ComputeBudget, Lighthouse, etc.), we directly verify
-    // that the relayer's funds cannot be drained. This is both more secure and
-    // compatible with all wallets.
 
     // 1. feePayer must be the relayer
-    if (!transaction.feePayer || !transaction.feePayer.equals(relayerKp.publicKey)) {
+    const feePayer = isVersioned ? transaction.message.staticAccountKeys[0] : transaction.feePayer;
+    if (!feePayer || !feePayer.equals(relayerKp.publicKey)) {
       return res.status(400).json({ error: 'Transaction feePayer does not match the relayer\'s public key' });
     }
 
+    const instructions = extractInstructions(transaction, isVersioned);
+
     // 2. Ensure no instruction can drain the relayer's SOL or tokens
-    const drainCheck = validateRelayerNotDrained(transaction, relayerKp.publicKey);
+    const drainCheck = validateRelayerNotDrained(instructions, relayerKp.publicKey);
     if (drainCheck) {
       return res.status(400).json({ error: drainCheck });
     }
 
     // ── Identify User Signer & Check Gasless Whitelist ───────────────────────
-    const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
-    const userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
+    let userWalletStr = '';
+    if (isVersioned) {
+      const userPk = transaction.message.staticAccountKeys.find(k => !k.equals(relayerKp.publicKey));
+      userWalletStr = userPk ? userPk.toBase58() : '';
+    } else {
+      const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
+      userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
+    }
     const isWhitelistedGasless = Boolean(userWalletStr && GASLESS_WHITELISTED_WALLETS.has(userWalletStr));
 
     // 3. Must have our memo to confirm it's a genuine offramp tx OR a whitelisted gasless send
     const decoder = new TextDecoder();
     let isOfframp = false;
     let isGaslessSend = false;
+    let memoOrderId = '';
 
-    for (const ix of transaction.instructions) {
-      const progId = ix.programId.toBase58();
+    for (const ix of instructions) {
+      const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
       const isMemo =
         progId === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' ||
         progId === 'Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo';
@@ -265,6 +287,7 @@ export default async function handler(req, res) {
         const text = decoder.decode(ix.data);
         if (text.startsWith(MEMO_PREFIX)) {
           isOfframp = true;
+          memoOrderId = text.replace(MEMO_PREFIX, '').trim();
           break;
         }
         if (isWhitelistedGasless && (text.startsWith('fiatwallet:send:USDC:') || text.startsWith('fiatwallet:send:'))) {
@@ -282,33 +305,19 @@ export default async function handler(req, res) {
     }
 
     // 4. Structural integrity: Transactions have strict bounds
-    if (transaction.instructions.length > 5) {
+    if (instructions.length > 10) {
       return res.status(400).json({ error: 'Transaction exceeds maximum instruction count' });
     }
 
-    const ataInstructions = transaction.instructions.filter(ix =>
-      ix.programId.toBase58() === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
-    );
+    const ataInstructions = instructions.filter(ix => {
+      const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
+      return progId === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+    });
     if (ataInstructions.length > 1) {
       return res.status(400).json({ error: 'At most one ATA creation instruction allowed' });
     }
 
     // ── Check Compliance Blacklist ───────────────────────────────────────────
-
-    let memoOrderId = '';
-    for (const ix of transaction.instructions) {
-      const progId = ix.programId.toBase58();
-      if (progId === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' || progId === 'Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo') {
-        try {
-          const text = decoder.decode(ix.data);
-          if (text.startsWith(MEMO_PREFIX)) {
-            memoOrderId = text.replace(MEMO_PREFIX, '').trim();
-            break;
-          }
-        } catch (e) {}
-      }
-    }
-
     let userEmail = '';
     let supabase = null;
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -344,7 +353,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Transaction rejected: Account is restricted for compliance review.' });
     }
 
-    // ── Connect and check relayer SOL balance ─────────────────────────────────
+    // ── Connect and check relayer SOL balance across candidate RPCs ──────────
     function extractHeliusKey() {
       if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) return process.env.HELIUS_API_KEY.trim();
       const urls = [process.env.HELIUS_RPC_URL, process.env.VITE_RPC_URL, process.env.RPC_URL];
@@ -355,59 +364,91 @@ export default async function handler(req, res) {
       }
       return null;
     }
-    const heliusKey = extractHeliusKey();
-    const rpcUrl = process.env.HELIUS_RPC_URL || (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : (process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com'));
-    const connection = new Connection(rpcUrl, 'confirmed');
 
-    let relayerBalance;
-    try {
-      relayerBalance = await connection.getBalance(relayerKp.publicKey);
-    } catch (e) {
-      return res.status(503).json({ error: 'Could not fetch relayer wallet balance from Solana: ' + e.message });
+    const heliusKey = extractHeliusKey();
+    const candidateRpcUrls = [
+      process.env.HELIUS_RPC_URL,
+      heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : null,
+      process.env.VITE_RPC_URL,
+      process.env.RPC_URL,
+      'https://solana-rpc.publicnode.com',
+      'https://rpc.ankr.com/solana',
+      'https://api.mainnet-beta.solana.com',
+    ].filter(Boolean);
+
+    const primaryConnection = new Connection(candidateRpcUrls[0], 'confirmed');
+
+    let relayerBalance = 0;
+    for (const rpc of candidateRpcUrls) {
+      try {
+        const c = (rpc === candidateRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
+        relayerBalance = await c.getBalance(relayerKp.publicKey);
+        break;
+      } catch (e) {
+        console.warn(`[relay] Could not fetch balance from ${rpc}:`, e.message);
+      }
     }
 
     if (relayerBalance < 10_000) {
       return res.status(503).json({ error: `Relayer wallet has insufficient SOL (${(relayerBalance / 1e9).toFixed(5)} SOL). Please fund it.` });
     }
 
-    // ── Sign as feePayer and broadcast ───────────────────────────────────────
-    try {
+    // ── Sign as feePayer ─────────────────────────────────────────────────────
+    let rawWireTx;
+    if (isVersioned) {
+      transaction.sign([relayerKp]);
+      rawWireTx = transaction.serialize();
+    } else {
       transaction.partialSign(relayerKp);
-
-      let sig;
-      try {
-        sig = await connection.sendRawTransaction(transaction.serialize(), {
-          skipPreflight: false,
-          preflightCommitment: 'confirmed',
-        });
-      } catch (preflightErr) {
-        console.warn('[relay] Preflight simulation failed, retrying with skipPreflight: true:', preflightErr.message);
-        sig = await connection.sendRawTransaction(transaction.serialize(), {
-          skipPreflight: true,
-        });
-      }
-
-      console.log(`[relay] Broadcasted tx: ${sig}`);
-
-      if (supabase && memoOrderId) {
-        supabase
-          .from('p2p_transactions')
-          .update({
-            signature: sig,
-            updated_at: new Date().toISOString()
-          })
-          .eq('order_id', memoOrderId)
-          .then(({ error: upErr }) => {
-            if (upErr) console.warn('[relay] Supabase sig update note:', upErr.message);
-          })
-          .catch(() => {});
-      }
-
-      return res.status(200).json({ signature: sig });
-    } catch (e) {
-      console.error('[relay] Broadcast failed:', e.message);
-      return res.status(500).json({ error: 'Transaction broadcast failed: ' + e.message });
+      rawWireTx = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
     }
+
+    // ── Multi-RPC Broadcast ──────────────────────────────────────────────────
+    let sig = null;
+    let broadcastError = null;
+
+    for (const rpc of candidateRpcUrls) {
+      try {
+        const c = (rpc === candidateRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
+        try {
+          sig = await c.sendRawTransaction(rawWireTx, {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          });
+        } catch (simErr) {
+          console.warn(`[relay] Preflight simulation on ${rpc} failed, retrying with skipPreflight: true:`, simErr.message);
+          sig = await c.sendRawTransaction(rawWireTx, {
+            skipPreflight: true,
+          });
+        }
+        if (sig) break;
+      } catch (err) {
+        broadcastError = err;
+        console.warn(`[relay] Broadcast attempt on ${rpc} failed:`, err.message);
+      }
+    }
+
+    if (!sig) {
+      throw broadcastError || new Error('Transaction broadcast failed across all RPC endpoints.');
+    }
+
+    console.log(`[relay] Broadcasted tx successfully: ${sig}`);
+
+    if (supabase && memoOrderId) {
+      supabase
+        .from('p2p_transactions')
+        .update({
+          signature: sig,
+          updated_at: new Date().toISOString()
+        })
+        .eq('order_id', memoOrderId)
+        .then(({ error: upErr }) => {
+          if (upErr) console.warn('[relay] Supabase sig update note:', upErr.message);
+        })
+        .catch(() => {});
+    }
+
+    return res.status(200).json({ signature: sig });
   } catch (error) {
     console.error('[relay] Unhandled runtime crash:', error);
     return res.status(500).json({

@@ -3454,20 +3454,37 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       if (usingRelayer && signTransaction) {
         try {
+          // Refresh recentBlockhash immediately prior to opening wallet
+          try {
+            const { blockhash: freshHash } = await connection.getLatestBlockhash("confirmed");
+            transaction.recentBlockhash = freshHash;
+          } catch {}
+
           // User signs the transaction — since feePayer = relayerPublicKey (not user),
           // the wallet shows ZERO fees to the user.
           const signedTx = await signTransaction(transaction, offrampMeta);
 
           // Serialize the user-signed tx and POST it to the secure server-side relay endpoint.
-          const serialized = Buffer.from(
-            signedTx.serialize({ requireAllSignatures: false })
-          ).toString('base64');
+          const rawBytes = typeof signedTx.serialize === "function"
+            ? signedTx.serialize({ requireAllSignatures: false, verifySignatures: false })
+            : signedTx;
+          const serialized = Buffer.from(rawBytes).toString("base64");
 
-          const relayRes = await fetch(getRelayEndpoint('/api/relay'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          let relayRes = await fetch(getRelayEndpoint("/api/relay"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ serializedTransaction: serialized }),
           });
+
+          // Auto-retry once after 1.2s if temporary network hiccup
+          if (!relayRes.ok) {
+            await new Promise(r => setTimeout(r, 1200));
+            relayRes = await fetch(getRelayEndpoint("/api/relay"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ serializedTransaction: serialized }),
+            }).catch(() => relayRes);
+          }
 
           if (!relayRes.ok) {
             const errData = await relayRes.json().catch(() => ({}));
@@ -3478,62 +3495,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           sig = signature;
           setRelayerActive(true);
         } catch (relayErr) {
-          console.warn('[Relayer Fallback] Gasless relay failed or unfunded:', relayErr.message);
-
-          // If the user does not have enough SOL to cover gas, don't submit a doomed transaction
-          const userSolLamports = await connection.getBalance(publicKey, 'confirmed').catch(() => 0);
-          if (userSolLamports < 5000) {
-            throw new Error(`Gasless sponsorship failed (${relayErr.message}) and your wallet does not have enough SOL for the Solana network fee.`);
-          }
-
-          // Re-build transaction with user as feePayer (user settles gas fee)
-          const fallbackTx = new Transaction();
-          fallbackTx.feePayer = publicKey;
-          fallbackTx.recentBlockhash = (await connection.getLatestBlockhash('confirmed')).blockhash;
-
-          if (liveSelectedToken.symbol === 'SOL') {
-            const lamports = Math.round(finalSendAmount * 1e9);
-            fallbackTx.add(SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: depositPubkey, lamports }));
-          } else {
-            const mintPubkey = new PublicKey(liveSelectedToken.mint);
-            let tokenProgram = TOKEN_PROGRAM_ID;
-            if (liveSelectedToken.tokenProgramOverride === 'token2022') {
-              tokenProgram = TOKEN_2022_PROGRAM_ID;
-            } else {
-              try {
-                const mintAcct = await connection.getAccountInfo(mintPubkey);
-                if (mintAcct?.owner.equals(TOKEN_2022_PROGRAM_ID)) tokenProgram = TOKEN_2022_PROGRAM_ID;
-              } catch {}
-            }
-            const senderATA = getAssociatedTokenAddressSync(mintPubkey, publicKey, false, tokenProgram);
-            const receiverATA = getAssociatedTokenAddressSync(mintPubkey, depositPubkey, false, tokenProgram);
-            const sendAmount = finalSendAmount;
-            let decimals = typeof liveSelectedToken.decimals === 'number' ? liveSelectedToken.decimals : 6;
-            const units = BigInt(Math.round(sendAmount * Math.pow(10, decimals)));
-
-            fallbackTx.add(
-              createAssociatedTokenAccountIdempotentInstruction(
-                publicKey, receiverATA, depositPubkey, mintPubkey, tokenProgram
-              )
-            );
-            fallbackTx.add(
-              createTransferCheckedInstruction(
-                senderATA, mintPubkey, receiverATA, publicKey, units, decimals, [], tokenProgram
-              )
-            );
-          }
-
-          fallbackTx.add(
-            new TransactionInstruction({
-              keys: [],
-              programId: MEMO_PROGRAM_ID,
-              data: new TextEncoder().encode(`fiatwallet:pajcash:offramp:${order.id}`),
-            })
-          );
-
-          // Prompt user wallet to sign & pay network gas fee
-          sig = await sendTransaction(fallbackTx, connection, { meta: offrampMeta });
-          setRelayerActive(false);
+          console.error("[Relayer Gasless Transfer Error]:", relayErr);
+          // When a user has confirmed a gasless transaction, do NOT silently pop up
+          // a second confirmation prompt asking them to pay Solana network fees.
+          // Throw the clean error so the flow is predictable and honest.
+          throw new Error(relayErr.message || "Gasless relay transaction failed.");
         }
       } else {
         // No relayer — user pays gas normally
