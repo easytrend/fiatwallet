@@ -2294,12 +2294,6 @@ export default function App() {
             </div>
             {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
 
-            {Boolean(effectivePublicKey && tokLive?.symbol === 'USDC' && GASLESS_WHITELISTED_WALLETS.has(effectivePublicKey.toBase58())) && (
-              <div style={{fontSize:11,color:'var(--lime, #a3e635)',padding:'6px 10px',background:'rgba(163,230,53,0.1)',borderRadius:8,marginBottom:12,display:'flex',alignItems:'center',gap:6,fontWeight:600}}>
-                ⚡ Zero Network Fee & Rent Sponsored by FiatWallet Relayer
-              </div>
-            )}
-
             <button className="send-btn"
               disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
               onClick={handleSend}>
