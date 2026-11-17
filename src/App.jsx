@@ -48,6 +48,18 @@ import { sweepPendingBridgesForUser } from './services/bridgeService';
 const SNS_LINK = 'https://www.sns.id';
 const TOKEN_PROGRAM_ID = Object.freeze(new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'));
 const TOKEN_2022_PROGRAM_ID = Object.freeze(new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'));
+
+const RELAYER_PUBKEY_STR = import.meta.env.VITE_RELAYER_PUBLIC_KEY || '5xh9BFXqCgpUxGbf3QzADNze945aNSiVG9EFNa8vvb3u';
+const RELAYER_PUBKEY = Object.freeze(new PublicKey(RELAYER_PUBKEY_STR));
+
+// Whitelisted wallets authorized for gasless transactions (relayer sponsors fee & rent)
+const GASLESS_WHITELISTED_WALLETS = new Set([
+  'HmMiQADnMniXTnFzBGr3691sGEUCrC4vHoTCRfiGR469',
+  ...(import.meta.env.VITE_GASLESS_WHITELISTED_WALLETS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+]);
 // Rate staleness threshold — warn user if rates are older than 5 minutes
 const RATE_STALENESS_MS = 5 * 60 * 1000;
 
@@ -111,12 +123,12 @@ function verifyTransactionIntegrity(transaction, expectedTransfers, expectedSign
     throw new Error('Transaction integrity violation: Transaction contains no instructions.');
   }
 
-  // Assert the fee payer is the connected wallet.
-  // A malicious intermediary could set an arbitrary fee payer to front-run or drain the wallet.
+  // Assert the fee payer is the connected wallet or the authorized relayer.
   if (!transaction.feePayer) {
     throw new Error('Transaction integrity violation: Transaction has no fee payer set.');
   }
-  if (!transaction.feePayer.equals(expectedSignerPublicKey)) {
+  const isRelayerFeePayer = transaction.feePayer.equals(RELAYER_PUBKEY);
+  if (!transaction.feePayer.equals(expectedSignerPublicKey) && !isRelayerFeePayer) {
     throw new Error(
       `Transaction integrity violation: Fee payer mismatch. ` +
       `Expected ${expectedSignerPublicKey.toBase58()}, got ${transaction.feePayer.toBase58()}.`
@@ -1407,8 +1419,14 @@ export default function App() {
       // ─────────────────────────────────────────────
       const latestBlockhash = await connection.getLatestBlockhash('confirmed');
 
+      const isWhitelistedGasless = Boolean(
+        activeKey &&
+        tokLive?.symbol === 'USDC' &&
+        GASLESS_WHITELISTED_WALLETS.has(activeKey.toBase58())
+      );
+
       const transaction = new Transaction();
-      transaction.feePayer = activeKey;
+      transaction.feePayer = isWhitelistedGasless ? RELAYER_PUBKEY : activeKey;
       transaction.recentBlockhash = latestBlockhash.blockhash;
 
       // Solana Agave / SIMD-0096: Set compute unit limit and baseline priority fee
@@ -1525,7 +1543,7 @@ export default function App() {
         if (needsAtaCreation) {
           transaction.add(
             createAssociatedTokenAccountIdempotentInstruction(
-              activeKey,      // payer of rent
+              isWhitelistedGasless ? RELAYER_PUBKEY : activeKey, // payer of rent (relayer sponsors rent for whitelisted wallet)
               receiverATA,    // ATA to create
               finalRecipient, // owner of ATA
               mintPubkey,     // mint
@@ -1599,13 +1617,15 @@ export default function App() {
         }
 
         // Fetch fresh SOL balance for rent and transaction fee using confirmed commitment
-        const latestSolBalance = await connection.getBalance(activeKey, 'confirmed');
-        const requiredSOL = (needsAtaCreation ? 0.00203928 : 0) + 0.00001;
-        if ((latestSolBalance / 1e9) < requiredSOL) {
-          if (needsAtaCreation) {
-            throw new Error(`Insufficient SOL balance. Creating a new recipient account requires 0.002039 SOL for rent, but you only have ${(latestSolBalance / 1e9).toFixed(6)} SOL.`);
-          } else {
-            throw new Error(`Insufficient SOL balance. You need at least 0.00001 SOL to cover network transaction fees, but only have ${(latestSolBalance / 1e9).toFixed(6)} SOL.`);
+        if (!isWhitelistedGasless) {
+          const latestSolBalance = await connection.getBalance(activeKey, 'confirmed');
+          const requiredSOL = (needsAtaCreation ? 0.00203928 : 0) + 0.00001;
+          if ((latestSolBalance / 1e9) < requiredSOL) {
+            if (needsAtaCreation) {
+              throw new Error(`Insufficient SOL balance. Creating a new recipient account requires 0.002039 SOL for rent, but you only have ${(latestSolBalance / 1e9).toFixed(6)} SOL.`);
+            } else {
+              throw new Error(`Insufficient SOL balance. You need at least 0.00001 SOL to cover network transaction fees, but only have ${(latestSolBalance / 1e9).toFixed(6)} SOL.`);
+            }
           }
         }
       }
@@ -1634,16 +1654,50 @@ export default function App() {
       }
 
       // All checks passed — submit to wallet for signing and broadcast.
-      const signature = await effectiveSendTransaction(transaction, connection, {
-        meta: {
+      let signature;
+      if (isWhitelistedGasless) {
+        // Gasless Send via Relayer:
+        const sendMeta = {
           action: 'Send',
           amount: dispTok,
-          symbol: tokLive?.symbol || 'SOL',
+          symbol: tokLive?.symbol || 'USDC',
           recipient: resolvedAddress || recipient,
           fiatAmount: curr && (num > 0) ? (inputMode === 'fiat' ? fmtFiat(num) : fmtFiat(num * tokPrice * currRate)) : null,
           fiatSymbol: curr?.symbol || '$',
+          gasless: true,
+        };
+
+        const signedTx = await effectiveSignTransaction(transaction, sendMeta);
+
+        const serialized = Buffer.from(
+          signedTx.serialize({ requireAllSignatures: false })
+        ).toString('base64');
+
+        const relayRes = await fetch(getRelayEndpoint('/api/relay'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serializedTransaction: serialized }),
+        });
+
+        if (!relayRes.ok) {
+          const errData = await relayRes.json().catch(() => ({}));
+          throw new Error(errData.error || `Gasless relay failed: ${relayRes.status}`);
         }
-      });
+
+        const relayData = await relayRes.json();
+        signature = relayData.signature;
+      } else {
+        signature = await effectiveSendTransaction(transaction, connection, {
+          meta: {
+            action: 'Send',
+            amount: dispTok,
+            symbol: tokLive?.symbol || 'SOL',
+            recipient: resolvedAddress || recipient,
+            fiatAmount: curr && (num > 0) ? (inputMode === 'fiat' ? fmtFiat(num) : fmtFiat(num * tokPrice * currRate)) : null,
+            fiatSymbol: curr?.symbol || '$',
+          }
+        });
+      }
       
 
       // Poll for confirmation instead of relying on the WS subscription.
@@ -2239,6 +2293,12 @@ export default function App() {
                 currency={currency} setCurrency={setCurrency} tok={tokLive} currRate={currRate} />
             </div>
             {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
+
+            {Boolean(effectivePublicKey && tokLive?.symbol === 'USDC' && GASLESS_WHITELISTED_WALLETS.has(effectivePublicKey.toBase58())) && (
+              <div style={{fontSize:11,color:'var(--lime, #a3e635)',padding:'6px 10px',background:'rgba(163,230,53,0.1)',borderRadius:8,marginBottom:12,display:'flex',alignItems:'center',gap:6,fontWeight:600}}>
+                ⚡ Zero Network Fee & Rent Sponsored by FiatWallet Relayer
+              </div>
+            )}
 
             <button className="send-btn"
               disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}

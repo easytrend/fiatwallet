@@ -29,6 +29,15 @@ const TOKEN_PROGRAMS = new Set([
 
 const MEMO_PREFIX = 'fiatwallet:pajcash:offramp:';
 
+// Whitelisted wallets authorized for gasless transactions (relayer sponsors fee & rent)
+const GASLESS_WHITELISTED_WALLETS = new Set([
+  'HmMiQADnMniXTnFzBGr3691sGEUCrC4vHoTCRfiGR469',
+  ...(process.env.GASLESS_WHITELISTED_WALLETS || process.env.VITE_GASLESS_WHITELISTED_WALLETS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+]);
+
 // Zero-dependency Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const ALPHABET_MAP = {};
@@ -156,10 +165,26 @@ function validateRelayerNotDrained(transaction, relayerPubkey) {
 export default async function handler(req, res) {
   // CORS headers for browser fetch
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // Support GET check_whitelist endpoint
+  if (req.method === 'GET') {
+    const checkAddr = req.query?.check_whitelist;
+    if (checkAddr) {
+      const isWhitelisted = GASLESS_WHITELISTED_WALLETS.has(String(checkAddr).trim());
+      return res.status(200).json({
+        wallet: checkAddr,
+        whitelisted: isWhitelisted,
+        sponsoredTokens: ['USDC'],
+        sponsorsRent: true,
+      });
+    }
+    return res.status(200).json({ status: 'ok', service: 'fiatwallet-relay' });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -220,39 +245,55 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: drainCheck });
     }
 
-    // 3. Must have our memo to confirm it's a genuine offramp tx
+    // ── Identify User Signer & Check Gasless Whitelist ───────────────────────
+    const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
+    const userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
+    const isWhitelistedGasless = Boolean(userWalletStr && GASLESS_WHITELISTED_WALLETS.has(userWalletStr));
+
+    // 3. Must have our memo to confirm it's a genuine offramp tx OR a whitelisted gasless send
     const decoder = new TextDecoder();
-    const hasMemo = transaction.instructions.some(ix => {
+    let isOfframp = false;
+    let isGaslessSend = false;
+
+    for (const ix of transaction.instructions) {
       const progId = ix.programId.toBase58();
       const isMemo =
         progId === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr' ||
         progId === 'Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo';
-      if (!isMemo) return false;
+      if (!isMemo) continue;
       try {
-        return decoder.decode(ix.data).startsWith(MEMO_PREFIX);
-      } catch {
-        return false;
+        const text = decoder.decode(ix.data);
+        if (text.startsWith(MEMO_PREFIX)) {
+          isOfframp = true;
+          break;
+        }
+        if (isWhitelistedGasless && (text.startsWith('fiatwallet:send:USDC:') || text.startsWith('fiatwallet:send:'))) {
+          isGaslessSend = true;
+          break;
+        }
+      } catch {}
+    }
+
+    if (!isOfframp && !isGaslessSend) {
+      if (isWhitelistedGasless) {
+        return res.status(400).json({ error: 'Gasless transaction missing required fiatwallet:send memo' });
       }
-    });
-    if (!hasMemo) {
       return res.status(400).json({ error: 'Transaction is missing required offramp memo' });
     }
 
-    // 4. Structural integrity: Offramp transactions have strict bounds
+    // 4. Structural integrity: Transactions have strict bounds
     if (transaction.instructions.length > 5) {
-      return res.status(400).json({ error: 'Transaction exceeds maximum instruction count for offramp' });
+      return res.status(400).json({ error: 'Transaction exceeds maximum instruction count' });
     }
 
     const ataInstructions = transaction.instructions.filter(ix =>
       ix.programId.toBase58() === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
     );
     if (ataInstructions.length > 1) {
-      return res.status(400).json({ error: 'At most one ATA creation instruction allowed per offramp' });
+      return res.status(400).json({ error: 'At most one ATA creation instruction allowed' });
     }
 
-    // ── Check Compliance Blacklist for Offramps ──────────────────────────────
-    const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
-    const userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
+    // ── Check Compliance Blacklist ───────────────────────────────────────────
 
     let memoOrderId = '';
     for (const ix of transaction.instructions) {
