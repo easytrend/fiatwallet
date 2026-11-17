@@ -425,6 +425,34 @@ export default async function handler(req, res) {
     const relayerATA = getAssociatedTokenAddressSync(USDC_MINT, relayerKp.publicKey);
     const userATA = getAssociatedTokenAddressSync(USDC_MINT, userPublicKey);
 
+    // Self-healing: Ensure relayer's own USDC ATA is created if missing
+    try {
+      const relayerAtaInfo = await connection.getAccountInfo(relayerATA);
+      if (!relayerAtaInfo) {
+        console.log(`[relay_onramp_fee] Relayer USDC ATA does not exist (${relayerATA.toBase58()}). Initializing...`);
+        const initTx = new Transaction();
+        initTx.add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 100_000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            relayerKp.publicKey,
+            relayerATA,
+            relayerKp.publicKey,
+            USDC_MINT
+          )
+        );
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        initTx.recentBlockhash = blockhash;
+        initTx.feePayer = relayerKp.publicKey;
+        initTx.sign(relayerKp);
+        const initSig = await connection.sendRawTransaction(initTx.serialize(), { skipPreflight: false });
+        await connection.confirmTransaction(initSig, 'confirmed');
+        console.log(`[relay_onramp_fee] Relayer USDC ATA initialized: ${initSig}`);
+      }
+    } catch (e) {
+      console.warn('[relay_onramp_fee] Relayer USDC ATA check/init warning:', e.message);
+    }
+
     let relayerUsdcBalance = 0n;
     for (let attempt = 0; attempt < 8; attempt++) {
       try {

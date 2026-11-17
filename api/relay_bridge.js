@@ -80,6 +80,67 @@ const SPL_MINTS = {
   USDC: new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
 };
 
+function extractHeliusKey() {
+  if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) return process.env.HELIUS_API_KEY.trim();
+  const urls = [process.env.HELIUS_RPC_URL, process.env.VITE_RPC_URL, process.env.RPC_URL];
+  for (const url of urls) {
+    if (!url || typeof url !== 'string') continue;
+    const match = url.match(/[?&]api-?key=([a-zA-Z0-9-]+)/i);
+    if (match && match[1]) return match[1].trim();
+  }
+  return null;
+}
+
+function getBackendConnection() {
+  const heliusKey = extractHeliusKey();
+  const rpcUrl = process.env.HELIUS_RPC_URL || (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : (process.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com'));
+  return new Connection(rpcUrl, 'confirmed');
+}
+
+async function ensureRelayerAtas(connection, relayerKp) {
+  const results = {};
+  const tokens = [
+    { symbol: 'USDC', mint: SPL_MINTS.USDC },
+    { symbol: 'USDT', mint: SPL_MINTS.USDT },
+  ];
+
+  for (const { symbol, mint } of tokens) {
+    const ata = getAssociatedTokenAddressSync(mint, relayerKp.publicKey);
+    try {
+      const acc = await connection.getAccountInfo(ata);
+      if (!acc) {
+        console.log(`[relay_bridge] Relayer ${symbol} ATA missing (${ata.toBase58()}). Initializing...`);
+        const tx = new Transaction();
+        tx.add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 100_000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            relayerKp.publicKey,
+            ata,
+            relayerKp.publicKey,
+            mint
+          )
+        );
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = relayerKp.publicKey;
+        tx.sign(relayerKp);
+        const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+        await connection.confirmTransaction(sig, 'confirmed');
+        console.log(`[relay_bridge] Relayer ${symbol} ATA initialized: ${sig}`);
+        results[symbol] = { created: true, signature: sig, ata: ata.toBase58() };
+      } else {
+        results[symbol] = { created: false, exists: true, ata: ata.toBase58() };
+      }
+    } catch (e) {
+      console.warn(`[relay_bridge] Error checking/creating ${symbol} ATA:`, e.message);
+      results[symbol] = { error: e.message };
+    }
+  }
+  return results;
+}
+
+
 async function executeForward({
   depositAddress,
   userAddress,
@@ -166,19 +227,7 @@ async function executeForward({
   const netAmount = Math.max(0, grossAmount - platformFee);
 
   // 5. Build Solana transaction
-  function extractHeliusKey() {
-    if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) return process.env.HELIUS_API_KEY.trim();
-    const urls = [process.env.HELIUS_RPC_URL, process.env.VITE_RPC_URL, process.env.RPC_URL];
-    for (const url of urls) {
-      if (!url || typeof url !== 'string') continue;
-      const match = url.match(/[?&]api-?key=([a-zA-Z0-9-]+)/i);
-      if (match && match[1]) return match[1].trim();
-    }
-    return null;
-  }
-  const heliusKey = extractHeliusKey();
-  const rpcUrl = process.env.HELIUS_RPC_URL || (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : (process.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com'));
-  const connection = new Connection(rpcUrl, 'confirmed');
+  const connection = getBackendConnection();
 
   const transaction = new Transaction();
   transaction.add(
@@ -292,10 +341,18 @@ export default async function handler(req, res) {
 
   // 1. Auto-Sweep Mode (GET /api/relay_bridge?sweep=1 or POST { action: 'sweep' })
   // Sweeps pending bridge transactions in Supabase and forwards any completed deposits directly to users
-  const isSweep = req.method === 'GET' || req.query?.sweep === '1' || req.body?.action === 'sweep';
+  const isSweep = req.method === 'GET' || req.query?.sweep === '1' || req.body?.action === 'sweep' || req.query?.init_atas === '1';
   if (isSweep) {
+    const connection = getBackendConnection();
+    let ataInitResults = null;
+    try {
+      ataInitResults = await ensureRelayerAtas(connection, relayerKp);
+    } catch (ataErr) {
+      console.warn('[relay_bridge] ensureRelayerAtas error:', ataErr.message);
+    }
+
     if (!supabase) {
-      return res.status(503).json({ error: 'Database not available for bridge sweep' });
+      return res.status(200).json({ success: true, message: 'ATAs verified', ataInitResults });
     }
     try {
       const { data: pendingOrders, error: fetchErr } = await supabase
@@ -335,6 +392,7 @@ export default async function handler(req, res) {
         success: true,
         sweptCount: sweptResults.length,
         results: sweptResults,
+        ataInitResults,
       });
     } catch (err) {
       return res.status(500).json({ error: err.message || 'Sweep execution error' });
