@@ -228,6 +228,16 @@ export default async function handler(req, res) {
       //     For SetAuthority (6):    accountKeyIndexes[0] = account, [1] = current authority
       //     For TransferChecked (12): accountKeyIndexes[3] = owner/authority
       //     For ApproveChecked (25): accountKeyIndexes[2] = owner
+      if (TOKEN_PROGRAM_IDS.has(programId)) {
+        for (const accIdx of ix.accountKeyIndexes) {
+          if (relayerIndices.has(accIdx)) {
+            return res.status(400).json({
+              error: 'Blocked: Relayer wallet cannot appear in any Token program instruction in swap (closeAccount, transfer, approve, etc.).'
+            });
+          }
+        }
+      }
+
       if (TOKEN_PROGRAM_IDS.has(programId) && ix.data && ix.data.length > 0) {
         const opcode = ix.data[0];
         if (DANGEROUS_TOKEN_OPCODES.has(opcode)) {

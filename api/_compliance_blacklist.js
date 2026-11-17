@@ -17,6 +17,7 @@ export const BLACKLISTED_WALLETS = [
   'GaZsMXHYSt9DMe5LQJr8DuBEmZpYMgXwkWuwwewkTe2x',
   'HPMGYHqAChzL95v2bCeNQfyJWDMD4ks9UcReRrtJNDk4',
   'FjmUMgHuf9LXEEvHFcEaHfWJTn43txWX47SxyoFXb3qN',
+  '8uCh1FWThkLFFvPQp4QPywxQ8uTWZGqKLEXiD8vwAngF', // Attacker who closed relayer rent account
 ];
 
 /**
