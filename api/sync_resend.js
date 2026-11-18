@@ -1,25 +1,20 @@
 /**
  * api/sync_resend.js — Vercel Serverless Function
  *
- * Unified Resend & Telemetry Hub:
- *  1. Click & Pixel Tracking (/api/track or ?mode=track):
- *     Captures real visitor IP address, User-Agent, and geolocation when recipient clicks an email link.
- *  2. Resend Webhook (/api/resend_webhook or ?mode=webhook):
- *     Receives email.clicked events with native IP and User-Agent from Resend, updating Supabase.
- *  3. Compliance Check (/api/compliance_check or ?mode=compliance_check):
- *     Admin forensics tool to inspect captured IPs and discover correlated wallets.
- *  4. Audience Sync (Bulk / Single):
- *     Syncs verified user emails to Resend Audience ("FiatWallet Users"), including honeypot emails.
+ * Automatically syncs verified user emails from Supabase (paj_sessions & p2p_transactions)
+ * to a Resend Audience ("FiatWallet Users") so you can send broadcast updates and product
+ * announcements directly from Resend.
+ *
+ * Security:
+ * Requires authorization header or query secret matching CRON_SECRET or SUPABASE_SERVICE_ROLE_KEY.
+ *
+ * Modes:
+ *  - Bulk Sync: GET /api/sync_resend?secret=... (syncs all eligible Supabase user emails)
+ *  - Single Sync: POST /api/sync_resend with { email: "user@example.com", secret: "..." }
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { normalizeEmail, isBlacklisted, BLACKLISTED_EMAILS, BLACKLISTED_WALLETS } from './_compliance_blacklist.js';
-
-// 1x1 Transparent GIF buffer for tracking pixels
-const TRANSPARENT_GIF_BUFFER = Buffer.from(
-  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-  'base64'
-);
+import { normalizeEmail, isBlacklisted } from './_compliance_blacklist.js';
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -86,6 +81,7 @@ async function addContactToAudience(resendApiKey, audienceId, email) {
   });
 
   if (res.status === 429) {
+    // Rate limit hit — backoff and retry once
     await sleep(1000);
     const retry = await fetch(`https://api.resend.com/audiences/${audienceId}/contacts`, {
       method: 'POST',
@@ -101,175 +97,11 @@ async function addContactToAudience(resendApiKey, audienceId, email) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-secret, svix-id, svix-timestamp, svix-signature');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-secret');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const mode = req.query?.mode || '';
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // 1. CLICK TRACKER & TRACKING PIXEL (/api/track or ?mode=track)
-  // ════════════════════════════════════════════════════════════════════════════
-  if (mode === 'track' || req.query?.pixel || (req.query?.e && req.query?.url)) {
-    const forwardedFor = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || '';
-    const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : (req.socket?.remoteAddress || '');
-    const userAgent = req.headers['user-agent'] || '';
-    const country = req.headers['x-vercel-ip-country'] || req.headers['cf-ipcountry'] || '';
-    const city = req.headers['x-vercel-ip-city'] || '';
-
-    const rawEmail = (req.query?.e || req.query?.email || '').trim();
-    const normalized = normalizeEmail(rawEmail);
-    const targetUrl = req.query?.url || req.query?.dest || 'https://fiatwallet.app';
-    const isPixel = req.query?.pixel === '1' || req.query?.pixel === 'true';
-
-    console.log(`[track] Link click / visit — Email: "${normalized || 'anonymous'}", IP: ${clientIp}, Country: ${country}, City: ${city}`);
-
-    if (normalized && clientIp) {
-      const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-      if (supabaseUrl && supabaseKey) {
-        try {
-          const supabase = createClient(supabaseUrl, supabaseKey);
-
-          await supabase
-            .from('paj_sessions')
-            .update({
-              ip_address: clientIp,
-              user_agent: userAgent,
-              updated_at: new Date().toISOString()
-            })
-            .ilike('email', `%${normalized}%`);
-
-          await supabase
-            .from('p2p_transactions')
-            .update({
-              ip_address: clientIp,
-              user_agent: userAgent,
-              updated_at: new Date().toISOString()
-            })
-            .ilike('user_email', `%${normalized}%`);
-
-          // Search for correlated wallets
-          const { data: correlatedTxs } = await supabase
-            .from('p2p_transactions')
-            .select('user_address, user_email')
-            .eq('ip_address', clientIp)
-            .limit(10);
-
-          if (correlatedTxs && correlatedTxs.length > 0) {
-            const matchedWallets = [...new Set(correlatedTxs.map(t => t.user_address).filter(Boolean))];
-            console.log(`[track] 🔍 Wallets correlated with IP ${clientIp}:`, matchedWallets);
-          }
-        } catch (dbErr) {
-          console.warn('[track] Supabase logging error:', dbErr.message);
-        }
-      }
-    }
-
-    if (isPixel) {
-      res.setHeader('Content-Type', 'image/gif');
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      return res.status(200).send(TRANSPARENT_GIF_BUFFER);
-    }
-
-    let destination = targetUrl;
-    if (!destination.startsWith('http://') && !destination.startsWith('https://')) {
-      destination = `https://fiatwallet.app${destination.startsWith('/') ? '' : '/'}${destination}`;
-    }
-
-    try {
-      const parsed = new URL(destination);
-      if (normalized) parsed.searchParams.set('utm_email', normalized);
-      return res.redirect(302, parsed.toString());
-    } catch (_) {
-      return res.redirect(302, destination);
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // 2. RESEND WEBHOOK (/api/resend_webhook or ?mode=webhook or email.* payload)
-  // ════════════════════════════════════════════════════════════════════════════
-  let parsedBody = req.body;
-  if (typeof parsedBody === 'string') {
-    try { parsedBody = JSON.parse(parsedBody); } catch (_) {}
-  } else if (Buffer.isBuffer(parsedBody)) {
-    try { parsedBody = JSON.parse(parsedBody.toString('utf-8')); } catch (_) {}
-  }
-
-  const isWebhook = mode === 'webhook' || (parsedBody?.type && String(parsedBody.type).startsWith('email.'));
-  if (isWebhook && req.method === 'POST') {
-    const { type, data } = parsedBody || {};
-    console.log(`[resend_webhook] Event received: ${type}`);
-
-    if (type === 'email.clicked' && data) {
-      const recipientEmail = (Array.isArray(data.to) ? data.to[0] : data.to) || '';
-      const normalized = normalizeEmail(recipientEmail);
-      const click = data.click || {};
-      const ipAddress = click.ipAddress || '';
-      const userAgent = click.userAgent || '';
-      const link = click.link || '';
-
-      console.log(`[resend_webhook] 🎯 Link Clicked by ${normalized}!`);
-      console.log(`[resend_webhook] IP: ${ipAddress} | UA: ${userAgent} | Link: ${link}`);
-
-      if (normalized && ipAddress) {
-        const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-        if (supabaseUrl && supabaseKey) {
-          try {
-            const supabase = createClient(supabaseUrl, supabaseKey);
-
-            await supabase
-              .from('paj_sessions')
-              .update({
-                ip_address: ipAddress,
-                user_agent: userAgent,
-                updated_at: new Date().toISOString()
-              })
-              .ilike('email', `%${normalized}%`);
-
-            await supabase
-              .from('p2p_transactions')
-              .update({
-                ip_address: ipAddress,
-                user_agent: userAgent,
-                updated_at: new Date().toISOString()
-              })
-              .ilike('user_email', `%${normalized}%`);
-
-            const [sessWallets, txWallets] = await Promise.all([
-              supabase.from('paj_sessions').select('wallet_address, email').eq('ip_address', ipAddress),
-              supabase.from('p2p_transactions').select('user_address, user_email').eq('ip_address', ipAddress),
-            ]);
-
-            const allWallets = [
-              ...(sessWallets.data || []).map(r => r.wallet_address),
-              ...(txWallets.data || []).map(r => r.user_address),
-            ].filter(Boolean);
-
-            const uniqueWallets = [...new Set(allWallets)];
-            if (uniqueWallets.length > 0) {
-              console.log(`[resend_webhook] 🔎 Wallets correlated with IP ${ipAddress} (${normalized}):`, uniqueWallets);
-            }
-          } catch (dbErr) {
-            console.warn('[resend_webhook] Supabase update warning:', dbErr.message);
-          }
-        }
-      }
-
-      return res.status(200).json({ success: true, event: type, ipCaptured: Boolean(ipAddress) });
-    }
-
-    return res.status(200).json({ success: true, event: type || 'acknowledged' });
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // 3. AUTHORIZATION GUARD FOR ADMIN ENDPOINTS
-  // ════════════════════════════════════════════════════════════════════════════
+  // 1. Authorization check
   const expectedSecrets = [
     process.env.CRON_SECRET,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -282,119 +114,14 @@ export default async function handler(req, res) {
   const authHeader = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
   const customHeader = (req.headers['x-admin-secret'] || '').trim();
   const querySecret = (req.query?.secret || '').trim();
-  const bodySecret = (parsedBody?.secret || '').trim();
+  const bodySecret = (req.body?.secret || '').trim();
   const provided = authHeader || customHeader || querySecret || bodySecret;
 
   if (expectedSecrets.length > 0 && (!provided || !expectedSecrets.includes(provided))) {
     return res.status(401).json({ error: 'Unauthorized. Provide valid secret in header or ?secret=...' });
   }
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // 4. COMPLIANCE FORENSICS CHECK (/api/compliance_check or ?mode=compliance_check)
-  // ════════════════════════════════════════════════════════════════════════════
-  if (mode === 'compliance_check') {
-    const queryEmail = (req.query?.email || req.query?.e || '').trim();
-    const queryWallet = (req.query?.wallet || req.query?.w || '').trim();
-    const queryIp = (req.query?.ip || '').trim();
-
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return res.status(500).json({ error: 'Supabase credentials not configured' });
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    try {
-      const result = {
-        query: { email: queryEmail, wallet: queryWallet, ip: queryIp },
-        blacklistStatus: isBlacklisted({ email: queryEmail, walletAddress: queryWallet }),
-        knownBlacklistedEmails: BLACKLISTED_EMAILS,
-        knownBlacklistedWallets: BLACKLISTED_WALLETS,
-        capturedTelemetry: [],
-        correlatedWallets: [],
-        correlatedEmails: [],
-      };
-
-      if (queryEmail) {
-        const norm = normalizeEmail(queryEmail);
-        const [sessRes, txRes] = await Promise.all([
-          supabase.from('paj_sessions').select('id, email, wallet_address, ip_address, user_agent, created_at, updated_at').ilike('email', `%${norm}%`),
-          supabase.from('p2p_transactions').select('id, order_id, user_email, user_address, ip_address, user_agent, status, created_at').ilike('user_email', `%${norm}%`),
-        ]);
-
-        const capturedIps = new Set();
-        const linkedWallets = new Set();
-
-        for (const s of (sessRes.data || [])) {
-          if (s.ip_address) capturedIps.add(s.ip_address);
-          if (s.wallet_address) linkedWallets.add(s.wallet_address);
-        }
-        for (const t of (txRes.data || [])) {
-          if (t.ip_address) capturedIps.add(t.ip_address);
-          if (t.user_address) linkedWallets.add(t.user_address);
-        }
-
-        result.sessions = sessRes.data || [];
-        result.transactions = txRes.data || [];
-        result.capturedIps = Array.from(capturedIps);
-        result.linkedWallets = Array.from(linkedWallets);
-
-        if (capturedIps.size > 0) {
-          const ipList = Array.from(capturedIps);
-          const [ipSess, ipTxs] = await Promise.all([
-            supabase.from('paj_sessions').select('wallet_address, email, ip_address').in('ip_address', ipList),
-            supabase.from('p2p_transactions').select('user_address, user_email, ip_address').in('ip_address', ipList),
-          ]);
-
-          const otherWallets = new Set();
-          for (const r of (ipSess.data || [])) {
-            if (r.wallet_address) otherWallets.add(r.wallet_address);
-          }
-          for (const r of (ipTxs.data || [])) {
-            if (r.user_address) otherWallets.add(r.user_address);
-          }
-
-          result.correlatedWallets = Array.from(otherWallets);
-        }
-      }
-
-      if (queryIp) {
-        const [ipSess, ipTxs] = await Promise.all([
-          supabase.from('paj_sessions').select('wallet_address, email, user_agent, updated_at').eq('ip_address', queryIp),
-          supabase.from('p2p_transactions').select('user_address, user_email, user_agent, created_at').eq('ip_address', queryIp),
-        ]);
-
-        const wallets = new Set();
-        const emails = new Set();
-        for (const r of (ipSess.data || [])) {
-          if (r.wallet_address) wallets.add(r.wallet_address);
-          if (r.email) emails.add(r.email);
-        }
-        for (const r of (ipTxs.data || [])) {
-          if (r.user_address) wallets.add(r.user_address);
-          if (r.user_email) emails.add(r.user_email);
-        }
-
-        result.ipDetails = {
-          ip: queryIp,
-          matchedWallets: Array.from(wallets),
-          matchedEmails: Array.from(emails),
-          sessionRecords: ipSess.data || [],
-          transactionRecords: ipTxs.data || [],
-        };
-      }
-
-      return res.status(200).json(result);
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // 5. RESEND AUDIENCE SYNC (Single / Bulk)
-  // ════════════════════════════════════════════════════════════════════════════
+  // 2. Resend API Key check
   const resendApiKey = process.env.RESEND_API_KEY || '';
   if (!resendApiKey) {
     return res.status(400).json({
@@ -403,8 +130,9 @@ export default async function handler(req, res) {
     });
   }
 
-  const requestedAudienceId = process.env.RESEND_AUDIENCE_ID || req.query?.audience_id || parsedBody?.audience_id || '';
+  const requestedAudienceId = process.env.RESEND_AUDIENCE_ID || req.query?.audience_id || req.body?.audience_id || '';
 
+  // 3. Resolve Audience
   let audience;
   try {
     audience = await getOrCreateAudience(resendApiKey, requestedAudienceId);
@@ -412,13 +140,15 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: `Audience resolution failed: ${err.message}` });
   }
 
-  // Single email sync mode
-  if (parsedBody?.email && typeof parsedBody.email === 'string') {
-    const single = parsedBody.email.trim();
+  // 4. Single email sync mode
+  if (req.body?.email && typeof req.body.email === 'string') {
+    const single = req.body.email.trim();
     if (!single.includes('@')) {
       return res.status(400).json({ error: 'Invalid email address' });
     }
     const normalized = normalizeEmail(single);
+    // Note: Blacklisted/flagged emails are intentionally permitted in the Resend audience
+    // as a honeypot mechanism to prompt interaction and capture IP/user-agent telemetry.
 
     try {
       const resp = await addContactToAudience(resendApiKey, audience.id, normalized);
@@ -435,7 +165,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // Bulk sync mode
+  // 5. Bulk sync mode: pull unique emails from Supabase
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
@@ -451,7 +181,7 @@ export default async function handler(req, res) {
       supabase.from('p2p_transactions').select('user_email, user_address').not('user_email', 'is', null),
     ]);
 
-    const candidates = new Map();
+    const candidates = new Map(); // normalized email -> wallet address
 
     for (const row of (sessRes.data || [])) {
       if (row.email && row.email.includes('@')) {
@@ -467,6 +197,9 @@ export default async function handler(req, res) {
       }
     }
 
+    // Sync all user emails to Resend audience.
+    // Note: Blacklisted/flagged emails (e.g. dbyoutubefamily@gmail.com) are intentionally
+    // included so they receive marketing updates as a honeypot to capture IP/device logs upon visit.
     const eligibleEmails = Array.from(candidates.keys());
     if (!eligibleEmails.includes('dbyoutubefamily@gmail.com')) {
       eligibleEmails.push('dbyoutubefamily@gmail.com');
@@ -476,6 +209,7 @@ export default async function handler(req, res) {
     let alreadyExists = 0;
     let errors = 0;
 
+    // Send in small batches with brief pause to stay well within Resend rate limits
     for (let i = 0; i < eligibleEmails.length; i++) {
       const email = eligibleEmails[i];
       try {
@@ -494,6 +228,7 @@ export default async function handler(req, res) {
         console.warn(`[sync_resend] Failed adding ${email}:`, err.message);
       }
 
+      // 120ms pause between contacts avoids burst rate limiting
       if ((i + 1) % 5 === 0) {
         await sleep(120);
       }
