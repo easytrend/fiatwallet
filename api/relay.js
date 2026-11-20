@@ -494,6 +494,23 @@ export default async function handler(req, res) {
       if (orderRow.user_address && orderRow.user_address.trim() !== userWalletStr) {
         return res.status(403).json({ error: 'Signer wallet does not match registered order user_address' });
       }
+      // 4a. Cross-check against authenticated user session
+      if (orderRow.user_email && supabase) {
+        try {
+          const { data: sessRows } = await supabase
+            .from('paj_sessions')
+            .select('wallet_address')
+            .ilike('email', orderRow.user_email.trim());
+          if (sessRows && sessRows.length > 0) {
+            const authorizedWallets = sessRows.map(s => s.wallet_address).filter(Boolean);
+            if (authorizedWallets.length > 0 && !authorizedWallets.includes(userWalletStr)) {
+              return res.status(403).json({ error: 'Signer wallet is not bound to the registered user session' });
+            }
+          }
+        } catch (e) {
+          console.warn('[relay] Session cross-check notice:', e.message);
+        }
+      }
 
       if (orderRow.user_email) userEmail = orderRow.user_email;
 

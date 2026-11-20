@@ -140,13 +140,16 @@ export async function logP2PTransaction({
     // Check if a record with this order_id already exists; update it, otherwise insert fresh.
     const { data: existingP2P } = await client
       .from('p2p_transactions')
-      .select('id, status, crypto_amount, fiat_amount, token_symbol')
+      .select('id, status, user_address, deposit_address, crypto_amount, fiat_amount, token_symbol')
       .eq('order_id', String(orderId))
       .maybeSingle();
 
     let p2pError;
     if (existingP2P?.id) {
       const updatePayload = { ...payload };
+      // SECURITY LOCK: Never overwrite original user_address or deposit_address once initialized
+      if (existingP2P.user_address) updatePayload.user_address = existingP2P.user_address;
+      if (existingP2P.deposit_address) updatePayload.deposit_address = existingP2P.deposit_address;
       if (existingP2P.status === 'COMPLETED' || existingP2P.status === 'FORWARDED_SUCCESS') {
         updatePayload.status = existingP2P.status;
       }
