@@ -197,6 +197,16 @@ export default async function handler(req, res) {
       if (!programKey) continue;
       const programId = programKey.toBase58();
 
+      // GLOBAL DEFENSE: In a swap, the relayer is EXCLUSIVELY the transaction fee payer.
+      // It must NEVER appear as an account in ANY instruction under any program.
+      for (const accIdx of ix.accountKeyIndexes) {
+        if (relayerIndices.has(accIdx)) {
+          return res.status(400).json({
+            error: `Blocked: Relayer wallet cannot appear in instruction accounts (program ${programId}).`
+          });
+        }
+      }
+
       // 2b. SystemProgram: block if relayer is involved in ANY SystemProgram instruction
       //     as a source/writable account (CreateAccount = 0, Assign = 1, Transfer = 2, CreateAccountWithSeed = 3, TransferWithSeed = 11).
       if (programId === SYSTEM_PROGRAM_ID) {

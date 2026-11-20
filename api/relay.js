@@ -29,6 +29,16 @@ const TOKEN_PROGRAMS = new Set([
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // SPL Token
   'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', // Token-2022
 ]);
+const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+const ALLOWED_RELAY_PROGRAMS = new Set([
+  SYSTEM_PROGRAM_ID,
+  'ComputeBudget111111111111111111111111111111',
+  'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
+  'Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo',
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+  'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
+  ATA_PROGRAM_ID,
+]);
 
 const MEMO_PREFIX = 'fiatwallet:pajcash:offramp:';
 
@@ -129,6 +139,13 @@ function validateRelayerNotDrained(instructions, relayerPubkey, isWhitelistedGas
   for (const ix of instructions) {
     const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
 
+    // 0. Strict Program Whitelist:
+    // Only standard Solana runtime programs (ComputeBudget, Memo, Token, Token-2022, ATA, SystemProgram)
+    // are permitted in relayed transactions. Any unknown/third-party contract is rejected immediately.
+    if (!ALLOWED_RELAY_PROGRAMS.has(progId)) {
+      return `Blocked: Unauthorized program in relay transaction (${progId})`;
+    }
+
     // 1. SystemProgram: The relayer must NEVER appear as a writable or signer account in ANY SystemProgram instruction.
     if (progId === SYSTEM_PROGRAM_ID) {
       for (let k = 0; k < ix.keys.length; k++) {
@@ -163,12 +180,21 @@ function validateRelayerNotDrained(instructions, relayerPubkey, isWhitelistedGas
     // 3. Associated Token Account Program:
     // Relayer must NEVER be the target wallet (keys[2]) or mint!
     // Relayer can ONLY fund ATA rent if the transaction belongs to an explicitly whitelisted gasless wallet!
-    if (progId === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') {
+    if (progId === ATA_PROGRAM_ID) {
       if (ix.keys.length >= 3 && ix.keys[2].pubkey.equals(relayerPubkey)) {
         return 'Blocked: relayer cannot be the target wallet of an ATA creation instruction';
       }
       if (ix.keys.length >= 1 && ix.keys[0].pubkey.equals(relayerPubkey) && !isWhitelistedGasless) {
         return 'Blocked: relayer is not permitted to sponsor ATA creation rent for non-whitelisted transactions';
+      }
+    }
+
+    // 4. ComputeBudget & Memo: relayer must never appear as an account parameter
+    if (progId !== ATA_PROGRAM_ID && progId !== SYSTEM_PROGRAM_ID) {
+      for (let k = 0; k < ix.keys.length; k++) {
+        if (ix.keys[k].pubkey.equals(relayerPubkey)) {
+          return `Blocked: relayer cannot appear in instruction accounts for ${progId}`;
+        }
       }
     }
   }
