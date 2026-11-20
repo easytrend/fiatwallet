@@ -385,13 +385,65 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Invalid or forged offramp orderId in memo' });
       }
 
-      const { data: orderRow, error: orderErr } = await supabase
-        .from('p2p_transactions')
-        .select('order_id, status, user_email, user_address, deposit_address, signature, created_at')
-        .eq('order_id', memoOrderId)
-        .maybeSingle();
+      let orderRow = null;
+      if (supabase) {
+        const { data: dbRow, error: orderErr } = await supabase
+          .from('p2p_transactions')
+          .select('order_id, status, user_email, user_address, deposit_address, signature, created_at')
+          .eq('order_id', memoOrderId)
+          .maybeSingle();
+        if (dbRow) orderRow = dbRow;
+      }
 
-      if (orderErr || !orderRow) {
+      // Fallback: If not found in database (e.g. slight replication delay or network glitch), verify directly with PajCash API
+      if (!orderRow) {
+        const pajApiKey = process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
+        if (pajApiKey) {
+          const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
+          for (const baseUrl of baseUrls) {
+            try {
+              const resp = await fetch(`${baseUrl}/pub/transactions/${memoOrderId}`, {
+                headers: { 'Authorization': `Bearer ${pajApiKey}` },
+              });
+              if (resp.ok) {
+                const pajData = await resp.json();
+                const matchedId = pajData._id || pajData.id || pajData.orderId;
+                if (matchedId === memoOrderId && pajData.address) {
+                  orderRow = {
+                    order_id: memoOrderId,
+                    status: pajData.status || 'INIT',
+                    user_email: pajData.userEmail || pajData.email || null,
+                    user_address: userWalletStr,
+                    deposit_address: pajData.address,
+                    signature: `pending_p2p_offramp_${memoOrderId}`,
+                    created_at: pajData.createdAt || new Date().toISOString(),
+                  };
+                  if (supabase) {
+                    supabase.from('p2p_transactions').insert({
+                      signature: `pending_p2p_offramp_${memoOrderId}`,
+                      user_address: userWalletStr,
+                      order_id: memoOrderId,
+                      transaction_type: 'p2p_offramp',
+                      token_symbol: pajData.currency || 'USDC',
+                      crypto_amount: parseFloat(pajData.amount) || 0,
+                      fiat_currency: pajData.fiatCurrency || 'NGN',
+                      fiat_amount: parseFloat(pajData.fiatAmount) || 0,
+                      status: 'INIT',
+                      deposit_address: pajData.address,
+                      user_email: pajData.userEmail || pajData.email || null,
+                    }).then(() => {}).catch(() => {});
+                  }
+                  break;
+                }
+              }
+            } catch (err) {
+              console.warn('[relay] PajCash fallback lookup error:', err.message);
+            }
+          }
+        }
+      }
+
+      if (!orderRow) {
         return res.status(403).json({ error: 'Offramp order not found in database. Forged or unrecorded orders are rejected.' });
       }
 
@@ -432,7 +484,34 @@ export default async function handler(req, res) {
       const allTxKeys = isVersioned
         ? transaction.message.staticAccountKeys.map(k => k.toBase58())
         : transaction.instructions.flatMap(ix => ix.keys.map(k => k.pubkey.toBase58()));
-      if (!allTxKeys.includes(validOfframpDepositAddress)) {
+
+      let depositAddressPresent = allTxKeys.includes(validOfframpDepositAddress);
+      if (!depositAddressPresent) {
+        // Also check if any known/derived ATA for validOfframpDepositAddress is in allTxKeys
+        try {
+          const depPk = new PublicKey(validOfframpDepositAddress);
+          const candidateMints = [
+            'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+            'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+            '2b1kV6itusLRbbRdZdavAwDxfEydUqnmCuihYTdtpump', // USDG
+          ];
+          for (const m of candidateMints) {
+            for (const prog of [new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')]) {
+              const [ata] = PublicKey.findProgramAddressSync(
+                [depPk.toBuffer(), prog.toBuffer(), new PublicKey(m).toBuffer()],
+                new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+              );
+              if (allTxKeys.includes(ata.toBase58())) {
+                depositAddressPresent = true;
+                break;
+              }
+            }
+            if (depositAddressPresent) break;
+          }
+        } catch {}
+      }
+
+      if (!depositAddressPresent) {
         return res.status(400).json({ error: 'Transaction accounts do not include the registered order deposit address' });
       }
 

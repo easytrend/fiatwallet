@@ -3348,6 +3348,35 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         finalSendAmount = maxSpendable;
       }
 
+      const walletKey = publicKey.toBase58();
+      const cryptoLogged = finalSendAmount;
+      const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
+      const netCryptoLogged = Math.max(0, cryptoLogged - platformFeeInToken);
+      const usdLogged = selectedCountry.currency === 'USD'
+        ? fiatLogged
+        : netCryptoLogged * (tokenPriceUsd || 1);
+
+      // Pre-register order to Supabase with status 'INIT' BEFORE relay/send
+      // This is mandatory so the server-side gasless relayer can verify that the order exists,
+      // was created for this user wallet, and sends funds to the verified PajCash deposit address.
+      await logP2PTransaction({
+        userAddress: walletKey,
+        orderId: order.id,
+        tokenSymbol: liveSelectedToken.symbol,
+        cryptoAmount: cryptoLogged,
+        fiatCurrency: selectedCountry.currency,
+        fiatAmount: fiatLogged,
+        usdValue: usdLogged,
+        bankName: isTagOfframp ? effectiveBankName : displayBank,
+        accountNumber: effectiveAcctNumber.trim(),
+        accountName: effectiveAcctName || 'Account Holder',
+        status: 'INIT',
+        userEmail: sessionEmail || (publicKey ? localStorage.getItem('paj_sessionEmail_' + walletKey) : '') || localStorage.getItem('paj_manual_sessionEmail') || undefined,
+        depositAddress: order.address,
+        recipientTag: effectiveTag,
+        type: 'p2p_offramp',
+      }).catch(err => console.warn('[Offramp] Pre-relay logP2PTransaction notice:', err));
+
       if (liveSelectedToken.symbol === 'SOL') {
         const onChainSolBalance = await connection.getBalance(publicKey, 'confirmed').catch(() => 0);
         const gasBuffer = usingRelayer ? 0 : 5000;
@@ -3533,20 +3562,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // 7. Persist order to localStorage and log to Supabase IMMEDIATELY after
       //    sig is known — before polling. This ensures a network blip during
       //    the confirmation poll never loses the record from the history panel.
-      const walletKey = publicKey.toBase58();
       const existing = (() => {
         try { return JSON.parse(localStorage.getItem(`paj_user_orders_${walletKey}`) || '[]'); }
         catch { return []; }
       })();
-
-      const cryptoLogged = finalSendAmount;
-      const fiatLogged = parsedAmt; // parsedAmt = input converted to fiat regardless of inputMode
-      // Net crypto converted to fiat payout (gross crypto minus platform fee)
-      // This ensures usd_value in Supabase accurately reflects the net amount actually offramped
-      const netCryptoLogged = Math.max(0, cryptoLogged - platformFeeInToken);
-      const usdLogged = selectedCountry.currency === 'USD'
-        ? fiatLogged
-        : netCryptoLogged * (tokenPriceUsd || 1);
 
       existing.unshift({
         id: order.id,
