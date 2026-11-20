@@ -397,17 +397,33 @@ export default async function handler(req, res) {
 
       // Fallback: If not found in database (e.g. slight replication delay or network glitch), verify directly with PajCash API
       if (!orderRow) {
+        const candidateTokens = [];
+        if (supabase && userWalletStr) {
+          try {
+            const { data: userSess } = await supabase
+              .from('paj_sessions')
+              .select('session_token')
+              .eq('wallet_address', userWalletStr)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            if (userSess && userSess[0]?.session_token) {
+              candidateTokens.push(userSess[0].session_token);
+            }
+          } catch {}
+        }
         const pajApiKey = process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
-        if (pajApiKey) {
-          const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
+        if (pajApiKey && !candidateTokens.includes(pajApiKey)) candidateTokens.push(pajApiKey);
+
+        const baseUrls = ['https://api.paj.cash', 'https://api-staging.paj.cash'];
+        for (const token of candidateTokens) {
           for (const baseUrl of baseUrls) {
             try {
               const resp = await fetch(`${baseUrl}/pub/transactions/${memoOrderId}`, {
-                headers: { 'Authorization': `Bearer ${pajApiKey}` },
+                headers: { 'Authorization': `Bearer ${token}` },
               });
               if (resp.ok) {
                 const pajData = await resp.json();
-                const matchedId = pajData._id || pajData.id || pajData.orderId;
+                const matchedId = pajData.id || pajData._id || pajData.orderId;
                 if (matchedId === memoOrderId && pajData.address) {
                   orderRow = {
                     order_id: memoOrderId,
@@ -440,6 +456,7 @@ export default async function handler(req, res) {
               console.warn('[relay] PajCash fallback lookup error:', err.message);
             }
           }
+          if (orderRow) break;
         }
       }
 
@@ -581,19 +598,21 @@ export default async function handler(req, res) {
     const candidateRpcUrls = [
       process.env.HELIUS_RPC_URL,
       heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : null,
+      'https://mainnet.helius-rpc.com/?api-key=60eeee23-d073-4619-a5cd-14bff9d27873',
       process.env.VITE_RPC_URL,
       process.env.RPC_URL,
       'https://solana-rpc.publicnode.com',
       'https://rpc.ankr.com/solana',
       'https://api.mainnet-beta.solana.com',
     ].filter(Boolean);
+    const uniqueRpcUrls = [...new Set(candidateRpcUrls)];
 
-    const primaryConnection = new Connection(candidateRpcUrls[0], 'confirmed');
+    const primaryConnection = new Connection(uniqueRpcUrls[0], 'confirmed');
 
     let relayerBalance = 0;
-    for (const rpc of candidateRpcUrls) {
+    for (const rpc of uniqueRpcUrls) {
       try {
-        const c = (rpc === candidateRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
+        const c = (rpc === uniqueRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
         relayerBalance = await c.getBalance(relayerKp.publicKey);
         break;
       } catch (e) {
@@ -619,18 +638,20 @@ export default async function handler(req, res) {
     let sig = null;
     let broadcastError = null;
 
-    for (const rpc of candidateRpcUrls) {
+    for (const rpc of uniqueRpcUrls) {
       try {
-        const c = (rpc === candidateRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
+        const c = (rpc === uniqueRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
         try {
           sig = await c.sendRawTransaction(rawWireTx, {
             skipPreflight: false,
             preflightCommitment: 'confirmed',
+            maxRetries: 3,
           });
         } catch (simErr) {
           console.warn(`[relay] Preflight simulation on ${rpc} failed, retrying with skipPreflight: true:`, simErr.message);
           sig = await c.sendRawTransaction(rawWireTx, {
             skipPreflight: true,
+            maxRetries: 3,
           });
         }
         if (sig) break;

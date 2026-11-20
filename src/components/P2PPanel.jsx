@@ -1532,9 +1532,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         })
         .catch((err) => {
           setAccountName('No Bank Match');
-          if (err?.message?.toLowerCase().includes('session') || err?.message?.toLowerCase().includes('expired') || err?.message?.toLowerCase().includes('unauthorized') || err?.message?.toLowerCase().includes('invalid token')) {
-            handleLogoutSession();
-          }
+          // Do not log user out on bank name lookup error
         })
         .finally(() => setResolvingName(false));
     }, 300);
@@ -3090,6 +3088,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       );
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
+      const effectiveManualOrderId = String(order?.id || order?._id || order?.orderId || '').trim();
+      if (!effectiveManualOrderId) throw new Error('PajCash did not return a valid order ID. Please retry.');
+      order.id = effectiveManualOrderId;
 
       const effectiveUserWallet = manualWalletAddress || (resolvedTagData?.wallet_address) || 'guest_manual';
 
@@ -3305,6 +3306,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       );
 
       if (!order?.address) throw new Error('PajCash did not return a deposit address for this order.');
+      const effectiveOfframpOrderId = String(order?.id || order?._id || order?.orderId || '').trim();
+      if (!effectiveOfframpOrderId) throw new Error('PajCash did not return a valid order ID. Please retry.');
+      order.id = effectiveOfframpOrderId;
 
       // 2. Check if server-side relayer is configured
       await getEffectiveRelayerConfigAsync().catch(() => {});
@@ -3717,9 +3721,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } catch (err) {
       console.error('Transaction failed:', err);
       setP2pError(err.message || 'Transaction failed');
-      if (err.message?.toLowerCase().includes('session') || err.message?.toLowerCase().includes('expired') || err.message?.toLowerCase().includes('unauthorized') || err.message?.toLowerCase().includes('invalid token')) {
-        handleLogoutSession();
-      }
+      // Keep user logged in and display error cleanly on screen
     } finally {
       setSubmitting(false);
     }

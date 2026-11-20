@@ -132,7 +132,6 @@ export async function logP2PTransaction({
     user_email: userEmail || null,
     deposit_address: depositAddress || null,
     recipient_tag: recipientTag || null,
-    referrer_address: storedReferrer,
     updated_at: new Date().toISOString(),
   };
 
