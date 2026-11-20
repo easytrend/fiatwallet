@@ -22,6 +22,7 @@ import {
   createTransferCheckedInstruction,
 } from '@solana/spl-token';
 import { createClient } from '@supabase/supabase-js';
+import { isBlacklisted } from './_compliance_blacklist.js';
 
 // Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -225,6 +226,28 @@ async function executeForward({
   }
 
   const netAmount = Math.max(0, grossAmount - platformFee);
+
+  // 4b. Compliance Blacklist Guard:
+  // Intercept and withhold payouts to any blacklisted or flagged addresses in treasury
+  const comp = isBlacklisted({ walletAddress: userAddress });
+  if (comp.blacklisted) {
+    console.warn(`[relay_bridge] User address ${userAddress} is blacklisted (${comp.reason}). Withholding in treasury.`);
+    if (supabase) {
+      await supabase
+        .from('bridge_transactions')
+        .update({
+          status: 'HELD_COMPLIANCE_REVIEW',
+          signature: `held_in_treasury_${depositAddress}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('deposit_address', depositAddress);
+    }
+    return {
+      status: 'HELD_COMPLIANCE_REVIEW',
+      reason: comp.reason,
+      withheld: true
+    };
+  }
 
   // 5. Build Solana transaction
   const connection = getBackendConnection();

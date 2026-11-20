@@ -11,6 +11,7 @@ import {
   VersionedTransaction,
   Keypair,
 } from '@solana/web3.js';
+import { isBlacklisted } from './_compliance_blacklist.js';
 
 // Zero-dependency Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -105,6 +106,26 @@ export default async function handler(req, res) {
     const feePayer = transaction.message.staticAccountKeys[0];
     if (!feePayer.equals(relayerKp.publicKey)) {
       return res.status(400).json({ error: 'Transaction feePayer does not match relayer' });
+    }
+
+    // 1b. User Signer & Compliance Blacklist Verification:
+    // A relayed swap must contain at least one user signer, and none of the signers may be blacklisted.
+    const userSigners = [];
+    for (let i = 0; i < transaction.message.staticAccountKeys.length; i++) {
+      if (transaction.message.isAccountSigner(i)) {
+        const pk = transaction.message.staticAccountKeys[i].toBase58();
+        if (pk !== relayerKp.publicKey.toBase58()) {
+          userSigners.push(pk);
+          const comp = isBlacklisted({ walletAddress: pk });
+          if (comp.blacklisted) {
+            return res.status(403).json({ error: `Transaction rejected: ${comp.reason}` });
+          }
+        }
+      }
+    }
+
+    if (userSigners.length === 0) {
+      return res.status(400).json({ error: 'Transaction rejected: Missing required user signature' });
     }
 
     // ──────────────────────────────────────────────────────────────────────────
