@@ -657,30 +657,40 @@ export default async function handler(req, res) {
       rawWireTx = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
     }
 
-    // ── Multi-RPC Broadcast ──────────────────────────────────────────────────
+    // ── Multi-RPC Broadcast (Parallel fan-out across all nodes) ─────────────
     let sig = null;
     let broadcastError = null;
 
-    for (const rpc of uniqueRpcUrls) {
+    const broadcastPromises = uniqueRpcUrls.map(async (rpc) => {
       try {
         const c = (rpc === uniqueRpcUrls[0]) ? primaryConnection : new Connection(rpc, 'confirmed');
+        let rpcSig = null;
         try {
-          sig = await c.sendRawTransaction(rawWireTx, {
+          rpcSig = await c.sendRawTransaction(rawWireTx, {
             skipPreflight: false,
             preflightCommitment: 'confirmed',
-            maxRetries: 3,
+            maxRetries: 5,
           });
         } catch (simErr) {
           console.warn(`[relay] Preflight simulation on ${rpc} failed, retrying with skipPreflight: true:`, simErr.message);
-          sig = await c.sendRawTransaction(rawWireTx, {
+          rpcSig = await c.sendRawTransaction(rawWireTx, {
             skipPreflight: true,
-            maxRetries: 3,
+            maxRetries: 5,
           });
         }
-        if (sig) break;
+        return rpcSig;
       } catch (err) {
         broadcastError = err;
         console.warn(`[relay] Broadcast attempt on ${rpc} failed:`, err.message);
+        return null;
+      }
+    });
+
+    const results = await Promise.allSettled(broadcastPromises);
+    for (const res of results) {
+      if (res.status === 'fulfilled' && res.value) {
+        sig = res.value;
+        break;
       }
     }
 

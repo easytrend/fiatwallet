@@ -30,7 +30,7 @@ import { getQuote, buildSwapTransaction } from '../services/swapService';
 import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag, checkEmailWalletBinding } from '../services/supabase';
 import { isBlacklisted } from '../services/compliance';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction, ComputeBudgetProgram } from '@solana/web3.js';
 import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
@@ -3381,6 +3381,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         type: 'p2p_offramp',
       }).catch(err => console.warn('[Offramp] Pre-relay logP2PTransaction notice:', err));
 
+      // Inject priority fee & compute budget so Solana leaders don't drop during congestion
+      transaction.add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 })
+      );
+
       if (liveSelectedToken.symbol === 'SOL') {
         const onChainSolBalance = await connection.getBalance(publicKey, 'confirmed').catch(() => 0);
         const gasBuffer = usingRelayer ? 0 : 5000;
@@ -3621,14 +3627,26 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         type: 'p2p_offramp',
       }).catch(err => console.warn('[Offramp] Initial logP2PTransaction notice:', err));
 
-      // 8. Poll for on-chain confirmation
+      // 8. Poll for on-chain confirmation (with history search and mempool rebroadcast)
       let confirmed = false;
-      const deadline = Date.now() + 60_000;
+      const deadline = Date.now() + 75_000;
+      let pollCount = 0;
       while (Date.now() < deadline) {
-        const status = await connection.getSignatureStatus(sig).catch(() => null);
+        pollCount++;
+        const status = await connection.getSignatureStatus(sig, { searchTransactionHistory: true }).catch(() => null);
         const conf = status?.value?.confirmationStatus;
         if (conf === 'confirmed' || conf === 'finalized') { confirmed = true; break; }
         if (status?.value?.err) throw new Error('Transaction rejected: ' + JSON.stringify(status.value.err));
+
+        // Periodic rebroadcast every 10s to ensure transaction is not dropped by congested mempools
+        if (pollCount % 5 === 0 && usingRelayer && serialized) {
+          fetch(getRelayEndpoint('/api/relay'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serializedTransaction: serialized }),
+          }).catch(() => {});
+        }
+
         await new Promise(r => setTimeout(r, 2000));
       }
 
