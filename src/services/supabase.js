@@ -529,19 +529,43 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
  * @param {string} walletAddress
  * @returns {Promise<{ allowed: boolean, boundWallet?: string, message?: string }>}
  */
+export function normalizeEmail(email) {
+  if (!email || typeof email !== 'string') return '';
+  const clean = email.trim().toLowerCase();
+  const atIndex = clean.lastIndexOf('@');
+  if (atIndex === -1) return clean;
+
+  let user = clean.slice(0, atIndex);
+  const domain = clean.slice(atIndex + 1);
+
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    user = user.replace(/\./g, '').split('+')[0];
+    return `${user}@gmail.com`;
+  }
+  return `${user}@${domain}`;
+}
+
+function maskEmail(email) {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return email || '';
+  const [user, domain] = email.split('@');
+  if (user.length <= 2) return `${user[0]}*@${domain}`;
+  return `${user[0]}${'•'.repeat(Math.min(user.length - 2, 5))}${user.slice(-1)}@${domain}`;
+}
+
 export async function checkEmailWalletBinding(email, walletAddress) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !email || !walletAddress) return { allowed: true };
 
   const cleanEmail = String(email).trim().toLowerCase();
+  const normEmail = normalizeEmail(cleanEmail);
   const cleanWallet = String(walletAddress).trim();
 
   try {
-    // 1. Check paj_sessions table
+    // 1. Check paj_sessions table: Has this email been linked to another wallet?
     const { data: sessionRows } = await client
       .from('paj_sessions')
       .select('wallet_address, email')
-      .ilike('email', cleanEmail)
+      .or(`email.ilike.${cleanEmail},email.ilike.${normEmail}`)
       .limit(10);
 
     if (sessionRows && sessionRows.length > 0) {
@@ -558,11 +582,11 @@ export async function checkEmailWalletBinding(email, walletAddress) {
       }
     }
 
-    // 2. Check p2p_transactions table (for orders previously submitted with this email)
+    // 2. Check p2p_transactions table (orders previously submitted with this email)
     const { data: orderRows } = await client
       .from('p2p_transactions')
       .select('user_address, user_email')
-      .ilike('user_email', cleanEmail)
+      .or(`user_email.ilike.${cleanEmail},user_email.ilike.${normEmail}`)
       .limit(10);
 
     if (orderRows && orderRows.length > 0) {
@@ -574,6 +598,28 @@ export async function checkEmailWalletBinding(email, walletAddress) {
             allowed: false,
             boundWallet: bound,
             message: `This email (${cleanEmail}) is already linked to another wallet (${maskedWallet}). Each email can only be associated with one wallet. Please connect with your registered wallet or contact support@fiatwallet.app for help.`
+          };
+        }
+      }
+    }
+
+    // 3. Reverse Check: Has THIS wallet already been verified with a DIFFERENT email?
+    const { data: walletSessions } = await client
+      .from('paj_sessions')
+      .select('wallet_address, email')
+      .eq('wallet_address', cleanWallet)
+      .limit(10);
+
+    if (walletSessions && walletSessions.length > 0) {
+      for (const row of walletSessions) {
+        if (!row.email) continue;
+        const rowNorm = normalizeEmail(row.email);
+        if (rowNorm && rowNorm !== normEmail) {
+          const masked = maskEmail(row.email);
+          return {
+            allowed: false,
+            boundEmail: row.email,
+            message: `This wallet is already verified with another email (${masked}). Each wallet can only be linked to its original verified email. Please use your verified email or contact support@fiatwallet.app.`
           };
         }
       }
