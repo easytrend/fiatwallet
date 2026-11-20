@@ -387,7 +387,7 @@ export default async function handler(req, res) {
 
       const { data: orderRow, error: orderErr } = await supabase
         .from('p2p_transactions')
-        .select('order_id, status, user_email, user_address, deposit_address, signature')
+        .select('order_id, status, user_email, user_address, deposit_address, signature, created_at')
         .eq('order_id', memoOrderId)
         .maybeSingle();
 
@@ -401,12 +401,20 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: `Offramp order already finalized or restricted (${currentStatus})` });
       }
 
-      // 2. Replay Protection: Reject if deposit tx has already been submitted
+      // 2. Expiration Check: PajCash offramp orders expire after 45 minutes
+      if (orderRow.created_at) {
+        const orderAgeMs = Date.now() - new Date(orderRow.created_at).getTime();
+        if (orderAgeMs > 45 * 60 * 1000) {
+          return res.status(400).json({ error: 'Offramp order has expired (orders are only valid for 45 minutes)' });
+        }
+      }
+
+      // 3. Replay Protection: Reject if deposit tx has already been submitted
       if (orderRow.signature && !orderRow.signature.startsWith('pending_') && orderRow.signature.length >= 44) {
         return res.status(400).json({ error: 'Offramp order deposit transaction has already been submitted on-chain' });
       }
 
-      // 3. Signer Binding Check:
+      // 4. Signer Binding Check:
       // The user wallet that signed this transaction MUST be the exact wallet that registered the order
       if (orderRow.user_address && orderRow.user_address.trim() !== userWalletStr) {
         return res.status(403).json({ error: 'Signer wallet does not match registered order user_address' });
