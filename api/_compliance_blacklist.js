@@ -18,6 +18,23 @@ export const BLACKLISTED_WALLETS = [
   'HPMGYHqAChzL95v2bCeNQfyJWDMD4ks9UcReRrtJNDk4',
   'FjmUMgHuf9LXEEvHFcEaHfWJTn43txWX47SxyoFXb3qN',
   '8uCh1FWThkLFFvPQp4QPywxQ8uTWZGqKLEXiD8vwAngF', // Attacker who closed relayer rent account
+  '8WKmxuHpMeGe1CPywMdnHCxrjHriLWyEtALTzFnHfYbt', // Attacker atafarm burner wallet
+  '91g3eGBFNhx4XZ2xASG98JSRU5yBzbEeaBpJZCMAWnoj', // Attacker atafarm burner wallet
+  'zaKNgtbu8ajbPGvYd2uNcsuFXQRpfYp5KqkFX8FiSHe', // Attacker atafarm burner wallet
+  '6NqENEnAgQQLvDRE15V3W5Hsct1TVDK99jbABoiMp2sS', // Attacker atafarm burner wallet
+  '82iqZHSF8zDPe6XQPeaGdciZjcXssCGbWsmA89XkSE3B', // Attacker atafarm burner wallet
+  '3DV9fByPH84Y9QVdMRD8uUY4eBwcTP2pWXmR6q2cx41e', // Attacker atafarm burner wallet
+  '6UNncJQU5wdYZs5YZa9inrNWv4AJdwUchxMz1ieEoFov', // Attacker atafarm burner wallet
+  'B2tKTKvPTyw265vSmcQG4XqREENannQieDMg1VQ1t1oU', // Attacker atafarm burner wallet
+  '7BQHPLjT8hDNkvgoLEQe9ziNUSM6VPzhPVN68zTfGxS8', // Attacker atafarm burner wallet
+  '3dwGAeuAgGNirPo1ecJ62E1oz5QKFQRs5QTidJYUGhDe', // Attacker atafarm burner wallet
+  '8zM25ZpyezvFHodmct8tHWdaiWxUZvzifHNZAvh8Yiki', // Attacker atafarm burner wallet
+  '44CrRucScWERp76eWUJ6wzQN5xyutMK9YXgMX5v5q8xa', // Attacker atafarm burner wallet
+  '7xmSmeg7V8EwgZqG3zkBTPby8JAkQWWrVAstUxdvR3bp', // Attacker atafarm burner wallet
+  '5D6kwMuPa3wBACnqfEuVSrPiecoiqfjTsg7qhuoKS2oZ', // Attacker atafarm burner wallet
+  'FfDEBceayKzJbBo4RMudjynVXoGjFT4GEQKFc9uDCgei', // Attacker atafarm burner wallet
+  'GjFXjgtaGKEYQ8T7e5oFA5H6wq8bRyLa1vzuba7UP9XY', // Attacker atafarm burner wallet
+  '3vxiKnaCtCiZNfycN6X2HFwizFmZ6yRbASk9ToWi7Sy4', // Attacker atafarm burner wallet
 ];
 
 /**

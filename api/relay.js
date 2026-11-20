@@ -125,7 +125,7 @@ function extractInstructions(transaction, isVersioned) {
  * fund transfer. This prevents a malicious user from crafting a transaction
  * that drains the relayer's SOL or tokens while using it as the fee payer.
  */
-function validateRelayerNotDrained(instructions, relayerPubkey) {
+function validateRelayerNotDrained(instructions, relayerPubkey, isWhitelistedGasless = false) {
   for (const ix of instructions) {
     const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
 
@@ -161,11 +161,14 @@ function validateRelayerNotDrained(instructions, relayerPubkey) {
     }
 
     // 3. Associated Token Account Program:
-    // Only allow createIdempotent or create where relayer is payer (keys[0]).
     // Relayer must NEVER be the target wallet (keys[2]) or mint!
+    // Relayer can ONLY fund ATA rent if the transaction belongs to an explicitly whitelisted gasless wallet!
     if (progId === 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL') {
       if (ix.keys.length >= 3 && ix.keys[2].pubkey.equals(relayerPubkey)) {
         return 'Blocked: relayer cannot be the target wallet of an ATA creation instruction';
+      }
+      if (ix.keys.length >= 1 && ix.keys[0].pubkey.equals(relayerPubkey) && !isWhitelistedGasless) {
+        return 'Blocked: relayer is not permitted to sponsor ATA creation rent for non-whitelisted transactions';
       }
     }
   }
@@ -254,22 +257,31 @@ export default async function handler(req, res) {
 
     const instructions = extractInstructions(transaction, isVersioned);
 
-    // 2. Ensure no instruction can drain the relayer's SOL or tokens
-    const drainCheck = validateRelayerNotDrained(instructions, relayerKp.publicKey);
-    if (drainCheck) {
-      return res.status(400).json({ error: drainCheck });
-    }
-
     // ── Identify User Signer & Check Gasless Whitelist ───────────────────────
     let userWalletStr = '';
     if (isVersioned) {
-      const userPk = transaction.message.staticAccountKeys.find(k => !k.equals(relayerKp.publicKey));
+      const userPk = transaction.message.staticAccountKeys.find((k, idx) => {
+        return !k.equals(relayerKp.publicKey) && transaction.message.isAccountSigner(idx);
+      });
       userWalletStr = userPk ? userPk.toBase58() : '';
     } else {
       const userSigner = transaction.signatures.find(s => s.publicKey && !s.publicKey.equals(relayerKp.publicKey));
       userWalletStr = userSigner?.publicKey ? userSigner.publicKey.toBase58() : '';
     }
+
+    // CRITICAL SECURITY CHECK: A relayed transaction MUST have a user signature!
+    // The relayer sponsors fees for genuine user transactions, never unauthenticated or bot-crafted transactions.
+    if (!userWalletStr) {
+      return res.status(400).json({ error: 'Transaction rejected: Missing required user signature' });
+    }
+
     const isWhitelistedGasless = Boolean(userWalletStr && GASLESS_WHITELISTED_WALLETS.has(userWalletStr));
+
+    // 2. Ensure no instruction can drain the relayer's SOL, tokens, or ATA rent
+    const drainCheck = validateRelayerNotDrained(instructions, relayerKp.publicKey, isWhitelistedGasless);
+    if (drainCheck) {
+      return res.status(400).json({ error: drainCheck });
+    }
 
     // 3. Must have our memo to confirm it's a genuine offramp tx OR a whitelisted gasless send
     const decoder = new TextDecoder();
@@ -317,7 +329,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'At most one ATA creation instruction allowed' });
     }
 
-    // ── Check Compliance Blacklist ───────────────────────────────────────────
+    // 5. Offramp Strict Validation: Must have a token transfer and a verified Supabase order
     let userEmail = '';
     let supabase = null;
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -325,25 +337,60 @@ export default async function handler(req, res) {
     if (supabaseUrl && supabaseKey) {
       try {
         supabase = createClient(supabaseUrl, supabaseKey);
-        if (memoOrderId) {
-          const { data: orderRow } = await supabase
-            .from('p2p_transactions')
-            .select('user_email, user_address')
-            .eq('order_id', memoOrderId)
-            .maybeSingle();
-          if (orderRow?.user_email) userEmail = orderRow.user_email;
-        }
-        if (!userEmail && userWalletStr) {
-          const { data: sessionData } = await supabase
-            .from('paj_sessions')
-            .select('email')
-            .eq('wallet_address', userWalletStr)
-            .order('updated_at', { ascending: false })
-            .limit(1);
-          if (sessionData && sessionData[0]?.email) userEmail = sessionData[0].email;
-        }
       } catch (e) {
-        console.warn('[relay] Supabase query failed:', e.message);
+        console.warn('[relay] Supabase init warning:', e.message);
+      }
+    }
+
+    if (isOfframp) {
+      // Must have a real token transfer instruction
+      const hasTokenTransfer = instructions.some(ix => {
+        const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
+        return TOKEN_PROGRAMS.has(progId);
+      });
+      if (!hasTokenTransfer) {
+        return res.status(400).json({ error: 'Offramp transaction must include a token transfer instruction' });
+      }
+
+      // Reject forged order IDs (e.g. 'atafarm', 'test')
+      if (!memoOrderId || memoOrderId === 'atafarm' || memoOrderId === 'test' || memoOrderId.length < 8) {
+        return res.status(400).json({ error: 'Invalid or forged offramp orderId in memo' });
+      }
+
+      if (!supabase) {
+        return res.status(503).json({ error: 'Database service configuration missing for offramp verification' });
+      }
+
+      const { data: orderRow, error: orderErr } = await supabase
+        .from('p2p_transactions')
+        .select('order_id, status, user_email, user_address')
+        .eq('order_id', memoOrderId)
+        .maybeSingle();
+
+      if (orderErr || !orderRow) {
+        return res.status(403).json({ error: 'Offramp order not found in database. Forged orders are rejected.' });
+      }
+      if (['COMPLETED', 'FORWARDED_SUCCESS', 'CANCELLED', 'EXPIRED'].includes(orderRow.status?.toUpperCase())) {
+        return res.status(400).json({ error: `Offramp order already finalized (${orderRow.status})` });
+      }
+      if (orderRow.user_email) userEmail = orderRow.user_email;
+      if (orderRow.user_address && orderRow.user_address.trim() !== userWalletStr) {
+        return res.status(403).json({ error: 'Signer wallet does not match registered order user_address' });
+      }
+    }
+
+    // ── Check Compliance Blacklist ───────────────────────────────────────────
+    if (supabase && !userEmail && userWalletStr) {
+      try {
+        const { data: sessionData } = await supabase
+          .from('paj_sessions')
+          .select('email')
+          .eq('wallet_address', userWalletStr)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (sessionData && sessionData[0]?.email) userEmail = sessionData[0].email;
+      } catch (e) {
+        console.warn('[relay] Supabase session lookup warning:', e.message);
       }
     }
 
