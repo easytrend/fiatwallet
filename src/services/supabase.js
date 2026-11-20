@@ -522,9 +522,83 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
  * @param {string} token         - PajCash JWT session token
  * @param {number} expiryMs      - Expiry timestamp in milliseconds (Date.now() based)
  */
+/**
+ * Verify if an email address is already bound to a different wallet.
+ * Enforces a strict 1-to-1 relationship between email addresses and Solana wallets.
+ *
+ * @param {string} email
+ * @param {string} walletAddress
+ * @returns {Promise<{ allowed: boolean, boundWallet?: string, message?: string }>}
+ */
+export async function checkEmailWalletBinding(email, walletAddress) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !email || !walletAddress) return { allowed: true };
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanWallet = String(walletAddress).trim();
+
+  try {
+    // 1. Check paj_sessions table
+    const { data: sessionRows } = await client
+      .from('paj_sessions')
+      .select('wallet_address, email')
+      .ilike('email', cleanEmail)
+      .limit(10);
+
+    if (sessionRows && sessionRows.length > 0) {
+      for (const row of sessionRows) {
+        const bound = (row.wallet_address || '').trim();
+        if (bound && bound.toLowerCase() !== cleanWallet.toLowerCase()) {
+          const maskedWallet = bound.length > 10 ? `${bound.slice(0, 4)}...${bound.slice(-4)}` : bound;
+          return {
+            allowed: false,
+            boundWallet: bound,
+            message: `This email (${cleanEmail}) is already linked to another wallet (${maskedWallet}). Each email can only be associated with one wallet. Please connect with your registered wallet or contact support@fiatwallet.app for help.`
+          };
+        }
+      }
+    }
+
+    // 2. Check p2p_transactions table (for orders previously submitted with this email)
+    const { data: orderRows } = await client
+      .from('p2p_transactions')
+      .select('user_address, user_email')
+      .ilike('user_email', cleanEmail)
+      .limit(10);
+
+    if (orderRows && orderRows.length > 0) {
+      for (const row of orderRows) {
+        const bound = (row.user_address || '').trim();
+        if (bound && bound.toLowerCase() !== cleanWallet.toLowerCase()) {
+          const maskedWallet = bound.length > 10 ? `${bound.slice(0, 4)}...${bound.slice(-4)}` : bound;
+          return {
+            allowed: false,
+            boundWallet: bound,
+            message: `This email (${cleanEmail}) is already linked to another wallet (${maskedWallet}). Each email can only be associated with one wallet. Please connect with your registered wallet or contact support@fiatwallet.app for help.`
+          };
+        }
+      }
+    }
+
+    return { allowed: true };
+  } catch (err) {
+    console.warn('[Supabase] checkEmailWalletBinding error:', err.message);
+    return { allowed: true };
+  }
+}
+
 export async function saveSession(walletAddress, email, token, expiryMs) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress || !token) return;
+
+  // Strict 1-to-1 Email to Wallet validation
+  if (email && walletAddress) {
+    const binding = await checkEmailWalletBinding(email, walletAddress);
+    if (!binding.allowed) {
+      console.warn('[Supabase] saveSession rejected: email already bound to another wallet:', binding.message);
+      throw new Error(binding.message);
+    }
+  }
   const row = {
     wallet_address: walletAddress,
     email,
@@ -771,11 +845,110 @@ export async function registerFiatTag({
 
   const cleanTag = String(tagName).trim().toLowerCase();
   const formattedTag = cleanTag.startsWith('$') ? cleanTag : `$${cleanTag}`;
+  const cleanAcct = String(accountNumber).trim();
+  const cleanBvn = bvn ? String(bvn).replace(/\D/g, '').trim() : null;
+  const cleanNin = nin ? String(nin).replace(/\D/g, '').trim() : null;
+  const cleanPhone = phoneNumber ? String(phoneNumber).replace(/[^0-9+]/g, '').trim() : null;
 
-  // 1. Check if tag is already taken by another wallet
-  const existing = await getFiatTagByName(formattedTag);
-  if (existing && existing.wallet_address?.toLowerCase() !== walletAddress?.toLowerCase()) {
+  // 1. Disallow identical BVN and NIN
+  if (cleanBvn && cleanNin && cleanBvn === cleanNin) {
+    throw new Error('BVN and NIN cannot be the exact same number. Please enter your valid 11-digit BVN and distinct 11-digit NIN.');
+  }
+
+  // 2. Check if this wallet already has a registered tag/bank account
+  let { data: existingOwn } = await client
+    .from('fiat_tags')
+    .select('*')
+    .eq('wallet_address', walletAddress)
+    .maybeSingle();
+
+  if (!existingOwn?.id) {
+    const ilikeOwn = await client
+      .from('fiat_tags')
+      .select('*')
+      .ilike('wallet_address', walletAddress)
+      .maybeSingle();
+    if (ilikeOwn.data?.id) {
+      existingOwn = ilikeOwn.data;
+    }
+  }
+
+  // 3. Permanent lock check:
+  // If user already saved their details, lock from editing.
+  // Exception: If user previously made the mistake of entering identical BVN and NIN (e.g. s.amuelbackwood),
+  // permit the correction update so they can fix it.
+  const hasExistingBvnNinMismatch = existingOwn && existingOwn.bvn && existingOwn.nin && existingOwn.bvn.trim() === existingOwn.nin.trim();
+  const isAlreadyLocked = existingOwn && existingOwn.account_number && !hasExistingBvnNinMismatch;
+
+  if (isAlreadyLocked) {
+    throw new Error('Your bank details and Fiat Tag are locked for security. If you need to make changes or corrections, please reach out to our team at support@fiatwallet.app.');
+  }
+
+  // 4. Global Uniqueness Checks: No other wallet can reuse this tag, bank account, BVN, NIN, or phone number.
+  // A. Tag name uniqueness
+  const existingTag = await getFiatTagByName(formattedTag);
+  if (existingTag && existingTag.wallet_address?.toLowerCase() !== walletAddress?.toLowerCase()) {
     throw new Error(`Tag ${formattedTag} is already taken by another user. Please choose a different tag.`);
+  }
+
+  // B. Bank account number uniqueness
+  if (cleanAcct) {
+    const { data: acctMatch } = await client
+      .from('fiat_tags')
+      .select('wallet_address')
+      .eq('account_number', cleanAcct)
+      .neq('wallet_address', walletAddress)
+      .limit(1)
+      .maybeSingle();
+
+    if (acctMatch) {
+      throw new Error('This bank account number is already registered to another wallet. Each account number can only be linked once.');
+    }
+  }
+
+  // C. BVN uniqueness
+  if (cleanBvn) {
+    const { data: bvnMatch } = await client
+      .from('fiat_tags')
+      .select('wallet_address')
+      .eq('bvn', cleanBvn)
+      .neq('wallet_address', walletAddress)
+      .limit(1)
+      .maybeSingle();
+
+    if (bvnMatch) {
+      throw new Error('This BVN is already registered to another wallet. Each BVN can only be linked to one user account.');
+    }
+  }
+
+  // D. NIN uniqueness
+  if (cleanNin) {
+    const { data: ninMatch } = await client
+      .from('fiat_tags')
+      .select('wallet_address')
+      .eq('nin', cleanNin)
+      .neq('wallet_address', walletAddress)
+      .limit(1)
+      .maybeSingle();
+
+    if (ninMatch) {
+      throw new Error('This NIN is already registered to another wallet. Each NIN can only be linked to one user account.');
+    }
+  }
+
+  // E. Phone number uniqueness
+  if (cleanPhone) {
+    const { data: phoneMatch } = await client
+      .from('fiat_tags')
+      .select('wallet_address')
+      .eq('phone_number', cleanPhone)
+      .neq('wallet_address', walletAddress)
+      .limit(1)
+      .maybeSingle();
+
+    if (phoneMatch) {
+      throw new Error('This phone number is already registered to another wallet.');
+    }
   }
 
   const payload = {
@@ -783,31 +956,13 @@ export async function registerFiatTag({
     tag_name: formattedTag,
     bank_name: bankName,
     bank_code: bankCode || null,
-    account_number: String(accountNumber).trim(),
+    account_number: cleanAcct,
     account_name: String(accountName).trim(),
-    bvn: bvn ? String(bvn).trim() : null,
-    phone_number: phoneNumber ? String(phoneNumber).trim() : null,
-    nin: nin ? String(nin).trim() : null,
+    bvn: cleanBvn,
+    phone_number: cleanPhone,
+    nin: cleanNin,
     updated_at: new Date().toISOString(),
   };
-
-  // 2. If this wallet already has a tag, update it; otherwise insert a new one.
-  let { data: existingOwn } = await client
-    .from('fiat_tags')
-    .select('id')
-    .eq('wallet_address', walletAddress)
-    .maybeSingle();
-
-  if (!existingOwn?.id) {
-    const ilikeOwn = await client
-      .from('fiat_tags')
-      .select('id')
-      .ilike('wallet_address', walletAddress)
-      .maybeSingle();
-    if (ilikeOwn.data?.id) {
-      existingOwn = ilikeOwn.data;
-    }
-  }
 
   let data, error;
 

@@ -27,7 +27,7 @@ import {
   getEffectiveRelayerConfigAsync,
 } from '../services/pajcashService';
 import { getQuote, buildSwapTransaction } from '../services/swapService';
-import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag } from '../services/supabase';
+import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag, checkEmailWalletBinding } from '../services/supabase';
 import { isBlacklisted } from '../services/compliance';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction } from '@solana/web3.js';
@@ -1906,6 +1906,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       return;
     }
 
+    if (cleanBvn === cleanNin) {
+      setTagModalError('BVN and NIN cannot be the exact same number. Please enter your valid 11-digit BVN and distinct 11-digit NIN.');
+      return;
+    }
+
     setTagModalSaving(true);
     setTagModalError(null);
     try {
@@ -1965,6 +1970,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setAuthLoading(true);
     setAuthError(null);
     try {
+      const activeWalletStr = (publicKey ? publicKey.toBase58() : (manualWalletAddress || (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '')).trim();
+      if (activeWalletStr) {
+        const binding = await checkEmailWalletBinding(emailInput.trim(), activeWalletStr);
+        if (!binding.allowed) {
+          setAuthError(binding.message);
+          setAuthLoading(false);
+          return;
+        }
+      }
       const key = await getEffectiveApiKeyAsync();
       if (!key) {
         setAuthError('PajCash API configuration missing. Please verify API configuration.');
@@ -1988,6 +2002,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setAuthLoading(true);
     setAuthError(null);
     try {
+      const activeWalletStr = (publicKey ? publicKey.toBase58() : (manualWalletAddress || (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_wallet') : '') || '')).trim();
+      if (activeWalletStr) {
+        const binding = await checkEmailWalletBinding(emailInput.trim(), activeWalletStr);
+        if (!binding.allowed) {
+          setAuthError(binding.message);
+          setAuthLoading(false);
+          return;
+        }
+      }
       const key = await getEffectiveApiKeyAsync();
       if (!key) {
         setAuthError('PajCash API configuration missing. Please verify API configuration.');

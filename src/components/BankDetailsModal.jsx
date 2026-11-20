@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { getBanks, resolveBankAccount, initiateSession, verifySession, submitUserKyc, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
-import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession } from '../services/supabase';
+import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession, checkEmailWalletBinding } from '../services/supabase';
 
 const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
+
+const maskSensitive = (val, visibleCount = 4) => {
+  if (!val) return '';
+  const str = String(val).trim();
+  if (str.length <= visibleCount) return '••••••';
+  return '••••••' + str.slice(-visibleCount);
+};
 
 const getBankNameString = (b) => {
   if (!b) return '';
@@ -174,6 +181,21 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
   const isGuestMode = isGuest || !walletAddress;
   const effectiveWallet = (walletAddress || manualTagModalWallet || '').trim();
+
+  // Detect duplicate BVN/NIN mistake (e.g. s.amuelbackwood)
+  const hasBvnNinError = Boolean(
+    userTagData &&
+    userTagData.bvn &&
+    userTagData.nin &&
+    userTagData.bvn.trim() === userTagData.nin.trim()
+  );
+
+  // Lock account details once saved if there is no pending identity error
+  const isLocked = Boolean(
+    userTagData &&
+    userTagData.account_number &&
+    !hasBvnNinError
+  );
 
   // 1. Restore PajCash session
   useEffect(() => {
@@ -420,6 +442,14 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     setAuthLoading(true);
     setAuthError('');
     try {
+      if (effectiveWallet) {
+        const binding = await checkEmailWalletBinding(emailInput.trim(), effectiveWallet);
+        if (!binding.allowed) {
+          setAuthError(binding.message);
+          setAuthLoading(false);
+          return;
+        }
+      }
       const apiKey = await getEffectiveApiKeyAsync();
       if (!apiKey) {
         setAuthError('PajCash API configuration missing. Please try again.');
@@ -445,6 +475,14 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     setAuthLoading(true);
     setAuthError('');
     try {
+      if (effectiveWallet) {
+        const binding = await checkEmailWalletBinding(emailInput.trim(), effectiveWallet);
+        if (!binding.allowed) {
+          setAuthError(binding.message);
+          setAuthLoading(false);
+          return;
+        }
+      }
       const apiKey = await getEffectiveApiKeyAsync();
       if (!apiKey) {
         setAuthError('PajCash API configuration missing. Please try again.');
@@ -519,6 +557,16 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     const cleanNin = tagModalNin.replace(/\D/g, '').trim();
     if (cleanNin.length !== 11) {
       setTagModalError('Please enter a valid 11-digit NIN.');
+      return;
+    }
+
+    if (cleanBvn === cleanNin) {
+      setTagModalError('BVN and NIN cannot be the exact same number. Please enter your valid 11-digit BVN and distinct 11-digit NIN.');
+      return;
+    }
+
+    if (isLocked) {
+      setTagModalError('Your bank details and Fiat Tag are locked for security. Please contact support@fiatwallet.app to request any changes.');
       return;
     }
 
@@ -619,12 +667,58 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', marginBottom: '6px' }}>
-            {userTagData ? 'Edit Your Fiat Tag' : 'Create & Link Fiat Tag'}
+            {isLocked
+              ? 'Verified Bank Details & Fiat Tag'
+              : hasBvnNinError
+              ? 'Identity Correction Required'
+              : (userTagData ? 'Edit Your Fiat Tag' : 'Create & Link Fiat Tag')}
           </h3>
           <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.4' }}>
-            Link your bank account to a unique Fiat Tag so others can send you payouts using just your Tag.
+            {isLocked
+              ? 'Your bank account and Fiat Tag are locked and permanently bound to your wallet.'
+              : hasBvnNinError
+              ? 'Please re-enter your distinct BVN and NIN below to correct and unlock your account.'
+              : 'Link your bank account to a unique Fiat Tag so others can send you payouts using just your Tag.'}
           </p>
         </div>
+
+        {/* Correction Alert for users with duplicate BVN and NIN */}
+        {hasBvnNinError && (
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            marginBottom: '16px',
+            fontSize: '11.5px',
+            color: '#fcd34d',
+            lineHeight: '1.45'
+          }}>
+            <div style={{ fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>⚠️</span> Action Required: Duplicate Identity Number Detected
+            </div>
+            Your Bank Verification Number (BVN) and National Identity Number (NIN) were previously entered with identical numbers. BVN and NIN are separate official government numbers. Please enter your valid 11-digit BVN and distinct 11-digit NIN below to correct and secure your account.
+          </div>
+        )}
+
+        {/* Lock Banner for already saved & valid details */}
+        {isLocked && (
+          <div style={{
+            background: 'rgba(163, 230, 53, 0.08)',
+            border: '1px solid rgba(163, 230, 53, 0.25)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            marginBottom: '16px',
+            fontSize: '11.5px',
+            color: 'rgba(255, 255, 255, 0.85)',
+            lineHeight: '1.45'
+          }}>
+            <div style={{ fontWeight: '700', color: 'var(--lime)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>🔒</span> Details Locked for Security
+            </div>
+            Your bank details and Fiat Tag are locked to prevent unauthorized tampering. Another wallet or email cannot reuse any of these details. If you need corrections, please contact <a href="mailto:support@fiatwallet.app" style={{ color: 'var(--lime)', textDecoration: 'underline' }}>support@fiatwallet.app</a>.
+          </div>
+        )}
 
         {tagModalError && (
           <div style={{
@@ -810,7 +904,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                 setTagModalInput(val ? `$${val}` : '');
               }}
               placeholder="yourtag"
-              style={{ fontSize: '14px', fontWeight: '600', flex: 1 }}
+              disabled={isLocked}
+              style={{ fontSize: '14px', fontWeight: '600', flex: 1, opacity: isLocked ? 0.75 : 1 }}
             />
           </div>
         </div>
@@ -820,8 +915,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           <div className="field-label">Bank</div>
           <div
             className="input-wrap"
-            onClick={() => setBankOpen(v => !v)}
-            style={{ cursor: 'pointer', justifyContent: 'space-between' }}
+            onClick={isLocked ? undefined : () => setBankOpen(v => !v)}
+            style={{ cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.75 : 1, justifyContent: 'space-between' }}
           >
             <span>{tagModalBank}</span>
             <span style={{ fontSize: '11px', color: 'var(--text3)' }}>▼</span>
@@ -873,10 +968,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             <input
               type="text"
               maxLength={10}
-              value={tagModalAcctNumber}
+              value={isLocked ? maskSensitive(tagModalAcctNumber) : tagModalAcctNumber}
               onChange={e => setTagModalAcctNumber(e.target.value.replace(/\D/g, ''))}
               placeholder="0000000000"
-              style={{ fontSize: '14px', fontWeight: '600' }}
+              disabled={isLocked}
+              style={{ fontSize: '14px', fontWeight: '600', opacity: isLocked ? 0.75 : 1 }}
             />
           </div>
           <div style={{ marginTop: '4px', minHeight: '14px', fontSize: '11px', color: 'var(--lime)', fontWeight: 'bold' }}>
@@ -894,10 +990,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           <div className="input-wrap">
             <input
               type="tel"
-              value={tagModalPhone}
+              value={isLocked ? maskSensitive(tagModalPhone) : tagModalPhone}
               onChange={e => setTagModalPhone(e.target.value)}
               placeholder="e.g. 08012345678"
-              style={{ fontSize: '14px', fontWeight: '500' }}
+              disabled={isLocked}
+              style={{ fontSize: '14px', fontWeight: '500', opacity: isLocked ? 0.75 : 1 }}
             />
           </div>
         </div>
@@ -909,10 +1006,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             <input
               type="text"
               maxLength={11}
-              value={tagModalBvn}
+              value={isLocked ? maskSensitive(tagModalBvn) : tagModalBvn}
               onChange={e => setTagModalBvn(e.target.value.replace(/\D/g, ''))}
               placeholder="11-digit BVN"
-              style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+              disabled={isLocked}
+              style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px', opacity: isLocked ? 0.75 : 1 }}
             />
           </div>
           <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>
@@ -927,23 +1025,54 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             <input
               type="text"
               maxLength={11}
-              value={tagModalNin}
+              value={isLocked ? maskSensitive(tagModalNin) : tagModalNin}
               onChange={e => setTagModalNin(e.target.value.replace(/\D/g, ''))}
               placeholder="11-digit NIN"
-              style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+              disabled={isLocked}
+              style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px', opacity: isLocked ? 0.75 : 1 }}
             />
           </div>
         </div>
 
         {/* ── Action Button ── */}
-        <button
-          className="send-btn"
-          onClick={handleSaveFiatTag}
-          disabled={tagModalSaving || tagModalResolving}
-          style={{ marginTop: '10px' }}
-        >
-          {tagModalSaving ? 'Saving Tag...' : (userTagData ? 'Update Fiat Tag' : 'Create Fiat Tag')}
-        </button>
+        {isLocked ? (
+          <button
+            className="send-btn"
+            disabled={true}
+            style={{
+              marginTop: '10px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              color: 'rgba(255, 255, 255, 0.45)',
+              cursor: 'not-allowed',
+            }}
+          >
+            🔒 Bank Details & Fiat Tag Locked
+          </button>
+        ) : hasBvnNinError ? (
+          <button
+            className="send-btn"
+            onClick={handleSaveFiatTag}
+            disabled={tagModalSaving || tagModalResolving}
+            style={{
+              marginTop: '10px',
+              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              color: '#000',
+              fontWeight: '700',
+            }}
+          >
+            {tagModalSaving ? 'Saving Corrections...' : 'Correct & Secure Identity Details'}
+          </button>
+        ) : (
+          <button
+            className="send-btn"
+            onClick={handleSaveFiatTag}
+            disabled={tagModalSaving || tagModalResolving}
+            style={{ marginTop: '10px' }}
+          >
+            {tagModalSaving ? 'Saving Tag...' : (userTagData ? 'Update Fiat Tag' : 'Create Fiat Tag')}
+          </button>
+        )}
       </div>
     </div>
   );
