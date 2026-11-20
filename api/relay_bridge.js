@@ -22,7 +22,7 @@ import {
   createTransferCheckedInstruction,
 } from '@solana/spl-token';
 import { createClient } from '@supabase/supabase-js';
-import { isBlacklisted } from './_compliance_blacklist.js';
+import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
 
 // Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -150,27 +150,130 @@ async function executeForward({
   supabase,
   nearApiKey,
 }) {
-  let userPublicKey;
-  try {
-    userPublicKey = new PublicKey(userAddress);
-  } catch (err) {
-    throw new Error('Invalid user Solana address');
+  if (!supabase) {
+    throw new Error('Database service configuration missing for bridge verification');
   }
 
-  // 1. Verify status on NEAR Intents 1Click API
+  // 1. Resolve canonical bridge record from Supabase first
+  const { data: dbBridge, error: dbError } = await supabase
+    .from('bridge_transactions')
+    .select('*')
+    .eq('deposit_address', String(depositAddress))
+    .maybeSingle();
+
+  if (!dbBridge) {
+    throw new Error(`Bridge order for deposit address ${depositAddress} not found in database. The bridge transaction must be initiated through FiatWallet.`);
+  }
+
+  if (!dbBridge.user_address) {
+    throw new Error(`Bridge order ${depositAddress} does not have a verified user_address recorded. Cannot forward funds.`);
+  }
+
+  // Strictly enforce canonical destination wallet address from the database record!
+  // Any userAddress supplied in the request body is verified against the database.
+  const canonicalUserAddress = dbBridge.user_address.trim();
+  if (userAddress && userAddress.trim() !== canonicalUserAddress) {
+    console.warn(`[relay_bridge] userAddress in request (${userAddress}) does not match canonical dbBridge.user_address (${canonicalUserAddress}). Enforcing canonical address.`);
+  }
+  const effectiveUserAddress = canonicalUserAddress;
+
+  let userPublicKey;
+  try {
+    userPublicKey = new PublicKey(effectiveUserAddress);
+  } catch (err) {
+    throw new Error('Invalid user Solana address: ' + effectiveUserAddress);
+  }
+
+  const effectiveDestinationSymbol = (dbBridge.destination_symbol || destinationSymbol || 'USDT').toUpperCase();
+
+  // Return early if order is already completed, forwarded, or held in treasury
+  const currentDbStatus = (dbBridge.status || '').toUpperCase();
+  if (currentDbStatus === 'COMPLETED' || currentDbStatus === 'FORWARDED_SUCCESS') {
+    return {
+      signature: dbBridge.signature,
+      alreadyForwarded: true,
+      status: 'COMPLETED',
+      message: 'Bridge payout already forwarded',
+    };
+  }
+
+  if (currentDbStatus === 'HELD_COMPLIANCE_REVIEW') {
+    return {
+      status: 'HELD_COMPLIANCE_REVIEW',
+      withheld: true,
+      message: 'Bridge payout withheld in treasury for compliance review',
+    };
+  }
+
+  // 2. Atomic claim lock: prevent concurrent double-payouts
+  const { data: claimResult, error: claimError } = await supabase
+    .from('bridge_transactions')
+    .update({
+      status: 'FORWARDING',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('deposit_address', String(depositAddress))
+    .neq('status', 'FORWARDING')
+    .neq('status', 'COMPLETED')
+    .neq('status', 'FORWARDED_SUCCESS')
+    .select('id');
+
+  if (claimError) {
+    throw new Error(`Failed to claim bridge order for forwarding: ${claimError.message}`);
+  }
+
+  if (!claimResult || claimResult.length === 0) {
+    const { data: latestRow } = await supabase
+      .from('bridge_transactions')
+      .select('status, signature')
+      .eq('deposit_address', String(depositAddress))
+      .maybeSingle();
+
+    if (latestRow?.status === 'COMPLETED' || latestRow?.status === 'FORWARDED_SUCCESS') {
+      return {
+        signature: latestRow.signature,
+        alreadyForwarded: true,
+        status: 'COMPLETED',
+        message: 'Bridge payout already forwarded',
+      };
+    }
+
+    return {
+      error: 'Bridge order is already being processed or was forwarded.',
+      alreadyForwarded: true,
+    };
+  }
+
+  // 3. Verify status on NEAR Intents 1Click API
   const headers = {};
   if (nearApiKey) {
     headers['X-API-Key'] = nearApiKey;
     headers['Authorization'] = `Bearer ${nearApiKey}`;
   }
 
-  const statusResp = await fetch(`https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(depositAddress)}`, {
-    headers,
-  });
-  const statusData = await statusResp.json();
+  let statusResp;
+  try {
+    statusResp = await fetch(`https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(depositAddress)}`, {
+      headers,
+    });
+  } catch (fetchErr) {
+    // Revert lock back to PENDING on network error
+    await supabase
+      .from('bridge_transactions')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('deposit_address', String(depositAddress));
+    throw new Error(`Could not connect to NEAR Intents API: ${fetchErr.message}`);
+  }
 
+  const statusData = await statusResp.json();
   const currentStatus = String(statusData.status || '').toUpperCase();
   if (currentStatus !== 'SUCCESS') {
+    // Revert lock back to PENDING if cross-chain swap has not finalized yet
+    await supabase
+      .from('bridge_transactions')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('deposit_address', String(depositAddress));
+
     return {
       status: currentStatus || 'PENDING',
       error: `Bridge has not completed yet. Current status: ${currentStatus || 'PENDING'}`,
@@ -178,70 +281,50 @@ async function executeForward({
     };
   }
 
-  // 2. Verify recipient is our relayer
+  // 4. Verify recipient is our relayer
   const intentRecipient = statusData.quoteResponse?.quoteRequest?.recipient;
   if (intentRecipient && intentRecipient !== relayerKp.publicKey.toBase58()) {
+    await supabase
+      .from('bridge_transactions')
+      .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+      .eq('deposit_address', String(depositAddress));
     throw new Error('Recipient mismatch: intent was not routed to the FiatWallet relayer');
   }
 
-  // 3. Prevent double-forwarding via atomic DB lock
-  if (supabase) {
-    const { data: currentBridge } = await supabase
-      .from('bridge_transactions')
-      .select('status, signature')
-      .eq('deposit_address', String(depositAddress))
-      .maybeSingle();
-
-    if (currentBridge?.status === 'COMPLETED' || currentBridge?.status === 'FORWARDED_SUCCESS') {
-      return {
-        signature: currentBridge.signature,
-        alreadyForwarded: true,
-        status: 'COMPLETED',
-        message: 'Bridge payout already forwarded',
-      };
-    }
-
-    // Lock status to FORWARDING
-    await supabase
-      .from('bridge_transactions')
-      .update({ status: 'FORWARDING', updated_at: new Date().toISOString() })
-      .eq('deposit_address', String(depositAddress));
-  }
-
-  // 4. Calculate gross amount & platform fee
+  // 5. Calculate gross amount & platform fee
   const grossStr = statusData.swapDetails?.amountOutFormatted || statusData.quoteResponse?.quote?.amountOutFormatted || '0';
   const grossAmount = parseFloat(grossStr);
   if (!grossAmount || grossAmount <= 0) {
+    await supabase
+      .from('bridge_transactions')
+      .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+      .eq('deposit_address', String(depositAddress));
     throw new Error(`Invalid gross amount returned by bridge: ${grossStr}`);
   }
 
-  const isNativeSol = destinationSymbol.toUpperCase() === 'SOL';
+  const isNativeSol = effectiveDestinationSymbol === 'SOL';
   let platformFee = 0;
   if (isNativeSol) {
     platformFee = Math.max(0.001, Math.round(grossAmount * 0.004 * 10000) / 10000);
   } else {
-    // USDT or USDC (USD stablecoins)
     const rawFee = grossAmount * 0.004;
     platformFee = Math.max(0.10, Math.round(rawFee * 100) / 100);
   }
 
   const netAmount = Math.max(0, grossAmount - platformFee);
 
-  // 4b. Compliance Blacklist Guard:
-  // Intercept and withhold payouts to any blacklisted or flagged addresses in treasury
-  const comp = isBlacklisted({ walletAddress: userAddress });
+  // 6. Compliance Blacklist Guard
+  const comp = await isBlacklistedEntityAsync({ walletAddress: effectiveUserAddress, supabase });
   if (comp.blacklisted) {
-    console.warn(`[relay_bridge] User address ${userAddress} is blacklisted (${comp.reason}). Withholding in treasury.`);
-    if (supabase) {
-      await supabase
-        .from('bridge_transactions')
-        .update({
-          status: 'HELD_COMPLIANCE_REVIEW',
-          signature: `held_in_treasury_${depositAddress}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('deposit_address', depositAddress);
-    }
+    console.warn(`[relay_bridge] User address ${effectiveUserAddress} is blacklisted (${comp.reason}). Withholding in treasury.`);
+    await supabase
+      .from('bridge_transactions')
+      .update({
+        status: 'HELD_COMPLIANCE_REVIEW',
+        signature: `held_in_treasury_${depositAddress}`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('deposit_address', String(depositAddress));
     return {
       status: 'HELD_COMPLIANCE_REVIEW',
       reason: comp.reason,
@@ -249,19 +332,47 @@ async function executeForward({
     };
   }
 
-  // 5. Build Solana transaction
+  // 7. Verify Relayer on-chain balance before building transaction
   const connection = getBackendConnection();
+  const tokenMint = SPL_MINTS[effectiveDestinationSymbol];
 
+  if (isNativeSol || !tokenMint) {
+    const lamports = BigInt(Math.round(netAmount * 1_000_000_000));
+    const relayerSol = await connection.getBalance(relayerKp.publicKey, 'confirmed').catch(() => 0);
+    if (BigInt(relayerSol) < (lamports + 10_000n)) {
+      await supabase
+        .from('bridge_transactions')
+        .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+        .eq('deposit_address', String(depositAddress));
+      throw new Error(`Relayer SOL balance (${(relayerSol / 1e9).toFixed(4)} SOL) is insufficient for ${netAmount} SOL payout. Deposit may still be confirming on-chain.`);
+    }
+  } else {
+    const decimals = 6;
+    const units = BigInt(Math.round(netAmount * (10 ** decimals)));
+    const relayerATA = getAssociatedTokenAddressSync(tokenMint, relayerKp.publicKey);
+    let relayerTokenBal = 0n;
+    try {
+      const balResp = await connection.getTokenAccountBalance(relayerATA, 'confirmed');
+      relayerTokenBal = BigInt(balResp.value.amount || '0');
+    } catch (e) {}
+
+    if (relayerTokenBal < units) {
+      await supabase
+        .from('bridge_transactions')
+        .update({ status: 'PENDING', updated_at: new Date().toISOString() })
+        .eq('deposit_address', String(depositAddress));
+      throw new Error(`Relayer ${effectiveDestinationSymbol} balance (${relayerTokenBal} units) is insufficient to forward ${units} units (${netAmount} ${effectiveDestinationSymbol}). Deposit may still be in transit.`);
+    }
+  }
+
+  // 8. Build Solana transaction
   const transaction = new Transaction();
   transaction.add(
     ComputeBudgetProgram.setComputeUnitLimit({ units: 150_000 }),
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 })
   );
 
-  const tokenMint = SPL_MINTS[destinationSymbol.toUpperCase()];
-
   if (isNativeSol || !tokenMint) {
-    // Native SOL Transfer
     const lamports = BigInt(Math.round(netAmount * 1_000_000_000));
     transaction.add(
       SystemProgram.transfer({
@@ -271,7 +382,6 @@ async function executeForward({
       })
     );
   } else {
-    // SPL Token Transfer (USDT or USDC)
     const decimals = 6;
     const units = BigInt(Math.round(netAmount * (10 ** decimals)));
     const relayerATA = getAssociatedTokenAddressSync(tokenMint, relayerKp.publicKey);
@@ -315,26 +425,24 @@ async function executeForward({
     preflightCommitment: 'confirmed',
   });
 
-  console.log(`[relay_bridge] Successfully forwarded ${netAmount} ${destinationSymbol} to ${userAddress}. Sig: ${sig}`);
+  console.log(`[relay_bridge] Successfully forwarded ${netAmount} ${effectiveDestinationSymbol} to ${effectiveUserAddress}. Sig: ${sig}`);
 
-  // 6. Update database record to COMPLETED in dedicated bridge_transactions table
-  if (supabase) {
-    const updatePayload = {
-      status: 'COMPLETED',
-      signature: sig,
-      net_amount: netAmount,
-      protocol_fee: platformFee,
-      updated_at: new Date().toISOString(),
-    };
-    if (grossAmount) updatePayload.gross_amount = grossAmount;
-    const actualDeposited = parseFloat(statusData.swapDetails?.depositedAmountFormatted || '0');
-    if (actualDeposited > 0) updatePayload.deposit_amount = actualDeposited;
+  // 9. Update database record to COMPLETED
+  const updatePayload = {
+    status: 'COMPLETED',
+    signature: sig,
+    net_amount: netAmount,
+    protocol_fee: platformFee,
+    updated_at: new Date().toISOString(),
+  };
+  if (grossAmount) updatePayload.gross_amount = grossAmount;
+  const actualDeposited = parseFloat(statusData.swapDetails?.depositedAmountFormatted || '0');
+  if (actualDeposited > 0) updatePayload.deposit_amount = actualDeposited;
 
-    await supabase
-      .from('bridge_transactions')
-      .update(updatePayload)
-      .eq('deposit_address', String(depositAddress));
-  }
+  await supabase
+    .from('bridge_transactions')
+    .update(updatePayload)
+    .eq('deposit_address', String(depositAddress));
 
   return {
     signature: sig,
