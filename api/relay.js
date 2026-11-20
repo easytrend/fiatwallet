@@ -30,6 +30,8 @@ const TOKEN_PROGRAMS = new Set([
   'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', // Token-2022
 ]);
 const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+const LIGHTHOUSE_PROGRAM_ID = 'L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95'; // Phantom & Solana wallet assertion guard
+
 const ALLOWED_RELAY_PROGRAMS = new Set([
   SYSTEM_PROGRAM_ID,
   'ComputeBudget111111111111111111111111111111',
@@ -38,6 +40,10 @@ const ALLOWED_RELAY_PROGRAMS = new Set([
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
   'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
   ATA_PROGRAM_ID,
+  LIGHTHOUSE_PROGRAM_ID,
+  'AddressLookupTab1e1111111111111111111111111',
+  'Ed25519SigVerify111111111111111111111111111',
+  'Secp256k1SigVerify1111111111111111111111111',
 ]);
 
 const MEMO_PREFIX = 'fiatwallet:pajcash:offramp:';
@@ -549,7 +555,7 @@ export default async function handler(req, res) {
     }
 
     // ── Structural bounds ─────────────────────────────────────────────────────
-    if (instructions.length > 10) {
+    if (instructions.length > 20) {
       return res.status(400).json({ error: 'Transaction exceeds maximum instruction count' });
     }
 
