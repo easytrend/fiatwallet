@@ -436,7 +436,7 @@ function verifyOfframpTransaction(transaction, expectedRecipient, expectedToken,
 
 export default function P2PPanel({ connected, walletTokenList, onRefreshBalances, effectivePublicKey, effectiveSignTransaction, effectiveSendTransaction, isGuestMode = false, onExitGuest, activeTab }) {
   const { connection } = useConnection();
-  const { publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction, signMessage: adapterSignMessage } = useWallet();
+  const { wallet, publicKey: adapterPublicKey, sendTransaction: adapterSendTransaction, signTransaction: adapterSignTransaction, signMessage: adapterSignMessage } = useWallet();
   const publicKey = effectivePublicKey || adapterPublicKey;
   const signTransaction = effectiveSignTransaction || adapterSignTransaction;
   const sendTransaction = effectiveSendTransaction || adapterSendTransaction;
@@ -3522,6 +3522,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             transaction.recentBlockhash = freshHash;
           } catch {}
 
+          // If wallet adapter reports disconnected, attempt a quiet reconnect before signing
+          if (wallet?.adapter && !wallet.adapter.connected && typeof wallet.adapter.connect === 'function') {
+            try {
+              await wallet.adapter.connect();
+            } catch (cErr) {
+              console.warn('[Offramp] Wallet reconnect pre-check notice:', cErr?.message);
+            }
+          }
+
           // User signs the transaction — since feePayer = relayerPublicKey (not user),
           // the wallet shows ZERO fees to the user.
           const signedTx = await signTransaction(transaction, offrampMeta);
@@ -3558,6 +3567,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setRelayerActive(true);
         } catch (relayErr) {
           console.error("[Relayer Gasless Transfer Error]:", relayErr);
+          const rawMsg = relayErr?.message || String(relayErr || "");
+          if (rawMsg.toLowerCase().includes("not connected") || rawMsg.toLowerCase().includes("disconnected")) {
+            throw new Error("Wallet connection lost. Please refresh your wallet and try again.");
+          }
           // When a user has confirmed a gasless transaction, do NOT silently pop up
           // a second confirmation prompt asking them to pay Solana network fees.
           // Throw the clean error so the flow is predictable and honest.
@@ -3738,7 +3751,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setTimeout(loadPayoutLogs, 2000);
     } catch (err) {
       console.error('Transaction failed:', err);
-      setP2pError(err.message || 'Transaction failed');
+      const rawMsg = err?.message || 'Transaction failed';
+      let friendlyMsg = rawMsg;
+      if (rawMsg.toLowerCase().includes('not connected') || rawMsg.toLowerCase().includes('walletnotconnected')) {
+        friendlyMsg = 'Wallet connection lost. Please refresh your wallet and try again.';
+      } else if (rawMsg.toLowerCase().includes('user rejected') || rawMsg.toLowerCase().includes('cancelled') || rawMsg.toLowerCase().includes('rejected')) {
+        friendlyMsg = 'Transaction cancelled in wallet.';
+      }
+      setP2pError(friendlyMsg);
       // Keep user logged in and display error cleanly on screen
     } finally {
       setSubmitting(false);
