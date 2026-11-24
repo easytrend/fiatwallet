@@ -4,6 +4,7 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, Transaction, SystemProgram, Connection, Keypair, SystemInstruction, TransactionInstruction, ComputeBudgetProgram } from '@solana/web3.js';
 import { getDomainKeySync, NameRegistryState, performReverseLookup, getPrimaryDomain, getFavoriteDomain, resolve } from '@bonfida/spl-name-service';
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, createTransferCheckedInstruction, AccountLayout } from '@solana/spl-token';
+import jsQR from 'jsqr';
 import logoImg from './assets/logo.png';
 import fiatpayLogo from './assets/fiatpay.png';
 import { TOKENS, KNOWN_MINTS } from './data/tokens';
@@ -733,9 +734,24 @@ export default function App() {
   const [rentFeeInfo, setRentFeeInfo] = useState(null); // null | 'network' | 'rent'
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState('SOL');
   const [bulkToken, setBulkToken] = useState('SOL');
   const [tokenModalTarget, setTokenModalTarget] = useState('single'); // 'single' | 'bulk'
+  const [sendStep, setSendStep] = useState(1); // 1 = recipient & QR scan, 2 = token, amount & send
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const qrVideoRef = useRef(null);
+  const qrCanvasRef = useRef(null);
+  const qrStreamRef = useRef(null);
+
+  const stopQrScanner = useCallback(() => {
+    if (qrStreamRef.current) {
+      try {
+        qrStreamRef.current.getTracks().forEach(t => t.stop());
+      } catch (e) {}
+      qrStreamRef.current = null;
+    }
+    setShowQrScanner(false);
+  }, []);
 
   // Clear input fields and errors whenever navigating between tabs
   useEffect(() => {
@@ -744,7 +760,93 @@ export default function App() {
     setResolvedAddress(null);
     setResolveError(null);
     setWalletError(null);
-  }, [activeTab]);
+    setSendStep(1);
+    stopQrScanner();
+  }, [activeTab, stopQrScanner]);
+
+  // Camera QR scanner effect for recipient address
+  useEffect(() => {
+    if (!showQrScanner) return;
+    let active = true;
+    let raf;
+
+    const startCamera = async () => {
+      try {
+        if (!navigator?.mediaDevices?.getUserMedia) {
+          setToast({
+            type: 'error',
+            title: 'Camera Not Supported',
+            message: 'Camera access is not supported on this browser or connection.'
+          });
+          setShowQrScanner(false);
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        qrStreamRef.current = stream;
+        if (qrVideoRef.current) {
+          qrVideoRef.current.srcObject = stream;
+          qrVideoRef.current.setAttribute('playsinline', 'true');
+          await qrVideoRef.current.play();
+        }
+        raf = requestAnimationFrame(scanTick);
+      } catch (err) {
+        setToast({
+          type: 'error',
+          title: 'Camera Access Denied',
+          message: 'Please allow camera access in your browser settings to scan QR codes.'
+        });
+        setShowQrScanner(false);
+      }
+    };
+
+    const scanTick = () => {
+      if (!active) return;
+      const video = qrVideoRef.current;
+      const canvas = qrCanvasRef.current;
+      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+        const ctx = canvas.getContext('2d');
+        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        if (code?.data) {
+          let text = code.data.trim();
+          if (text.toLowerCase().startsWith('solana:')) {
+            text = text.slice(7);
+          }
+          if (text.includes('?')) {
+            text = text.split('?')[0];
+          }
+          text = text.replace(/\/+$/, '').trim();
+          if (text) {
+            setRecipient(text);
+            stopQrScanner();
+            return;
+          }
+        }
+      }
+      if (active) {
+        raf = requestAnimationFrame(scanTick);
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      active = false;
+      if (raf) cancelAnimationFrame(raf);
+      if (qrStreamRef.current) {
+        try {
+          qrStreamRef.current.getTracks().forEach(t => t.stop());
+        } catch (e) {}
+        qrStreamRef.current = null;
+      }
+    };
+  }, [showQrScanner, stopQrScanner]);
 
   // Track when rates were last successfully fetched to detect staleness
   const [ratesTimestamp, setRatesTimestamp] = useState(null);
@@ -1755,6 +1857,7 @@ export default function App() {
         setAmount('');
         setRecipient('');
         setResolvedAddress(null);
+        setSendStep(1);
       } else {
         setWalletError(`Transaction submitted but confirmation timed out. Check Solscan: ${signature.slice(0,8)}…`);
       }
@@ -2181,131 +2284,380 @@ export default function App() {
         {/* Single Send Card */}
         <div className="app-card send-card">
           <div className="card-body">
-              <div style={{ marginBottom: '14px' }}>
+            {sendStep === 1 ? (
+              /* ── STEP 1: Address / Domain & QR Scan ── */
+              <>
+                <div style={{ marginBottom: '14px' }}>
+                  <button
+                    onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      color: 'white',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontFamily: 'var(--ff)',
+                    }}
+                  >
+                    {isGuestMode ? '← Offramp' : '← Wallet'}
+                  </button>
+                </div>
+
+                <div className="title-row">
+                  <div className="card-title">Send Crypto</div>
+                </div>
+                <p className="card-sub">Send tokens easily using .sol, .sns domains or Solana addresses.</p>
+
+                <div className="field">
+                  <div className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Send To</span>
+                    <span style={{ fontSize: '11px', color: 'var(--lime)', fontWeight: '600' }}>Step 1 of 2</span>
+                  </div>
+                  <div className="input-wrap" style={{ position: 'relative' }}>
+                    <span className="sol-icon">◎</span>
+                    <input
+                      value={recipient}
+                      onChange={e => setRecipient(e.target.value.trim())}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && resolvedAddress && !resolving && !resolveError) {
+                          setSendStep(2);
+                        }
+                      }}
+                      placeholder="example.sol, example.sns or address"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowQrScanner(true)}
+                      title="Scan QR Code"
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '8px',
+                        color: 'var(--lime)',
+                        width: '32px',
+                        height: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        padding: 0,
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                        <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                        <line x1="17" y1="17" x2="17.01" y2="7"></line>
+                        <line x1="7" y1="17" x2="7.01" y2="7"></line>
+                        <line x1="17" y1="17" x2="17.01" y2="7"></line>
+                      </svg>
+                    </button>
+                  </div>
+
+                  {resolving && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Resolving domain…</div>}
+                  {resolveError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 6 }}>✕ {resolveError}</div>}
+                  {resolvedAddress && (recipient.endsWith('.sol') || recipient.endsWith('.sns')) && (
+                    <div style={{ fontSize: 11, color: 'var(--lime)', marginTop: 6 }}>
+                      ✓ Resolved: {resolvedAddress.slice(0, 6)}…{resolvedAddress.slice(-6)}
+                    </div>
+                  )}
+                  {resolvedAddress && !recipient.endsWith('.sol') && !recipient.endsWith('.sns') && (
+                    <div style={{ fontSize: 11, color: 'var(--lime)', marginTop: 6 }}>
+                      ✓ Valid Solana address
+                    </div>
+                  )}
+                </div>
+
                 <button
-                  onClick={() => setActiveTab(isGuestMode ? 'p2p' : 'wallet')}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontFamily: 'var(--ff)',
+                  className="send-btn"
+                  style={{ marginTop: '16px' }}
+                  disabled={!resolvedAddress || resolving || !!resolveError}
+                  onClick={() => {
+                    if (resolvedAddress && !resolving && !resolveError) {
+                      setSendStep(2);
+                    }
                   }}
                 >
-                  {isGuestMode ? '← Offramp' : '← Wallet'}
+                  {resolving
+                    ? 'Resolving domain…'
+                    : !recipient
+                    ? 'Enter recipient to continue'
+                    : resolveError
+                    ? 'Invalid recipient'
+                    : 'Continue →'}
+                </button>
+              </>
+            ) : (
+              /* ── STEP 2: Token, Amount & Send ── */
+              <>
+                <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <button
+                    onClick={() => setSendStep(1)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      color: 'white',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontFamily: 'var(--ff)',
+                    }}
+                  >
+                    ← Change Recipient
+                  </button>
+                  <span style={{ fontSize: '11px', color: 'var(--lime)', fontWeight: '600' }}>Step 2 of 2</span>
+                </div>
+
+                <div className="title-row">
+                  <div className="card-title">Send Crypto</div>
+                </div>
+
+                {/* Recipient Summary Card */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      background: 'rgba(163, 230, 53, 0.15)',
+                      color: 'var(--lime)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '15px',
+                      fontWeight: '700',
+                      flexShrink: 0,
+                    }}>
+                      ◎
+                    </div>
+                    <div style={{ overflow: 'hidden' }}>
+                      <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
+                        To Recipient
+                      </div>
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {recipient}
+                      </div>
+                      {resolvedAddress && (recipient.endsWith('.sol') || recipient.endsWith('.sns')) && (
+                        <div style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
+                          {resolvedAddress.slice(0, 6)}…{resolvedAddress.slice(-6)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSendStep(1)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      color: 'var(--lime)',
+                      padding: '5px 10px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Edit
+                  </button>
+                </div>
+
+                <div className="field">
+                  <div className="field-label">Select Token</div>
+                  <div className="token-row" onClick={() => { setTokenModalTarget('single'); setShowModal(true); }}>
+                    {tokLive ? (
+                      <>
+                        <div className="tok-left">
+                          <img
+                            src={tokLive.logoURI || ''}
+                            alt={tokLive.symbol}
+                            className="tok-icon"
+                            style={{width:32, height:32, borderRadius:'50%', display: tokLive.logoURI ? 'block' : 'none'}}
+                            onError={(e) => { e.target.style.display='none'; e.target.nextElementSibling.style.display='flex'; }}
+                          />
+                          <div className="tok-icon" style={{background:tokLive.bg, color:tokLive.color, display: tokLive.logoURI ? 'none' : 'flex'}}>{tokLive.symbol.slice(0,4)}</div>
+                          <div>
+                            <span className="tok-sym">{tokLive.symbol}</span>
+                            <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>${tokLive.price < 0.01 ? tokLive.price.toFixed(6) : tokLive.price.toLocaleString()}</span>
+                            {tokLive.balance != null && tokLive.balance > 0 && (
+                              <div style={{fontSize:10, color:'var(--lime)', fontFamily:'var(--mono)', marginTop:2}}>
+                                {tokLive.balance.toLocaleString(undefined, {maximumFractionDigits: 4})} {tokLive.symbol} 
+                                {tokLive.price > 0 && ` ($${(tokLive.balance * tokLive.price).toFixed(2)})`}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <span className="tok-chevron">›</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="tok-left">
+                          <div className="tok-icon" style={{background:'rgba(255,255,255,0.05)',color:'var(--text3)'}}>?</div>
+                          <div>
+                            <span className="tok-sym" style={{color:'var(--text2)'}}>Select Token</span>
+                          </div>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          <span className="tok-chevron">›</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Display staleness warning when live rates exceed threshold */}
+                {ratesAreStale && (
+                  <div style={{fontSize:11,color:'#f87171',padding:'6px 10px',background:'rgba(248,113,113,0.12)',borderRadius:8,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                    • Rate data may be stale — send button disabled until rates refresh.
+                  </div>
+                )}
+
+                {tokLive && (
+                  <div className="rate-badge" style={{marginBottom:'0.75rem'}}>
+                    <span className="rate-dot" />
+                    1 {tokLive.symbol} = <strong>${tokLive.price < 0.0001 ? tokLive.price.toFixed(8) : tokLive.price < 1 ? tokLive.price.toFixed(4) : tokLive.price.toLocaleString()}</strong> USD
+                    <span className="rate-sep">·</span>
+                    1 USD = <strong>{fmtRate(currRate)}</strong> {currency}
+                    {liveRates.updatedAt && !ratesAreStale && <span style={{color:'var(--text3)',fontSize:10}}> · live</span>}
+                    {ratesAreStale && <span style={{color:'#f87171',fontSize:10}}> · stale</span>}
+                  </div>
+                )}
+
+                <div className="field">
+                  <div className="field-label">Amount</div>
+                  <AmountInput amount={amount} setAmount={setAmount} inputMode={inputMode} setInputMode={setInputMode}
+                    currency={currency} setCurrency={setCurrency} tok={tokLive} currRate={currRate} />
+                </div>
+                {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
+
+                <button className="send-btn"
+                  disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
+                  onClick={handleSend}>
+                  {sending ? 'Sending…'
+                    : !effectiveConnected ? 'Connect wallet to send'
+                    : !tokLive ? 'Select a token to continue'
+                    : ratesAreStale ? 'Waiting for fresh rates…'
+                    : !resolvedAddress ? 'Enter a valid recipient'
+                    : !amount || num <= 0 ? 'Enter an amount'
+                    : `Send ${dispTok} ${tokLive.symbol}`}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* QR Code Scanner Overlay Modal */}
+        {showQrScanner && (
+          <div
+            onClick={stopQrScanner}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9999,
+              background: 'rgba(0, 0, 0, 0.85)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                maxWidth: '360px',
+                width: '100%',
+                background: '#111913',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '20px',
+                padding: '24px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                boxShadow: '0 24px 60px rgba(0,0,0,0.7)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
+                <h3 style={{ fontSize: '16px', color: 'white', fontWeight: '700', margin: 0 }}>
+                  Scan Solana Address
+                </h3>
+                <button
+                  type="button"
+                  onClick={stopQrScanner}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: 'none',
+                    borderRadius: '50%',
+                    color: 'var(--text3)',
+                    width: '28px',
+                    height: '28px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  ✕
                 </button>
               </div>
 
+              <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '18px', textAlign: 'center', lineHeight: '1.4' }}>
+                Center the QR code in the frame to autofill the recipient address.
+              </p>
 
-            <div className="title-row">
-              <div className="card-title">Send Crypto</div>
-            </div>
-            <p className="card-sub">Send tokens easily using .sol or .sns domains.</p>
-
-            <div className="field">
-              <div className="field-label">Send To</div>
-              <div className="input-wrap">
-                <span className="sol-icon">◎</span>
-                <input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="example.sol, example.sns or address" />
-              </div>
-              {resolving && <div style={{fontSize:11, color:'var(--text3)', marginTop:6}}>Resolving domain…</div>}
-              {resolveError && <div style={{fontSize:11, color:'#f87171', marginTop:6}}>✕ {resolveError}</div>}
-              {resolvedAddress && (recipient.endsWith('.sol') || recipient.endsWith('.sns')) && (
-                <div style={{fontSize:11, color:'var(--lime)', marginTop:6}}>
-                  ✓ Resolved: {resolvedAddress.slice(0,4)}…{resolvedAddress.slice(-4)}
+              <div style={{ position: 'relative', width: '260px', height: '260px', background: '#000', borderRadius: '14px', overflow: 'hidden', border: '2px solid rgba(163,230,53,0.3)' }}>
+                <video ref={qrVideoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <canvas ref={qrCanvasRef} style={{ display: 'none' }} />
+                
+                {/* Viewfinder reticle & animated scanning beam */}
+                <div style={{ position: 'absolute', inset: '24px', border: '2px dashed var(--lime)', opacity: 0.8, pointerEvents: 'none', borderRadius: '10px' }}>
+                  <div style={{ position: 'absolute', left: 0, right: 0, height: '2px', background: 'var(--lime)', boxShadow: '0 0 10px var(--lime)', animation: 'sendQrScanBeam 2s linear infinite' }} />
                 </div>
-              )}
-            </div>
-
-            <div className="field">
-              <div className="field-label">Select Token</div>
-              <div className="token-row" onClick={() => { setTokenModalTarget('single'); setShowModal(true); }}>
-                {tokLive ? (
-                  <>
-                    <div className="tok-left">
-                      <img
-                        src={tokLive.logoURI || ''}
-                        alt={tokLive.symbol}
-                        className="tok-icon"
-                        style={{width:32, height:32, borderRadius:'50%', display: tokLive.logoURI ? 'block' : 'none'}}
-                        onError={(e) => { e.target.style.display='none'; e.target.nextElementSibling.style.display='flex'; }}
-                      />
-                      <div className="tok-icon" style={{background:tokLive.bg, color:tokLive.color, display: tokLive.logoURI ? 'none' : 'flex'}}>{tokLive.symbol.slice(0,4)}</div>
-                      <div>
-                        <span className="tok-sym">{tokLive.symbol}</span>
-                        <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>${tokLive.price < 0.01 ? tokLive.price.toFixed(6) : tokLive.price.toLocaleString()}</span>
-                        {tokLive.balance != null && tokLive.balance > 0 && (
-                          <div style={{fontSize:10, color:'var(--lime)', fontFamily:'var(--mono)', marginTop:2}}>
-                            {tokLive.balance.toLocaleString(undefined, {maximumFractionDigits: 4})} {tokLive.symbol} 
-                            {tokLive.price > 0 && ` ($${(tokLive.balance * tokLive.price).toFixed(2)})`}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span className="tok-chevron">›</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="tok-left">
-                      <div className="tok-icon" style={{background:'rgba(255,255,255,0.05)',color:'var(--text3)'}}>?</div>
-                      <div>
-                        <span className="tok-sym" style={{color:'var(--text2)'}}>Select Token</span>
-                      </div>
-                    </div>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span className="tok-chevron">›</span>
-                    </div>
-                  </>
-                )}
               </div>
+
+              <button
+                type="button"
+                className="send-btn"
+                onClick={stopQrScanner}
+                style={{ marginTop: '1.25rem', background: 'rgba(255, 255, 255, 0.08)', color: 'white' }}
+              >
+                Cancel
+              </button>
+
+              <style>{`@keyframes sendQrScanBeam { 0% { top:0% } 50% { top:100% } 100% { top:0% } }`}</style>
             </div>
-
-            {/* Display staleness warning when live rates exceed threshold */}
-            {ratesAreStale && (
-              <div style={{fontSize:11,color:'#f87171',padding:'6px 10px',background:'rgba(248,113,113,0.12)',borderRadius:8,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
-                • Rate data may be stale — send button disabled until rates refresh.
-              </div>
-            )}
-
-            {tokLive && (
-              <div className="rate-badge" style={{marginBottom:'0.75rem'}}>
-                <span className="rate-dot" />
-                1 {tokLive.symbol} = <strong>${tokLive.price < 0.0001 ? tokLive.price.toFixed(8) : tokLive.price < 1 ? tokLive.price.toFixed(4) : tokLive.price.toLocaleString()}</strong> USD
-                <span className="rate-sep">·</span>
-                1 USD = <strong>{fmtRate(currRate)}</strong> {currency}
-                {liveRates.updatedAt && !ratesAreStale && <span style={{color:'var(--text3)',fontSize:10}}> · live</span>}
-                {ratesAreStale && <span style={{color:'#f87171',fontSize:10}}> · stale</span>}
-              </div>
-            )}
-
-            <div className="field">
-              <div className="field-label">Amount</div>
-              <AmountInput amount={amount} setAmount={setAmount} inputMode={inputMode} setInputMode={setInputMode}
-                currency={currency} setCurrency={setCurrency} tok={tokLive} currRate={currRate} />
-            </div>
-            {walletError && <div style={{fontSize:12, color:'#f87171', marginBottom:12, padding:'8px 12px', background:'rgba(248,113,113,0.1)', borderRadius:8}}>{walletError}</div>}
-
-            <button className="send-btn"
-              disabled={!effectiveConnected || !tokLive || !recipient || !num || !resolvedAddress || sending || ratesAreStale}
-              onClick={handleSend}>
-              {sending ? 'Sending…'
-                : !effectiveConnected ? 'Connect wallet to send'
-                : !tokLive ? 'Select a token to continue'
-                : ratesAreStale ? 'Waiting for fresh rates…'
-                : !resolvedAddress ? 'Enter a valid recipient'
-                : `Send ${dispTok} ${tokLive.symbol}`}
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Bulk Send Card */}
         <div className="app-card bulk-send-card">
