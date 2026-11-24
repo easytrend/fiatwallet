@@ -792,7 +792,7 @@ export default function App() {
   const [rentFeeInfo, setRentFeeInfo] = useState(null); // null | 'network' | 'rent'
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('USD');
-  const [token, setToken] = useState('SOL');
+  const [token, setToken] = useState('');
   const [bulkToken, setBulkToken] = useState('SOL');
   const [tokenModalTarget, setTokenModalTarget] = useState('single'); // 'single' | 'bulk'
   const [sendStep, setSendStep] = useState(1); // 1 = recipient & QR scan, 2 = token, amount & send
@@ -818,6 +818,7 @@ export default function App() {
     setResolvedAddress(null);
     setResolveError(null);
     setWalletError(null);
+    setToken('');
     setSendStep(1);
     stopQrScanner();
   }, [activeTab, stopQrScanner]);
@@ -1955,6 +1956,7 @@ export default function App() {
         setAmount('');
         setRecipient('');
         setResolvedAddress(null);
+        setToken('');
         setSendStep(1);
       } else {
         setWalletError(`Transaction submitted but confirmation timed out. Check Solscan: ${signature.slice(0,8)}…`);
@@ -2413,10 +2415,7 @@ export default function App() {
                 <p className="card-sub">Send tokens easily using .sol, .sns domains or Solana addresses.</p>
 
                 <div className="field">
-                  <div className="field-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Send To</span>
-                    <span style={{ fontSize: '11px', color: 'var(--lime)', fontWeight: '600' }}>Step 1 of 2</span>
-                  </div>
+                  <div className="field-label">Send To</div>
                   <div className="input-wrap" style={{ position: 'relative' }}>
                     <span className="sol-icon">◎</span>
                     <input
@@ -2431,6 +2430,8 @@ export default function App() {
                       }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && resolvedAddress && !resolving && !resolveError) {
+                          setToken('');
+                          setAmount('');
                           setSendStep(2);
                         }
                       }}
@@ -2490,6 +2491,8 @@ export default function App() {
                   disabled={!resolvedAddress || resolving || !!resolveError}
                   onClick={() => {
                     if (resolvedAddress && !resolving && !resolveError) {
+                      setToken('');
+                      setAmount('');
                       setSendStep(2);
                     }
                   }}
@@ -2506,9 +2509,13 @@ export default function App() {
             ) : (
               /* ── STEP 2: Token, Amount & Send (No address/domain display) ── */
               <>
-                <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ marginBottom: '14px' }}>
                   <button
-                    onClick={() => setSendStep(1)}
+                    onClick={() => {
+                      setToken('');
+                      setAmount('');
+                      setSendStep(1);
+                    }}
                     style={{
                       background: 'rgba(255, 255, 255, 0.06)',
                       border: '1px solid var(--border)',
@@ -2526,7 +2533,6 @@ export default function App() {
                   >
                     ← Back
                   </button>
-                  <span style={{ fontSize: '11px', color: 'var(--lime)', fontWeight: '600' }}>Step 2 of 2</span>
                 </div>
 
                 <div className="title-row">
