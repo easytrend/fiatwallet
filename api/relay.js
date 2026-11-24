@@ -555,13 +555,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Transaction accounts do not include the registered order deposit address' });
       }
 
-      // 5. Must have an actual token transfer instruction
-      const hasTokenTransfer = instructions.some(ix => {
+      // 5. Must have an actual fund transfer instruction (SPL token or native SOL)
+      const hasFundTransfer = instructions.some(ix => {
         const progId = typeof ix.programId === 'string' ? ix.programId : ix.programId.toBase58();
-        return TOKEN_PROGRAMS.has(progId);
+        if (TOKEN_PROGRAMS.has(progId)) return true;
+        if (progId === SYSTEM_PROGRAM_ID) {
+          if (ix.data && ix.data.length >= 4) {
+            const ixType = Buffer.isBuffer(ix.data)
+              ? ix.data.readUInt32LE(0)
+              : (ix.data[0] | (ix.data[1] << 8) | (ix.data[2] << 16) | (ix.data[3] << 24));
+            return ixType === 2; // SystemProgram.transfer
+          }
+        }
+        return false;
       });
-      if (!hasTokenTransfer) {
-        return res.status(400).json({ error: 'Offramp transaction must include a token transfer instruction' });
+      if (!hasFundTransfer) {
+        return res.status(400).json({ error: 'Offramp transaction must include a valid token or SOL transfer instruction' });
       }
     }
 
