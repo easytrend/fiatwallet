@@ -310,6 +310,64 @@ function verifyTransactionIntegrity(transaction, expectedTransfers, expectedSign
   }
 }
 
+/**
+ * Strips solana: URI prefixes, query parameters, or Web URLs to return ONLY the raw address or domain.
+ * @param {string} raw
+ * @returns {string}
+ */
+export function cleanSolanaRecipient(raw) {
+  if (!raw) return '';
+  let str = String(raw).trim();
+
+  // Strip solana: or solana:// prefix (case-insensitive)
+  str = str.replace(/^solana:(\/\/)?/i, '');
+
+  // If it is an HTTP/HTTPS URL, extract address from query params or path segments
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    try {
+      const url = new URL(str);
+      const qRecipient = url.searchParams.get('recipient') || url.searchParams.get('address') || url.searchParams.get('to');
+      if (qRecipient && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(qRecipient.trim())) {
+        return qRecipient.trim();
+      }
+      const parts = url.pathname.split('/').filter(Boolean);
+      for (const p of parts) {
+        if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(p)) {
+          return p;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Strip query params if present, checking query parameters for recipient/address first
+  if (str.includes('?')) {
+    try {
+      const qs = new URLSearchParams(str.slice(str.indexOf('?')));
+      const qRecipient = qs.get('recipient') || qs.get('address') || qs.get('to');
+      if (qRecipient && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(qRecipient.trim())) {
+        return qRecipient.trim();
+      }
+    } catch (e) {}
+    str = str.split('?')[0];
+  }
+
+  // Strip trailing slashes
+  str = str.replace(/\/+$/, '').trim();
+
+  // If domain (.sol or .sns)
+  if (str.endsWith('.sol') || str.endsWith('.sns')) {
+    return str;
+  }
+
+  // Find exact base58 Solana address (32 to 44 characters)
+  const match = str.match(/[1-9A-HJ-NP-Za-km-z]{32,44}/);
+  if (match) {
+    return match[0];
+  }
+
+  return str;
+}
+
 export default function App() {
   const { connection } = useConnection();
   const { publicKey, connected, wallet, disconnect, sendTransaction, signTransaction, signAllTransactions } = useWallet();
@@ -764,7 +822,7 @@ export default function App() {
     stopQrScanner();
   }, [activeTab, stopQrScanner]);
 
-  // Camera QR scanner effect for recipient address
+  // Camera QR scanner effect for recipient address (high-res, autofocus, clean address extraction)
   useEffect(() => {
     if (!showQrScanner) return;
     let active = true;
@@ -782,13 +840,51 @@ export default function App() {
           return;
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
+        let stream;
+        try {
+          // Request 1080p back camera with continuous focus
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1920, min: 1080 },
+              height: { ideal: 1080, min: 720 },
+            }
+          });
+        } catch (strictErr) {
+          // Fallback if device restricts high-res constraint
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+        }
+
+        if (!active) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
         qrStreamRef.current = stream;
+
+        // Apply continuous autofocus if hardware supports it
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          try {
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+            const adv = {};
+            if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+              adv.focusMode = 'continuous';
+            }
+            if (Object.keys(adv).length > 0) {
+              await track.applyConstraints({ advanced: [adv] });
+            }
+          } catch (focusErr) {}
+        }
+
         if (qrVideoRef.current) {
           qrVideoRef.current.srcObject = stream;
           qrVideoRef.current.setAttribute('playsinline', 'true');
+          qrVideoRef.current.setAttribute('muted', 'true');
+          qrVideoRef.current.playsInline = true;
+          qrVideoRef.current.muted = true;
           await qrVideoRef.current.play();
         }
         raf = requestAnimationFrame(scanTick);
@@ -808,22 +904,24 @@ export default function App() {
       const canvas = qrCanvasRef.current;
       if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
         const ctx = canvas.getContext('2d');
-        canvas.height = video.videoHeight;
-        canvas.width = video.videoWidth;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        // Scale scanning canvas to optimal recognition width (~800px max) for high FPS
+        const maxScanDim = 800;
+        let sWidth = video.videoWidth;
+        let sHeight = video.videoHeight;
+        if (sWidth > maxScanDim) {
+          const ratio = maxScanDim / sWidth;
+          sWidth = Math.round(sWidth * ratio);
+          sHeight = Math.round(sHeight * ratio);
+        }
+        canvas.width = sWidth;
+        canvas.height = sHeight;
+        ctx.drawImage(video, 0, 0, sWidth, sHeight);
+        const img = ctx.getImageData(0, 0, sWidth, sHeight);
         const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
         if (code?.data) {
-          let text = code.data.trim();
-          if (text.toLowerCase().startsWith('solana:')) {
-            text = text.slice(7);
-          }
-          if (text.includes('?')) {
-            text = text.split('?')[0];
-          }
-          text = text.replace(/\/+$/, '').trim();
-          if (text) {
-            setRecipient(text);
+          const cleaned = cleanSolanaRecipient(code.data);
+          if (cleaned) {
+            setRecipient(cleaned);
             stopQrScanner();
             return;
           }
@@ -2323,7 +2421,14 @@ export default function App() {
                     <span className="sol-icon">◎</span>
                     <input
                       value={recipient}
-                      onChange={e => setRecipient(e.target.value.trim())}
+                      onChange={e => {
+                        const val = e.target.value.trim();
+                        if (/^(solana:|https?:\/\/)/i.test(val)) {
+                          setRecipient(cleanSolanaRecipient(val));
+                        } else {
+                          setRecipient(val);
+                        }
+                      }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && resolvedAddress && !resolving && !resolveError) {
                           setSendStep(2);
@@ -2399,7 +2504,7 @@ export default function App() {
                 </button>
               </>
             ) : (
-              /* ── STEP 2: Token, Amount & Send ── */
+              /* ── STEP 2: Token, Amount & Send (No address/domain display) ── */
               <>
                 <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <button
@@ -2419,74 +2524,13 @@ export default function App() {
                       fontFamily: 'var(--ff)',
                     }}
                   >
-                    ← Change Recipient
+                    ← Back
                   </button>
                   <span style={{ fontSize: '11px', color: 'var(--lime)', fontWeight: '600' }}>Step 2 of 2</span>
                 </div>
 
                 <div className="title-row">
                   <div className="card-title">Send Crypto</div>
-                </div>
-
-                {/* Recipient Summary Card */}
-                <div style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '12px',
-                  padding: '10px 14px',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
-                    <div style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '50%',
-                      background: 'rgba(163, 230, 53, 0.15)',
-                      color: 'var(--lime)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '15px',
-                      fontWeight: '700',
-                      flexShrink: 0,
-                    }}>
-                      ◎
-                    </div>
-                    <div style={{ overflow: 'hidden' }}>
-                      <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
-                        To Recipient
-                      </div>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {recipient}
-                      </div>
-                      {resolvedAddress && (recipient.endsWith('.sol') || recipient.endsWith('.sns')) && (
-                        <div style={{ fontSize: '11px', color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
-                          {resolvedAddress.slice(0, 6)}…{resolvedAddress.slice(-6)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSendStep(1)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'var(--lime)',
-                      padding: '5px 10px',
-                      fontSize: '11px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                    }}
-                  >
-                    Edit
-                  </button>
                 </div>
 
                 <div className="field">
@@ -2583,8 +2627,9 @@ export default function App() {
               position: 'fixed',
               inset: 0,
               zIndex: 9999,
-              background: 'rgba(0, 0, 0, 0.85)',
+              background: 'rgba(0, 0, 0, 0.88)',
               backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -2594,7 +2639,7 @@ export default function App() {
             <div
               onClick={e => e.stopPropagation()}
               style={{
-                maxWidth: '360px',
+                maxWidth: '380px',
                 width: '100%',
                 background: '#111913',
                 border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -2618,8 +2663,8 @@ export default function App() {
                     border: 'none',
                     borderRadius: '50%',
                     color: 'var(--text3)',
-                    width: '28px',
-                    height: '28px',
+                    width: '30px',
+                    height: '30px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -2632,16 +2677,32 @@ export default function App() {
               </div>
 
               <p style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '18px', textAlign: 'center', lineHeight: '1.4' }}>
-                Center the QR code in the frame to autofill the recipient address.
+                Center the QR code in the viewfinder to autofill the recipient address.
               </p>
 
-              <div style={{ position: 'relative', width: '260px', height: '260px', background: '#000', borderRadius: '14px', overflow: 'hidden', border: '2px solid rgba(163,230,53,0.3)' }}>
-                <video ref={qrVideoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{
+                position: 'relative',
+                width: '100%',
+                maxWidth: '290px',
+                aspectRatio: '1 / 1',
+                background: '#000',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                border: '2px solid rgba(163,230,53,0.3)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              }}>
+                <video
+                  ref={qrVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
                 <canvas ref={qrCanvasRef} style={{ display: 'none' }} />
                 
                 {/* Viewfinder reticle & animated scanning beam */}
-                <div style={{ position: 'absolute', inset: '24px', border: '2px dashed var(--lime)', opacity: 0.8, pointerEvents: 'none', borderRadius: '10px' }}>
-                  <div style={{ position: 'absolute', left: 0, right: 0, height: '2px', background: 'var(--lime)', boxShadow: '0 0 10px var(--lime)', animation: 'sendQrScanBeam 2s linear infinite' }} />
+                <div style={{ position: 'absolute', inset: '28px', border: '2px dashed var(--lime)', opacity: 0.85, pointerEvents: 'none', borderRadius: '12px' }}>
+                  <div style={{ position: 'absolute', left: 0, right: 0, height: '2px', background: 'var(--lime)', boxShadow: '0 0 12px var(--lime)', animation: 'sendQrScanBeam 2s linear infinite' }} />
                 </div>
               </div>
 
