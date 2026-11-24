@@ -290,15 +290,93 @@ export async function getBanks(sessionToken) {
 }
 
 /**
+ * Register a bank account with PajCash Public API v2 to derive its deterministic on-chain addresses.
+ * Idempotent: returns existing address if already registered.
+ *
+ * @param {string} bankCode - Bank 6-digit NIBSS code (e.g. '100033' for PalmPay, '000017' for Wema)
+ * @param {string} accountNumber - 10-digit account number
+ * @returns {Promise<{ id: string, accountName: string, accountNumber: string, bank: string, address: string, evmAddress: string }>}
+ */
+export async function registerBankAccountV2(bankCode, accountNumber) {
+  const apiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey();
+  if (!apiKey) {
+    throw new Error('PajCash API key not configured.');
+  }
+  const cleanCode = String(bankCode || '').trim();
+  const cleanNum = String(accountNumber || '').replace(/\D/g, '').trim();
+  if (!cleanCode || !cleanNum) {
+    throw new Error('Bank code and account number are required.');
+  }
+
+  const res = await fetch(`${BASE_URL}/pub/v2/bank-account`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      bankCode: cleanCode,
+      accountNumber: cleanNum,
+    }),
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const msg = Array.isArray(errData.message)
+      ? errData.message.join(', ')
+      : (errData.message || `Bank account registration failed: ${res.status}`);
+    throw new Error(msg);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Fetch live rates for any supported fiat currency from PajCash Public API v2.
+ * @param {'NGN' | 'GHS' | 'KES' | 'TZS' | 'ZAR' | 'USD'} [currency='NGN']
+ */
+export async function getV2Rate(currency = 'NGN') {
+  const apiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey();
+  const cleanCurr = String(currency || 'NGN').toUpperCase().trim();
+  const res = await fetch(`${BASE_URL}/pub/v2/rate?currency=${cleanCurr}`, {
+    headers: apiKey ? { 'x-api-key': apiKey } : {},
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || `Failed to fetch live v2 rate: ${res.status}`);
+  }
+  return await res.json();
+}
+
+/**
  * Resolve a bank account number to its registered account name.
+ * Uses PajCash v2 for deterministic address resolution when bankCode is available,
+ * falling back to SDK v1 resolution.
+ *
  * @param {string} sessionToken  - User JWT Session Token
  * @param {string} bankId        - Bank ID from getBanks()
  * @param {string} accountNumber - Account number to resolve
+ * @param {string} [bankCode]    - Optional Bank NIBSS code (e.g. '100033')
  */
-export async function resolveBankAccount(sessionToken, bankId, accountNumber) {
+export async function resolveBankAccount(sessionToken, bankId, accountNumber, bankCode = null) {
+  const cleanNum = String(accountNumber || '').replace(/\D/g, '').trim();
+  const effectiveCode = String(bankCode || (bankId && !bankId.includes('-') && bankId.length <= 6 ? bankId : '') || '').trim();
+
+  // Try v2 resolution first if bankCode is available
+  if (effectiveCode) {
+    try {
+      const v2Res = await registerBankAccountV2(effectiveCode, cleanNum);
+      if (v2Res?.accountName) {
+        return v2Res;
+      }
+    } catch (v2Err) {
+      console.warn('[PajCash] v2 bank resolution notice, falling back to v1:', v2Err?.message);
+    }
+  }
+
   const token = sessionToken || getEffectiveApiKey();
   try {
-    return await sdkResolveBankAccount(token, bankId, accountNumber);
+    return await sdkResolveBankAccount(token, bankId, cleanNum);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
     throw new Error(msg);

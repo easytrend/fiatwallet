@@ -19,6 +19,7 @@ import {
   paidOnrampOrder,
   getTransaction,
   submitUserKyc,
+  registerBankAccountV2,
   getEffectiveApiKey,
   getEffectiveApiKeyAsync,
   fetchRemotePajConfig,
@@ -1516,9 +1517,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     const bankObj = findMatchingBankObj(apiBanks, selectedBank);
     const bankId = bankObj ? bankObj.id : selectedBank;
+    const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
 
     const timer = setTimeout(() => {
-      resolveBankAccount(effectiveAuthToken, bankId, trimmed)
+      resolveBankAccount(effectiveAuthToken, bankId, trimmed, bankCode)
         .then(res => {
           const name = res?.accountName || res?.name || res?.account_name || '';
           setAccountName(name || 'No Bank Match');
@@ -1528,6 +1530,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             localStorage.setItem(`paj_bank_name_${key}`, selectedBank);
             localStorage.setItem(`paj_account_number_${key}`, trimmed);
             localStorage.setItem(`paj_account_name_${key}`, name);
+            if (res?.address) {
+              try { localStorage.setItem(`paj_payout_address_${trimmed}`, res.address); } catch {}
+            }
+            if (res?.evmAddress) {
+              try { localStorage.setItem(`paj_payout_evm_${trimmed}`, res.evmAddress); } catch {}
+            }
           }
         })
         .catch((err) => {
@@ -1836,17 +1844,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       return;
     }
 
+    const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
     const authToken = sessionToken || effectiveAuthToken;
-    if (!authToken) return;
+    if (!authToken && !bankCode) return;
 
     setTagModalResolving(true);
     const timer = setTimeout(() => {
-      resolveBankAccount(authToken, bankId, cleanNum)
+      resolveBankAccount(authToken, bankId, cleanNum, bankCode)
         .then(res => {
           const name = res?.accountName || res?.name || res?.account_name || res?.data?.account_name || res?.data?.accountName || '';
           if (name) {
             setTagModalAcctName(name);
             setTagModalError(null);
+            if (res?.address) {
+              try { localStorage.setItem(`paj_payout_address_${cleanNum}`, res.address); } catch {}
+            }
+            if (res?.evmAddress) {
+              try { localStorage.setItem(`paj_payout_evm_${cleanNum}`, res.evmAddress); } catch {}
+            }
           } else {
             setTagModalAcctName(prev => (prev && prev !== 'No Bank Match' ? prev : 'No Bank Match'));
           }
@@ -1936,6 +1951,28 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         if (sessionToken) {
           const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
           saveSession(effectiveWallet, sessionEmail || emailInput?.trim() || '', sessionToken, expiryMs);
+        }
+      }
+
+      // Register with PajCash v2 for persistent on-chain deterministic address
+      if (bankCode && cleanAcct) {
+        registerBankAccountV2(bankCode, cleanAcct)
+          .then(v2 => {
+            if (v2?.address) {
+              try { localStorage.setItem(`paj_payout_address_${cleanAcct}`, v2.address); } catch {}
+            }
+            if (v2?.evmAddress) {
+              try { localStorage.setItem(`paj_payout_evm_${cleanAcct}`, v2.evmAddress); } catch {}
+            }
+          })
+          .catch(e => console.warn('[PajCash v2] Bank registration notice:', e.message));
+      }
+
+      // Sync verified government ID KYC with PajCash
+      if (sessionToken && cleanBvn) {
+        submitUserKyc(sessionToken, cleanBvn, 'BVN', 'NG').catch(() => {});
+        if (cleanNin) {
+          submitUserKyc(sessionToken, cleanNin, 'NIN', 'NG').catch(() => {});
         }
       }
 

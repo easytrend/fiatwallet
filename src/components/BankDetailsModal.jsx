@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { getBanks, resolveBankAccount, initiateSession, verifySession, submitUserKyc, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
+import { getBanks, resolveBankAccount, registerBankAccountV2, initiateSession, verifySession, submitUserKyc, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
 import { getFiatTagByWallet, registerFiatTag, loadSession, saveSession, checkEmailWalletBinding } from '../services/supabase';
 
 const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
@@ -380,8 +380,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
     const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
     const bankId = bankObj ? bankObj.id : null;
+    const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
 
-    if (!bankId) {
+    if (!bankId && !bankCode) {
       if (apiBanks.length === 0) {
         fetch('https://api.paj.cash/pub/bank')
           .then(r => r.json())
@@ -398,12 +399,18 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     setTagModalError('');
 
     const timer = setTimeout(() => {
-      resolveBankAccount(effectiveAuth, bankId, cleanNum)
+      resolveBankAccount(effectiveAuth, bankId, cleanNum, bankCode)
         .then(res => {
           const name = res?.accountName || res?.name || res?.account_name || res?.data?.account_name || res?.data?.accountName || '';
           if (name) {
             setTagModalAcctName(name);
             setTagModalError('');
+            if (res?.address) {
+              try { localStorage.setItem(`paj_payout_address_${cleanNum}`, res.address); } catch {}
+            }
+            if (res?.evmAddress) {
+              try { localStorage.setItem(`paj_payout_evm_${cleanNum}`, res.evmAddress); } catch {}
+            }
           } else {
             setTagModalAcctName(prev => (prev && prev !== 'No Bank Match' ? prev : 'No Bank Match'));
             setTagModalError('Could not verify account name. Please check your bank and account number.');
@@ -595,6 +602,28 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       if (sessionToken) {
         const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
         saveSession(effectiveWallet, sessionEmail || emailInput?.trim() || '', sessionToken, expiryMs);
+      }
+
+      // Register with PajCash v2 for persistent on-chain deterministic address
+      if (bankCode && cleanAcct) {
+        registerBankAccountV2(bankCode, cleanAcct)
+          .then(v2 => {
+            if (v2?.address) {
+              try { localStorage.setItem(`paj_payout_address_${cleanAcct}`, v2.address); } catch {}
+            }
+            if (v2?.evmAddress) {
+              try { localStorage.setItem(`paj_payout_evm_${cleanAcct}`, v2.evmAddress); } catch {}
+            }
+          })
+          .catch(e => console.warn('[PajCash v2] Bank registration notice:', e.message));
+      }
+
+      // Sync verified government ID KYC with PajCash
+      if (sessionToken && cleanBvn) {
+        submitUserKyc(sessionToken, cleanBvn, 'BVN', 'NG').catch(() => {});
+        if (cleanNin) {
+          submitUserKyc(sessionToken, cleanNin, 'NIN', 'NG').catch(() => {});
+        }
       }
 
       setUserTagData(registered);
