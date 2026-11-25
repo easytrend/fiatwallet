@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { getBanks, resolveBankAccount, registerBankAccountV2, initiateSession, verifySession, syncUserKycWithPajCash, getKycSyncStatusLocal, getEffectiveApiKey, getEffectiveApiKeyAsync } from '../services/pajcashService';
-import { getFiatTagByWallet, registerFiatTag, updateFiatTagKycSync, loadSession, saveSession, checkEmailWalletBinding } from '../services/supabase';
+import { getFiatTagByWallet, registerFiatTag, updateFiatTagKycSync, loadSession, saveSession, deleteSession, checkEmailWalletBinding } from '../services/supabase';
 
 const PAJCASH_API_KEY = import.meta.env.VITE_PAJCASH_API_KEY || getEffectiveApiKey();
 
@@ -331,6 +331,22 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
   const effectiveKycSynced = Boolean(kycSyncState.synced || isCachedKycSynced);
 
+  const clearExpiredPajSession = useCallback(() => {
+    setSessionToken('');
+    setAuthStep('email');
+    try {
+      localStorage.removeItem('paj_manual_sessionToken');
+      localStorage.removeItem('paj_manual_sessionExpiry');
+      if (effectiveWallet) {
+        localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
+        localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
+      }
+    } catch { /* ignore storage restrictions */ }
+    if (effectiveWallet) {
+      deleteSession(effectiveWallet);
+    }
+  }, [effectiveWallet]);
+
   // 2b. Manual/retry sync helper for PajCash KYC
   const runKycSync = useCallback(async (token, tagObj, force = false) => {
     if (!tagObj || (!tagObj.bvn && !tagObj.nin)) return;
@@ -348,17 +364,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     });
 
     if (res.sessionExpired) {
-      setSessionToken('');
-      if (effectiveWallet) {
-        try {
-          localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
-          localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
-        } catch { /* ignore storage restrictions */ }
-      }
+      clearExpiredPajSession();
       setKycSyncState({
         syncing: false,
         synced: false,
-        error: 'Email session expired. Please verify your email below to complete KYC sync.',
+        error: 'Email session expired. Please verify your email below to sync KYC.',
       });
       return;
     }
@@ -371,7 +381,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     if (effectiveWallet) {
       updateFiatTagKycSync(effectiveWallet, { synced: res.synced, error: res.error });
     }
-  }, [effectiveWallet]);
+  }, [effectiveWallet, clearExpiredPajSession]);
 
   // Automatically sync existing BVN / NIN with PajCash whenever sessionToken + userTagData exist
   useEffect(() => {
@@ -388,17 +398,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     }).then(res => {
       if (cancelled) return;
       if (res.sessionExpired) {
-        setSessionToken('');
-        if (effectiveWallet) {
-          try {
-            localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
-            localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
-          } catch { /* ignore storage restrictions */ }
-        }
+        clearExpiredPajSession();
         setKycSyncState({
           syncing: false,
           synced: false,
-          error: 'Email session expired. Please verify your email below to complete KYC sync.',
+          error: 'Email session expired. Please verify your email below to sync KYC.',
         });
         return;
       }
@@ -412,7 +416,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       }
     });
     return () => { cancelled = true; };
-  }, [sessionLoading, sessionToken, userTagData, hasBvnNinError, isCachedKycSynced, effectiveWallet]);
+  }, [sessionLoading, sessionToken, userTagData, hasBvnNinError, isCachedKycSynced, effectiveWallet, clearExpiredPajSession]);
 
   // 3. Fetch supported banks
   useEffect(() => {
@@ -706,11 +710,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           return;
         }
         if (kycRes.sessionExpired) {
-          setSessionToken('');
-          try {
-            localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
-            localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
-          } catch { /* ignore storage restrictions */ }
+          clearExpiredPajSession();
         }
       }
 
@@ -775,7 +775,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     } finally {
       setTagModalSaving(false);
     }
-  }, [effectiveWallet, sessionToken, isLocked, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks, sessionEmail, emailInput, onTagSaved, onClose]);
+  }, [effectiveWallet, sessionToken, isLocked, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks, sessionEmail, emailInput, onTagSaved, onClose, clearExpiredPajSession]);
 
   return (
     <div

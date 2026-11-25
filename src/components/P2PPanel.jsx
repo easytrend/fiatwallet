@@ -1786,6 +1786,44 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     userTagData && (userTagData.bvn || userTagData.nin) && (kycSyncState.synced || isCachedKycSynced)
   );
 
+  const clearExpiredKycSession = useCallback((walletAddr) => {
+    setSessionToken('');
+    setSessionEmail('');
+    setAuthStep('input_email');
+    try {
+      localStorage.removeItem('paj_manual_sessionToken');
+      localStorage.removeItem('paj_manual_sessionExpiry');
+      if (walletAddr) {
+        localStorage.removeItem(`paj_sessionToken_${walletAddr}`);
+        localStorage.removeItem(`paj_sessionExpiry_${walletAddr}`);
+      }
+    } catch { /* ignore storage restrictions */ }
+    if (walletAddr) {
+      deleteSession(walletAddr);
+    }
+  }, []);
+
+  const applyKycSyncResult = useCallback((res, walletAddr) => {
+    if (!res) return;
+    if (res.sessionExpired) {
+      clearExpiredKycSession(walletAddr);
+      setKycSyncState({
+        syncing: false,
+        synced: false,
+        error: 'Email session expired. Please verify your email below to sync KYC.',
+      });
+      return;
+    }
+    setKycSyncState({
+      syncing: false,
+      synced: Boolean(res.synced),
+      error: res.error || '',
+    });
+    if (walletAddr) {
+      updateFiatTagKycSync(walletAddr, { synced: res.synced, error: res.error });
+    }
+  }, [clearExpiredKycSession]);
+
   // ── Automatically sync saved BVN / NIN with PajCash once user has an OTP sessionToken ──
   const syncStoredKycWithPajCash = useCallback(async (token, tagObj, force = false) => {
     if (!tagObj || (!tagObj.bvn && !tagObj.nin)) return null;
@@ -1794,14 +1832,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const effectiveWallet = (publicKey ? publicKey.toBase58() : (tagObj.wallet_address || manualWalletAddress || guestOnrampWallet || '')).trim();
     const pajCountry = mapToPajCountry(selectedCountry?.code || selectedCountry?.currency || 'NG');
 
-    const cached = getKycSyncStatusLocal({
-      bvn: tagObj.bvn,
-      nin: tagObj.nin,
-      country: pajCountry,
-      walletAddress: effectiveWallet,
-    });
-    if (!force && cached.synced) {
-      return { synced: true, alreadySynced: true, error: null };
+    if (!force) {
+      const cached = getKycSyncStatusLocal({
+        bvn: tagObj.bvn,
+        nin: tagObj.nin,
+        country: pajCountry,
+        walletAddress: effectiveWallet,
+      });
+      if (cached.synced) {
+        return { synced: true, alreadySynced: true, error: null };
+      }
     }
     if (!token || authStep !== 'logged_in') return null;
 
@@ -1814,26 +1854,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       walletAddress: effectiveWallet,
       force,
     });
-
-    if (res.sessionExpired) {
-      setKycSyncState({
-        syncing: false,
-        synced: false,
-        error: 'Email session expired. Please re-verify your email to sync KYC.',
-      });
-      return res;
-    }
-
-    setKycSyncState({
-      syncing: false,
-      synced: Boolean(res.synced),
-      error: res.error || '',
-    });
-    if (effectiveWallet) {
-      updateFiatTagKycSync(effectiveWallet, { synced: res.synced, error: res.error });
-    }
+    applyKycSyncResult(res, effectiveWallet);
     return res;
-  }, [publicKey, manualWalletAddress, guestOnrampWallet, selectedCountry, authStep]);
+  }, [publicKey, manualWalletAddress, guestOnrampWallet, selectedCountry, authStep, applyKycSyncResult]);
 
   useEffect(() => {
     if (authStep !== 'logged_in' || !sessionToken || !userTagData || (!userTagData.bvn && !userTagData.nin) || isCachedKycSynced) {
@@ -1853,25 +1876,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       force: false,
     }).then(res => {
       if (cancelled) return;
-      if (res.sessionExpired) {
-        setKycSyncState({
-          syncing: false,
-          synced: false,
-          error: 'Email session expired. Please re-verify your email to sync KYC.',
-        });
-        return;
-      }
-      setKycSyncState({
-        syncing: false,
-        synced: Boolean(res.synced),
-        error: res.error || '',
-      });
-      if (kycWalletScope) {
-        updateFiatTagKycSync(kycWalletScope, { synced: res.synced, error: res.error });
-      }
+      applyKycSyncResult(res, kycWalletScope);
     });
     return () => { cancelled = true; };
-  }, [authStep, sessionToken, userTagData, isCachedKycSynced, kycWalletScope, kycCountryCode, sessionEmail, checkIsBlacklisted]);
+  }, [authStep, sessionToken, userTagData, isCachedKycSynced, kycWalletScope, kycCountryCode, sessionEmail, checkIsBlacklisted, applyKycSyncResult]);
 
   // ── Real-time resolution of recipient Tag in standard and tag offramp ───
   useEffect(() => {
@@ -2054,6 +2062,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setTagModalSaving(false);
           return;
         }
+        if (kycRes.sessionExpired) {
+          clearExpiredKycSession(effectiveWallet);
+        }
       }
 
       const registered = await registerFiatTag({
@@ -2073,7 +2084,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         setManualWalletAddress(effectiveWallet);
         setGuestOnrampWallet(prev => prev || effectiveWallet);
         // Save session to paj_sessions table now that we have the wallet address
-        if (sessionToken) {
+        if (sessionToken && !kycRes?.sessionExpired) {
           const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
           saveSession(effectiveWallet, sessionEmail || emailInput?.trim() || '', sessionToken, expiryMs);
         }
@@ -2093,12 +2104,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           .catch(e => console.warn('[PajCash v2] Bank registration notice:', e.message));
       }
 
-      if (kycRes?.synced) {
-        setKycSyncState({ syncing: false, synced: true, error: '' });
-        updateFiatTagKycSync(effectiveWallet, { synced: true, error: null });
-      } else if (kycRes?.error) {
-        setKycSyncState({ syncing: false, synced: false, error: kycRes.error });
-        updateFiatTagKycSync(effectiveWallet, { synced: false, error: kycRes.error });
+      if (kycRes) {
+        applyKycSyncResult(kycRes, effectiveWallet);
       }
 
       setUserTagData(registered);
@@ -2108,7 +2115,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } finally {
       setTagModalSaving(false);
     }
-  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, sessionEmail, emailInput, selectedCountry, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks]);
+  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, sessionEmail, emailInput, selectedCountry, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks, clearExpiredKycSession, applyKycSyncResult]);
 
   // ── Routing animation ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -2693,6 +2700,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // Ensure saved BVN & NIN are synced to PajCash before opening an onramp order
       if (!isBlacklistedEntity && sessionToken && userTagData) {
         const kycRes = await syncStoredKycWithPajCash(sessionToken, userTagData, false);
+        if (kycRes?.sessionExpired) {
+          setOnrampError('Email session expired. Please verify your email OTP to continue.');
+          setOnrampLoading(false);
+          return;
+        }
         if (kycRes && !kycRes.synced && kycRes.validationError) {
           setOnrampError(`KYC Verification Failed: ${kycRes.error}`);
           setOnrampLoading(false);
@@ -6694,6 +6706,102 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                   >
                     Retry Sync
                   </button>
+                )}
+              </div>
+            )}
+
+            {/* Inline Email OTP Verification when sessionToken is missing or expired */}
+            {(!sessionToken || authStep !== 'logged_in') && authStep !== 'checking' && (
+              <div style={{
+                background: 'rgba(34, 211, 238, 0.06)',
+                border: '1px solid rgba(34, 211, 238, 0.25)',
+                borderRadius: '14px',
+                padding: '12px 14px',
+                marginBottom: '14px',
+              }}>
+                <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--cyan, #22d3ee)', marginBottom: '3px' }}>
+                  Verify Email to Sync KYC
+                </div>
+                <div style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '10px', lineHeight: '1.35' }}>
+                  Verify your email OTP with PajCash to validate your BVN / NIN.
+                </div>
+
+                {authError && (
+                  <div style={{ fontSize: '10.5px', color: '#f87171', marginBottom: '8px' }}>
+                    {authError}
+                  </div>
+                )}
+
+                {authStep !== 'input_otp' ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={e => setEmailInput(e.target.value)}
+                      placeholder="your.email@gmail.com"
+                      disabled={authLoading}
+                      style={{
+                        flex: 1, padding: '8px 10px', background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
+                        color: 'white', fontSize: '12px', outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleInitiateSession}
+                      disabled={authLoading || !emailInput.trim()}
+                      style={{
+                        padding: '8px 12px', background: 'linear-gradient(135deg, rgba(34, 211, 238, 0.25), rgba(34, 211, 238, 0.1))',
+                        border: '1px solid rgba(34, 211, 238, 0.4)', borderRadius: '8px',
+                        color: 'var(--cyan, #22d3ee)', fontSize: '11.5px', fontWeight: '700',
+                        cursor: (authLoading || !emailInput.trim()) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {authLoading ? 'Sending...' : 'Send OTP'}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={otpInput}
+                        onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="Enter 4-digit OTP"
+                        disabled={authLoading}
+                        style={{
+                          flex: 1, padding: '8px 10px', background: 'rgba(0,0,0,0.3)',
+                          border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
+                          color: 'white', fontSize: '12px', letterSpacing: '0.1em', outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifySession}
+                        disabled={authLoading || otpInput.trim().length !== 4}
+                        style={{
+                          padding: '8px 12px', background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.25), rgba(163, 230, 53, 0.1))',
+                          border: '1px solid rgba(163, 230, 53, 0.4)', borderRadius: '8px',
+                          color: 'var(--lime, #a3e635)', fontSize: '11.5px', fontWeight: '700',
+                          cursor: (authLoading || otpInput.trim().length !== 4) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {authLoading ? 'Verifying...' : 'Confirm'}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setAuthStep('input_email'); setOtpInput(''); }}
+                      style={{
+                        background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)',
+                        fontSize: '10.5px', cursor: 'pointer', padding: 0, textDecoration: 'underline',
+                      }}
+                    >
+                      Change email
+                    </button>
+                  </div>
                 )}
               </div>
             )}

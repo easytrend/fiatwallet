@@ -423,6 +423,7 @@ function setKycItemSyncedLocal(idType, country, idNumber, walletAddress = '') {
 
 /**
  * Synchronously inspect cached local PajCash KYC sync status for stored identity numbers.
+ * Passes when at least one submitted government ID (BVN or NIN) has been accepted by PajCash.
  */
 export function getKycSyncStatusLocal({ bvn, nin, country = 'NG', walletAddress = '' } = {}) {
   const cleanCountry = mapToPajCountry(country);
@@ -431,10 +432,10 @@ export function getKycSyncStatusLocal({ bvn, nin, country = 'NG', walletAddress 
   if (!cleanBvn && !cleanNin) {
     return { synced: false, bvnSynced: false, ninSynced: false };
   }
-  const bvnSynced = !cleanBvn || isKycItemSyncedLocal('BVN', cleanCountry, cleanBvn, walletAddress);
-  const ninSynced = !cleanNin || isKycItemSyncedLocal('NIN', cleanCountry, cleanNin, walletAddress);
+  const bvnSynced = Boolean(cleanBvn && isKycItemSyncedLocal('BVN', cleanCountry, cleanBvn, walletAddress));
+  const ninSynced = Boolean(cleanNin && isKycItemSyncedLocal('NIN', cleanCountry, cleanNin, walletAddress));
   return {
-    synced: bvnSynced && ninSynced,
+    synced: bvnSynced || ninSynced,
     bvnSynced,
     ninSynced,
   };
@@ -458,21 +459,29 @@ export async function submitUserKyc(sessionToken, idNumber, idType = 'BVN', coun
   try {
     return await sdkSubmitKyc(sessionToken.trim(), String(idNumber).trim(), idType, cleanCountry);
   } catch (error) {
-    const rawMsg = error.response?.data?.message ?? error.message ?? String(error);
+    const rawMsg =
+      error?.message ??
+      error?.response?.data?.message ??
+      error?.error ??
+      (typeof error === 'string' ? error : JSON.stringify(error));
     const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : String(rawMsg);
-    const err = new Error(msg);
-    err.status = error.response?.status;
+    const err = new Error(msg, { cause: error });
+    // paj_ramp unwraps error.response.data directly, exposing statusCode rather than response.status
+    err.status = error?.statusCode ?? error?.status ?? error?.response?.status;
     throw err;
   }
 }
 
 const KYC_SESSION_ERR_RE = /unauthorized|session|expired|jwt|invalid token|not logged/i;
 const KYC_VALIDATION_ERR_RE = /already used|invalid|mismatch|not found|incorrect|failed verification|does not match/i;
+const KYC_ALREADY_DONE_RE = /already verified|already submitted|already completed|kyc already|user already/i;
+const KYC_UNAVAILABLE_RE = /network|failed to fetch|timeout|unavailable|not found|cannot post/i;
 
 /**
  * Sync stored BVN / NIN documents with PajCash /pub/kyc idempotently.
- * Tracks individual BVN and NIN sync completion locally, surfaces ID validation vs
- * expired-session errors, and prevents redundant /pub/kyc requests once verified.
+ * Succeeds as soon as at least one valid ID (BVN first, falling back to NIN) passes PajCash,
+ * accurately reads statusCode from paj_ramp errors, and separates expired sessions,
+ * ID validation rejections, and upstream service unavailability.
  */
 export async function syncUserKycWithPajCash(
   sessionToken,
@@ -499,11 +508,25 @@ export async function syncUserKycWithPajCash(
     };
   }
 
-  const submitSingle = async (idType, idValue) => {
-    if (!idValue) return { ok: true, fromCache: true };
-    if (!force && isKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress)) {
-      return { ok: true, fromCache: true };
+  if (!force) {
+    const cached = getKycSyncStatusLocal({ bvn: cleanBvn, nin: cleanNin, country: cleanCountry, walletAddress });
+    if (cached.synced) {
+      return {
+        synced: true,
+        alreadySynced: true,
+        skipped: false,
+        bvnSynced: cached.bvnSynced,
+        ninSynced: cached.ninSynced,
+        sessionExpired: false,
+        validationError: false,
+        serviceUnavailable: false,
+        error: null,
+      };
     }
+  }
+
+  const submitSingle = async (idType, idValue) => {
+    if (!idValue) return { ok: false, skipped: true };
     try {
       await submitUserKyc(sessionToken, idValue, idType, cleanCountry);
       setKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress);
@@ -511,33 +534,80 @@ export async function syncUserKycWithPajCash(
     } catch (err) {
       const msg = err?.message || `Failed to verify ${idType}`;
       const status = err?.status;
-      const lower = msg.toLowerCase();
-      if (lower.includes('already verified') || lower.includes('already submitted')) {
+      if (KYC_ALREADY_DONE_RE.test(msg)) {
         setKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress);
         return { ok: true, fromCache: false };
       }
       const sessionExpired = status === 401 || KYC_SESSION_ERR_RE.test(msg);
-      const validationError = !sessionExpired && (status === 400 || status === 409 || KYC_VALIDATION_ERR_RE.test(msg));
-      return { ok: false, error: `${idType}: ${msg}`, rawError: msg, sessionExpired, validationError };
+      const serviceUnavailable = !sessionExpired && ((typeof status === 'number' && status >= 500) || status === 404 || KYC_UNAVAILABLE_RE.test(msg));
+      const validationError = !sessionExpired && !serviceUnavailable && (status === 400 || status === 409 || KYC_VALIDATION_ERR_RE.test(msg));
+      const statusPrefix = typeof status === 'number' ? `[${status}] ` : '';
+      return {
+        ok: false,
+        error: `${idType}: ${statusPrefix}${msg}`,
+        rawError: msg,
+        sessionExpired,
+        validationError,
+        serviceUnavailable,
+      };
     }
   };
 
-  const bvnRes = await submitSingle('BVN', cleanBvn);
-  const ninRes = bvnRes.sessionExpired
-    ? { ok: false, error: null, sessionExpired: true, validationError: false }
-    : await submitSingle('NIN', cleanNin);
+  // Try BVN first; PajCash requires one government ID per user session
+  const bvnRes = cleanBvn ? await submitSingle('BVN', cleanBvn) : { ok: false, skipped: true };
+  if (bvnRes.ok) {
+    return {
+      synced: true,
+      alreadySynced: false,
+      skipped: false,
+      bvnSynced: true,
+      ninSynced: false,
+      sessionExpired: false,
+      validationError: false,
+      serviceUnavailable: false,
+      error: null,
+    };
+  }
+  if (bvnRes.sessionExpired) {
+    return {
+      synced: false,
+      alreadySynced: false,
+      skipped: false,
+      bvnSynced: false,
+      ninSynced: false,
+      sessionExpired: true,
+      validationError: false,
+      serviceUnavailable: false,
+      error: bvnRes.error || 'Session is invalid or expired',
+    };
+  }
 
-  const synced = bvnRes.ok && ninRes.ok;
+  // Fallback to NIN if BVN was absent or failed with non-session error
+  const ninRes = cleanNin ? await submitSingle('NIN', cleanNin) : { ok: false, skipped: true };
+  if (ninRes.ok) {
+    return {
+      synced: true,
+      alreadySynced: false,
+      skipped: false,
+      bvnSynced: false,
+      ninSynced: true,
+      sessionExpired: false,
+      validationError: false,
+      serviceUnavailable: false,
+      error: null,
+    };
+  }
+
   const errors = [bvnRes.error, ninRes.error].filter(Boolean);
-
   return {
-    synced,
-    alreadySynced: Boolean(bvnRes.fromCache && ninRes.fromCache),
+    synced: false,
+    alreadySynced: false,
     skipped: false,
-    bvnSynced: bvnRes.ok,
-    ninSynced: ninRes.ok,
+    bvnSynced: false,
+    ninSynced: false,
     sessionExpired: Boolean(bvnRes.sessionExpired || ninRes.sessionExpired),
     validationError: Boolean(bvnRes.validationError || ninRes.validationError),
+    serviceUnavailable: Boolean(bvnRes.serviceUnavailable || ninRes.serviceUnavailable),
     error: errors.length > 0 ? errors.join(' · ') : null,
   };
 }
