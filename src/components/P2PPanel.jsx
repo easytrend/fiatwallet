@@ -18,7 +18,9 @@ import {
   cancelOnrampOrder,
   paidOnrampOrder,
   getTransaction,
-  submitUserKyc,
+  syncUserKycWithPajCash,
+  getKycSyncStatusLocal,
+  mapToPajCountry,
   registerBankAccountV2,
   getEffectiveApiKey,
   getEffectiveApiKeyAsync,
@@ -28,7 +30,7 @@ import {
   getEffectiveRelayerConfigAsync,
 } from '../services/pajcashService';
 import { getQuote, buildSwapTransaction } from '../services/swapService';
-import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag, checkEmailWalletBinding } from '../services/supabase';
+import { logP2PTransaction, syncP2PTransactionStatuses, updateP2PTransactionStatus, reconcilePendingP2PTransactions, saveSession, loadSession, deleteSession, getP2PTransactionIdsByUser, getP2PTransactionsByUser, getFiatTagByWallet, getFiatTagByName, registerFiatTag, updateFiatTagKycSync, checkEmailWalletBinding } from '../services/supabase';
 import { isBlacklisted } from '../services/compliance';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram, VersionedTransaction, ComputeBudgetProgram } from '@solana/web3.js';
@@ -574,6 +576,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [tagModalResolving, setTagModalResolving] = useState(false);
   const [tagModalSaving, setTagModalSaving] = useState(false);
   const [tagModalError, setTagModalError] = useState(null);
+  const [kycSyncState, setKycSyncState] = useState({ syncing: false, synced: false, error: '' });
 
   const [recipientTagInput, setRecipientTagInput] = useState('');
   const [resolvedTagData, setResolvedTagData] = useState(null);
@@ -1765,6 +1768,111 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       .catch(() => {});
   }, [publicKey, sessionToken, activeTab]);
 
+  const kycWalletScope = (publicKey ? publicKey.toBase58() : (userTagData?.wallet_address || manualWalletAddress || guestOnrampWallet || '')).trim();
+  const kycCountryCode = mapToPajCountry(selectedCountry?.code || selectedCountry?.currency || 'NG');
+
+  const isCachedKycSynced = useMemo(() => {
+    if (!userTagData || (!userTagData.bvn && !userTagData.nin)) return false;
+    if (userTagData.bvn && userTagData.nin && userTagData.bvn.trim() === userTagData.nin.trim()) return false;
+    return getKycSyncStatusLocal({
+      bvn: userTagData.bvn,
+      nin: userTagData.nin,
+      country: kycCountryCode,
+      walletAddress: kycWalletScope,
+    }).synced;
+  }, [userTagData, kycCountryCode, kycWalletScope]);
+
+  const effectiveKycSynced = Boolean(
+    userTagData && (userTagData.bvn || userTagData.nin) && (kycSyncState.synced || isCachedKycSynced)
+  );
+
+  // ── Automatically sync saved BVN / NIN with PajCash once user has an OTP sessionToken ──
+  const syncStoredKycWithPajCash = useCallback(async (token, tagObj, force = false) => {
+    if (!tagObj || (!tagObj.bvn && !tagObj.nin)) return null;
+    if (tagObj.bvn && tagObj.nin && tagObj.bvn.trim() === tagObj.nin.trim()) return null;
+
+    const effectiveWallet = (publicKey ? publicKey.toBase58() : (tagObj.wallet_address || manualWalletAddress || guestOnrampWallet || '')).trim();
+    const pajCountry = mapToPajCountry(selectedCountry?.code || selectedCountry?.currency || 'NG');
+
+    const cached = getKycSyncStatusLocal({
+      bvn: tagObj.bvn,
+      nin: tagObj.nin,
+      country: pajCountry,
+      walletAddress: effectiveWallet,
+    });
+    if (!force && cached.synced) {
+      return { synced: true, alreadySynced: true, error: null };
+    }
+    if (!token || authStep !== 'logged_in') return null;
+
+    await Promise.resolve();
+    setKycSyncState(prev => ({ ...prev, syncing: true, error: '' }));
+    const res = await syncUserKycWithPajCash(token, {
+      bvn: tagObj.bvn,
+      nin: tagObj.nin,
+      country: pajCountry,
+      walletAddress: effectiveWallet,
+      force,
+    });
+
+    if (res.sessionExpired) {
+      setKycSyncState({
+        syncing: false,
+        synced: false,
+        error: 'Email session expired. Please re-verify your email to sync KYC.',
+      });
+      return res;
+    }
+
+    setKycSyncState({
+      syncing: false,
+      synced: Boolean(res.synced),
+      error: res.error || '',
+    });
+    if (effectiveWallet) {
+      updateFiatTagKycSync(effectiveWallet, { synced: res.synced, error: res.error });
+    }
+    return res;
+  }, [publicKey, manualWalletAddress, guestOnrampWallet, selectedCountry, authStep]);
+
+  useEffect(() => {
+    if (authStep !== 'logged_in' || !sessionToken || !userTagData || (!userTagData.bvn && !userTagData.nin) || isCachedKycSynced) {
+      return;
+    }
+    if (userTagData.bvn && userTagData.nin && userTagData.bvn.trim() === userTagData.nin.trim()) {
+      return;
+    }
+    if (checkIsBlacklisted(kycWalletScope, sessionEmail || userTagData.email)) return;
+
+    let cancelled = false;
+    syncUserKycWithPajCash(sessionToken, {
+      bvn: userTagData.bvn,
+      nin: userTagData.nin,
+      country: kycCountryCode,
+      walletAddress: kycWalletScope,
+      force: false,
+    }).then(res => {
+      if (cancelled) return;
+      if (res.sessionExpired) {
+        setKycSyncState({
+          syncing: false,
+          synced: false,
+          error: 'Email session expired. Please re-verify your email to sync KYC.',
+        });
+        return;
+      }
+      setKycSyncState({
+        syncing: false,
+        synced: Boolean(res.synced),
+        error: res.error || '',
+      });
+      if (kycWalletScope) {
+        updateFiatTagKycSync(kycWalletScope, { synced: res.synced, error: res.error });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [authStep, sessionToken, userTagData, isCachedKycSynced, kycWalletScope, kycCountryCode, sessionEmail, checkIsBlacklisted]);
+
   // ── Real-time resolution of recipient Tag in standard and tag offramp ───
   useEffect(() => {
     if (!recipientTagInput) {
@@ -1930,6 +2038,23 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
       const canonicalBankName = bankObj ? getBankNameString(bankObj) : tagModalBank;
+      const pajCountry = mapToPajCountry(selectedCountry?.code || selectedCountry?.currency || 'NG');
+
+      // Validate & sync BVN/NIN with PajCash BEFORE locking in Supabase if OTP session is active
+      let kycRes = null;
+      if (sessionToken && cleanBvn) {
+        kycRes = await syncUserKycWithPajCash(sessionToken, {
+          bvn: cleanBvn,
+          nin: cleanNin,
+          country: pajCountry,
+          walletAddress: effectiveWallet,
+        });
+        if (kycRes.validationError) {
+          setTagModalError(kycRes.error || 'PajCash rejected your BVN or NIN. Please check and try again.');
+          setTagModalSaving(false);
+          return;
+        }
+      }
 
       const registered = await registerFiatTag({
         walletAddress: effectiveWallet,
@@ -1959,21 +2084,21 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         registerBankAccountV2(bankCode, cleanAcct)
           .then(v2 => {
             if (v2?.address) {
-              try { localStorage.setItem(`paj_payout_address_${cleanAcct}`, v2.address); } catch {}
+              try { localStorage.setItem(`paj_payout_address_${cleanAcct}`, v2.address); } catch { /* ignore */ }
             }
             if (v2?.evmAddress) {
-              try { localStorage.setItem(`paj_payout_evm_${cleanAcct}`, v2.evmAddress); } catch {}
+              try { localStorage.setItem(`paj_payout_evm_${cleanAcct}`, v2.evmAddress); } catch { /* ignore */ }
             }
           })
           .catch(e => console.warn('[PajCash v2] Bank registration notice:', e.message));
       }
 
-      // Sync verified government ID KYC with PajCash
-      if (sessionToken && cleanBvn) {
-        submitUserKyc(sessionToken, cleanBvn, 'BVN', 'NG').catch(() => {});
-        if (cleanNin) {
-          submitUserKyc(sessionToken, cleanNin, 'NIN', 'NG').catch(() => {});
-        }
+      if (kycRes?.synced) {
+        setKycSyncState({ syncing: false, synced: true, error: '' });
+        updateFiatTagKycSync(effectiveWallet, { synced: true, error: null });
+      } else if (kycRes?.error) {
+        setKycSyncState({ syncing: false, synced: false, error: kycRes.error });
+        updateFiatTagKycSync(effectiveWallet, { synced: false, error: kycRes.error });
       }
 
       setUserTagData(registered);
@@ -1983,7 +2108,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } finally {
       setTagModalSaving(false);
     }
-  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks]);
+  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, sessionEmail, emailInput, selectedCountry, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks]);
 
   // ── Routing animation ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -2565,6 +2690,17 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     setOnrampLoading(true);
     try {
+      // Ensure saved BVN & NIN are synced to PajCash before opening an onramp order
+      if (!isBlacklistedEntity && sessionToken && userTagData) {
+        const kycRes = await syncStoredKycWithPajCash(sessionToken, userTagData, false);
+        if (kycRes && !kycRes.synced && kycRes.validationError) {
+          setOnrampError(`KYC Verification Failed: ${kycRes.error}`);
+          setOnrampLoading(false);
+          setShowTagModal(true);
+          return;
+        }
+      }
+
       const effectiveAuthToken = sessionToken || (await getEffectiveApiKeyAsync()) || PAJCASH_API_KEY;
       if (!effectiveAuthToken) {
         setOnrampError('PajCash API configuration missing. Please verify API settings.');
@@ -4028,7 +4164,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 cursor: 'pointer'
               }}
             >
-              {userTagData ? ((userTagData.bvn && userTagData.phone_number && userTagData.nin) || checkIsBlacklisted() ? '✓ My Tag' : 'My Tag (KYC)') : 'Create Tag'}
+              {userTagData
+                ? ((userTagData.bvn && userTagData.phone_number && userTagData.nin) || checkIsBlacklisted()
+                    ? (kycSyncState.error && !effectiveKycSynced ? '⚠ My Tag (KYC)' : '✓ My Tag')
+                    : 'My Tag (KYC)')
+                : 'Create Tag'}
             </button>
           )}
 
@@ -6491,14 +6631,72 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', marginBottom: '6px' }}>
-                {userTagData ? (userTagData.bvn ? 'Edit Your Fiat Tag' : 'Complete Verification') : 'Create & Link Fiat Tag'}
+                {userTagData
+                  ? (userTagData.bvn && userTagData.nin && userTagData.phone_number ? 'Edit Your Fiat Tag' : 'Complete Verification')
+                  : 'Create & Link Fiat Tag'}
               </h3>
               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.4' }}>
-                {userTagData && !userTagData.bvn
+                {userTagData && (!userTagData.bvn || !userTagData.nin || !userTagData.phone_number)
                   ? 'Please complete your BVN, Phone Number, and NIN to verify your profile and unlock buying crypto.'
                   : 'Link your bank account to a unique Fiat Tag with BVN and NIN verification.'}
               </p>
             </div>
+
+            {userTagData && (userTagData.bvn || userTagData.nin) && userTagData.bvn !== userTagData.nin && (
+              <div style={{
+                background: effectiveKycSynced
+                  ? 'rgba(163, 230, 53, 0.08)'
+                  : kycSyncState.error
+                  ? 'rgba(239, 68, 68, 0.09)'
+                  : 'rgba(34, 211, 238, 0.06)',
+                border: effectiveKycSynced
+                  ? '1px solid rgba(163, 230, 53, 0.3)'
+                  : kycSyncState.error
+                  ? '1px solid rgba(239, 68, 68, 0.35)'
+                  : '1px solid rgba(34, 211, 238, 0.25)',
+                borderRadius: '10px',
+                padding: '9px 12px',
+                marginBottom: '14px',
+                fontSize: '11px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                lineHeight: '1.35',
+              }}>
+                <span style={{
+                  color: effectiveKycSynced ? 'var(--lime)' : kycSyncState.error ? '#fca5a5' : 'var(--cyan, #22d3ee)',
+                  fontWeight: '600',
+                }}>
+                  {kycSyncState.syncing
+                    ? '⏳ Syncing KYC documents with PajCash...'
+                    : effectiveKycSynced
+                    ? '✓ KYC Synced with PajCash'
+                    : kycSyncState.error
+                    ? `KYC Sync Issue: ${kycSyncState.error}`
+                    : 'Verify your email on Sell/Buy to sync KYC with PajCash.'}
+                </span>
+                {!kycSyncState.syncing && !effectiveKycSynced && sessionToken && authStep === 'logged_in' && (
+                  <button
+                    type="button"
+                    onClick={() => syncStoredKycWithPajCash(sessionToken, userTagData, true)}
+                    style={{
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: '7px',
+                      color: 'white',
+                      padding: '4px 9px',
+                      fontSize: '10.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Retry Sync
+                  </button>
+                )}
+              </div>
+            )}
 
             {tagModalError && (
               <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '10px 12px', fontSize: '11px', color: '#f87171', marginBottom: '14px' }}>

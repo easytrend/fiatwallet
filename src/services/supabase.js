@@ -922,11 +922,13 @@ export async function registerFiatTag({
   }
 
   // 3. Permanent lock check:
-  // If user already saved their details, lock from editing.
-  // Exception: If user previously made the mistake of entering identical BVN and NIN (e.g. s.amuelbackwood),
-  // permit the correction update so they can fix it.
+  // If user already saved their full bank + KYC details, lock from editing.
+  // Exceptions:
+  //   a) User previously saved identical BVN and NIN and needs to correct them.
+  //   b) Early-registered user whose row is missing BVN, NIN, or phone_number needs to complete KYC.
   const hasExistingBvnNinMismatch = existingOwn && existingOwn.bvn && existingOwn.nin && existingOwn.bvn.trim() === existingOwn.nin.trim();
-  const isAlreadyLocked = existingOwn && existingOwn.account_number && !hasExistingBvnNinMismatch;
+  const hasMissingKyc = Boolean(existingOwn && (!existingOwn.bvn || !existingOwn.nin || !existingOwn.phone_number));
+  const isAlreadyLocked = existingOwn && existingOwn.account_number && !hasExistingBvnNinMismatch && !hasMissingKyc;
 
   if (isAlreadyLocked) {
     throw new Error('Your bank details and Fiat Tag are locked for security. If you need to make changes or corrections, please reach out to our team at support@fiatwallet.app.');
@@ -1062,6 +1064,28 @@ export async function registerFiatTag({
   } catch (_) {}
 
   return data;
+}
+
+/**
+ * Persist PajCash KYC sync outcome onto the user's fiat_tags row if optional columns exist.
+ * Gracefully no-ops if schema columns (kyc_synced, kyc_synced_at, kyc_error) are absent.
+ */
+export async function updateFiatTagKycSync(walletAddress, { synced = false, error = null } = {}) {
+  const client = (await getSupabaseAsync()) || getSupabase();
+  if (!client || !walletAddress) return;
+  try {
+    const { error: updateErr } = await client
+      .from('fiat_tags')
+      .update({
+        kyc_synced: Boolean(synced),
+        kyc_synced_at: synced ? new Date().toISOString() : null,
+        kyc_error: error ? String(error).slice(0, 250) : null,
+      })
+      .eq('wallet_address', walletAddress);
+    if (updateErr && (updateErr.code === '42703' || updateErr.message?.includes('column'))) {
+      return;
+    }
+  } catch { /* ignore if optional schema columns do not exist */ }
 }
 
 /**

@@ -383,9 +383,66 @@ export async function resolveBankAccount(sessionToken, bankId, accountNumber, ba
   }
 }
 
+const COUNTRY_MAP = {
+  NGA: 'NG', NGN: 'NG', NG: 'NG',
+  GHA: 'GH', GHS: 'GH', GH: 'GH',
+  KEN: 'KE', KES: 'KE', KE: 'KE',
+  TZA: 'TZ', TZS: 'TZ', TZ: 'TZ',
+  ZAF: 'ZA', ZAR: 'ZA', ZA: 'ZA',
+};
+
+/**
+ * Resolve ISO 2-letter PajCash country code from a country or currency code.
+ * @param {string} [codeOrCurrency='NG']
+ */
+export function mapToPajCountry(codeOrCurrency = 'NG') {
+  const key = String(codeOrCurrency || 'NG').toUpperCase().trim();
+  return COUNTRY_MAP[key] || 'NG';
+}
+
+function getKycSyncStorageKey(idType, country, idNumber, walletAddress = '') {
+  const scope = String(walletAddress || '').trim() || 'anon';
+  return `paj_kyc_synced_${scope}_${country}_${idType}_${idNumber}`;
+}
+
+function isKycItemSyncedLocal(idType, country, idNumber, walletAddress = '') {
+  if (!idNumber || typeof localStorage === 'undefined') return false;
+  try {
+    return localStorage.getItem(getKycSyncStorageKey(idType, country, idNumber, walletAddress)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setKycItemSyncedLocal(idType, country, idNumber, walletAddress = '') {
+  if (!idNumber || typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(getKycSyncStorageKey(idType, country, idNumber, walletAddress), '1');
+  } catch { /* ignore storage restrictions */ }
+}
+
+/**
+ * Synchronously inspect cached local PajCash KYC sync status for stored identity numbers.
+ */
+export function getKycSyncStatusLocal({ bvn, nin, country = 'NG', walletAddress = '' } = {}) {
+  const cleanCountry = mapToPajCountry(country);
+  const cleanBvn = bvn ? String(bvn).replace(/\D/g, '').trim() : '';
+  const cleanNin = nin ? String(nin).replace(/\D/g, '').trim() : '';
+  if (!cleanBvn && !cleanNin) {
+    return { synced: false, bvnSynced: false, ninSynced: false };
+  }
+  const bvnSynced = !cleanBvn || isKycItemSyncedLocal('BVN', cleanCountry, cleanBvn, walletAddress);
+  const ninSynced = !cleanNin || isKycItemSyncedLocal('NIN', cleanCountry, cleanNin, walletAddress);
+  return {
+    synced: bvnSynced && ninSynced,
+    bvnSynced,
+    ninSynced,
+  };
+}
+
 /**
  * Submit and verify government-ID KYC (BVN / NIN) with PajCash.
- * Requires an active user session token (email-verified).
+ * Strictly requires an active user session token (obtained from email OTP verifySession).
  *
  * @param {string} sessionToken - User JWT Session Token
  * @param {string} idNumber     - 11-digit BVN or NIN
@@ -394,16 +451,95 @@ export async function resolveBankAccount(sessionToken, bankId, accountNumber, ba
  */
 export async function submitUserKyc(sessionToken, idNumber, idType = 'BVN', country = 'NG') {
   initPajSDK(import.meta.env.VITE_PAJCASH_ENV || 'production');
-  const token = sessionToken || (await getEffectiveApiKeyAsync()) || getEffectiveApiKey();
-  if (!token) {
-    throw new Error('Active session required. Please verify your email first.');
+  if (!sessionToken || typeof sessionToken !== 'string' || !sessionToken.trim()) {
+    throw new Error('Active email-verified session required to submit KYC.');
   }
+  const cleanCountry = mapToPajCountry(country);
   try {
-    return await sdkSubmitKyc(token, String(idNumber).trim(), idType, country);
+    return await sdkSubmitKyc(sessionToken.trim(), String(idNumber).trim(), idType, cleanCountry);
   } catch (error) {
-    const msg = error.response?.data?.message || error.message || String(error);
-    throw new Error(msg);
+    const rawMsg = error.response?.data?.message ?? error.message ?? String(error);
+    const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : String(rawMsg);
+    const err = new Error(msg);
+    err.status = error.response?.status;
+    throw err;
   }
+}
+
+const KYC_SESSION_ERR_RE = /unauthorized|session|expired|jwt|invalid token|not logged/i;
+const KYC_VALIDATION_ERR_RE = /already used|invalid|mismatch|not found|incorrect|failed verification|does not match/i;
+
+/**
+ * Sync stored BVN / NIN documents with PajCash /pub/kyc idempotently.
+ * Tracks individual BVN and NIN sync completion locally, surfaces ID validation vs
+ * expired-session errors, and prevents redundant /pub/kyc requests once verified.
+ */
+export async function syncUserKycWithPajCash(
+  sessionToken,
+  { bvn, nin, country = 'NG', walletAddress = '', force = false } = {}
+) {
+  const cleanCountry = mapToPajCountry(country);
+  const cleanBvn = bvn ? String(bvn).replace(/\D/g, '').trim() : '';
+  const cleanNin = nin ? String(nin).replace(/\D/g, '').trim() : '';
+
+  if (!cleanBvn && !cleanNin) {
+    return { synced: false, skipped: true, reason: 'no_documents', bvnSynced: false, ninSynced: false, error: null };
+  }
+  if (!sessionToken || !String(sessionToken).trim()) {
+    return { synced: false, skipped: true, reason: 'no_session', bvnSynced: false, ninSynced: false, error: null };
+  }
+  if (cleanBvn && cleanNin && cleanBvn === cleanNin) {
+    return {
+      synced: false,
+      skipped: false,
+      validationError: true,
+      bvnSynced: false,
+      ninSynced: false,
+      error: 'BVN and NIN cannot be the exact same number.',
+    };
+  }
+
+  const submitSingle = async (idType, idValue) => {
+    if (!idValue) return { ok: true, fromCache: true };
+    if (!force && isKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress)) {
+      return { ok: true, fromCache: true };
+    }
+    try {
+      await submitUserKyc(sessionToken, idValue, idType, cleanCountry);
+      setKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress);
+      return { ok: true, fromCache: false };
+    } catch (err) {
+      const msg = err?.message || `Failed to verify ${idType}`;
+      const status = err?.status;
+      const lower = msg.toLowerCase();
+      if (lower.includes('already verified') || lower.includes('already submitted')) {
+        setKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress);
+        return { ok: true, fromCache: false };
+      }
+      const sessionExpired = status === 401 || KYC_SESSION_ERR_RE.test(msg);
+      const validationError = !sessionExpired && (status === 400 || status === 409 || KYC_VALIDATION_ERR_RE.test(msg));
+      return { ok: false, error: `${idType}: ${msg}`, rawError: msg, sessionExpired, validationError };
+    }
+  };
+
+  const bvnRes = await submitSingle('BVN', cleanBvn);
+  const ninRes = bvnRes.sessionExpired
+    ? { ok: false, error: null, sessionExpired: true, validationError: false }
+    : await submitSingle('NIN', cleanNin);
+
+  const synced = bvnRes.ok && ninRes.ok;
+  const errors = [bvnRes.error, ninRes.error].filter(Boolean);
+
+  return {
+    synced,
+    alreadySynced: Boolean(bvnRes.fromCache && ninRes.fromCache),
+    skipped: false,
+    bvnSynced: bvnRes.ok,
+    ninSynced: ninRes.ok,
+    sessionExpired: Boolean(bvnRes.sessionExpired || ninRes.sessionExpired),
+    validationError: Boolean(bvnRes.validationError || ninRes.validationError),
+    error: errors.length > 0 ? errors.join(' · ') : null,
+  };
 }
 
 /**
