@@ -106,8 +106,9 @@ CREATE TRIGGER trg_capture_client_metadata_sessions
   FOR EACH ROW
   EXECUTE FUNCTION public.capture_client_metadata();
 
--- 2. Clean up any leftover bogus probe rows
-DELETE FROM public.paj_sessions WHERE wallet_address = 'TESTWALLET123';
+-- 2. Clean up any leftover bogus probe and test rows
+DELETE FROM public.paj_sessions WHERE wallet_address LIKE 'test_%' OR wallet_address LIKE 'TEST%' OR email LIKE '%@example.com';
+DELETE FROM public.p2p_transactions WHERE order_id LIKE 'test_%' OR order_id LIKE 'mock_%' OR user_address LIKE 'test_%';
 UPDATE public.p2p_transactions 
   SET status = 'REJECTED_PROBE', 
       signature = 'REJECTED_PROBE_159.195.249.251',
