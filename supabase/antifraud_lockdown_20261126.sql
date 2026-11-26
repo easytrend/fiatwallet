@@ -193,6 +193,46 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO authenticated;
 
+-- Create a secure RPC save function that safely upserts a user's session without exposing the table
+CREATE OR REPLACE FUNCTION public.save_paj_session(
+  p_wallet_address text,
+  p_email text,
+  p_session_token text,
+  p_expires_at timestamptz
+)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  -- 1. Validate wallet format
+  IF p_wallet_address IS NULL OR length(p_wallet_address) < 32 OR length(p_wallet_address) > 44 
+     OR p_wallet_address !~ '^[1-9A-HJ-NP-Za-km-z]+$' THEN
+    RAISE EXCEPTION 'Invalid Solana wallet address format: %', p_wallet_address;
+  END IF;
+
+  -- 2. Block blacklisted wallets
+  IF p_wallet_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+    RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', p_wallet_address;
+  END IF;
+
+  -- 3. Validate session token length
+  IF p_session_token IS NULL OR length(trim(p_session_token)) < 15 THEN
+    RAISE EXCEPTION 'Invalid or insufficient session token';
+  END IF;
+
+  -- 4. Delete existing rows for this wallet to avoid duplicates
+  DELETE FROM public.paj_sessions WHERE wallet_address = p_wallet_address;
+
+  -- 5. Insert fresh session
+  INSERT INTO public.paj_sessions (wallet_address, email, session_token, expires_at, updated_at)
+  VALUES (p_wallet_address, p_email, p_session_token, p_expires_at, now());
+
+  RETURN true;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.save_paj_session(text, text, text, timestamptz) TO anon;
+GRANT EXECUTE ON FUNCTION public.save_paj_session(text, text, text, timestamptz) TO authenticated;
+
 -- Revoke broad SELECT on paj_sessions from anon (Stops all user session and email scraping)
 REVOKE SELECT ON TABLE public.paj_sessions FROM anon;
 DROP POLICY IF EXISTS "Allow anon select paj_sessions" ON public.paj_sessions;

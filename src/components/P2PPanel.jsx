@@ -2268,7 +2268,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           // If another device was previously the primary, its token is now
           // replaced — on their next wallet-connect check their token will
           // not match Supabase and they will be silently kicked out.
-          saveSession(key, emailInput.trim(), res.token, expiryMs);
+          await saveSession(key, emailInput.trim(), res.token, expiryMs);
         } else {
           // Manual / Guest mode: save session to manual storage keys
           const expiryMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
@@ -2283,7 +2283,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           }
           setManualWalletAddress(storedWallet);
           setGuestOnrampWallet(prev => prev || storedWallet);
-          saveSession(storedWallet, emailInput.trim(), res.token, expiryMs);
+          await saveSession(storedWallet, emailInput.trim(), res.token, expiryMs);
 
           getFiatTagByWallet(storedWallet).then(tag => {
             if (tag) {

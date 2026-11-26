@@ -688,7 +688,21 @@ export async function saveSession(walletAddress, email, token, expiryMs) {
     updated_at: new Date().toISOString(),
   };
   try {
-    // Strategy 1: upsert (works if wallet_address has a UNIQUE constraint)
+    // Strategy 1: Secure RPC save_paj_session (bypasses table SELECT/DELETE restrictions)
+    try {
+      const { data: rpcData, error: rpcErr } = await client.rpc('save_paj_session', {
+        p_wallet_address: walletAddress,
+        p_email: email,
+        p_session_token: token,
+        p_expires_at: row.expires_at,
+      });
+      if (!rpcErr) {
+        console.log('[Supabase] saveSession: RPC save OK for', walletAddress.slice(0, 8));
+        return;
+      }
+    } catch (_) {}
+
+    // Strategy 2: upsert (works if wallet_address has a UNIQUE constraint)
     const { error: upsertErr } = await client
       .from('paj_sessions')
       .upsert(row, { onConflict: 'wallet_address' });
@@ -699,7 +713,7 @@ export async function saveSession(walletAddress, email, token, expiryMs) {
     }
     console.warn('[Supabase] saveSession: upsert failed, trying delete+insert:', upsertErr.message);
 
-    // Strategy 2: delete all old rows then insert fresh (works if NO unique constraint)
+    // Strategy 3: delete all old rows then insert fresh (works if NO unique constraint)
     await client.from('paj_sessions').delete().eq('wallet_address', walletAddress);
     const { error: insertErr } = await client.from('paj_sessions').insert(row);
     if (insertErr) {

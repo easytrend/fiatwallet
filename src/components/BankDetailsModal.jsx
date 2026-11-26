@@ -631,7 +631,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, res.token);
           localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, emailInput.trim());
           localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
-          saveSession(effectiveWallet, emailInput.trim(), res.token, expiryMs);
+          await saveSession(effectiveWallet, emailInput.trim(), res.token, expiryMs);
         } else {
           localStorage.setItem('paj_manual_sessionToken', res.token);
           localStorage.setItem('paj_manual_sessionEmail', emailInput.trim());
@@ -743,7 +743,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       localStorage.setItem('paj_manual_wallet', effectiveWallet);
       if (sessionToken && !kycRes?.sessionExpired) {
         const expiryMs = Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
-        saveSession(effectiveWallet, sessionEmail || emailInput?.trim() || '', sessionToken, expiryMs);
+        await saveSession(effectiveWallet, sessionEmail || emailInput?.trim() || '', sessionToken, expiryMs);
       }
 
       // Register with PajCash v2 for persistent on-chain deterministic address
