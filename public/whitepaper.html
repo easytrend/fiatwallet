@@ -343,10 +343,10 @@
       height: auto !important;
     }
 
-    /* ── Metrics Grid (2x2) ── */
+    /* ── Metrics Grid (3x2 Desktop, 2x3 Mobile) ── */
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 12px;
       margin: 20px 0;
     }
@@ -890,6 +890,16 @@
 
         <div class="metric-grid">
           <div class="metric-box">
+            <div class="metric-val">$7,000+</div>
+            <div class="metric-label">Processed Volume</div>
+            <div class="metric-sub">Settled on-chain volume</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val">30+</div>
+            <div class="metric-label">Active Users</div>
+            <div class="metric-sub">Transacting Web3 wallets</div>
+          </div>
+          <div class="metric-box">
             <div class="metric-val">&lt; 45s</div>
             <div class="metric-label">Avg. Settlement</div>
             <div class="metric-sub">98% automated on/offramps</div>
@@ -911,17 +921,27 @@
           </div>
         </div>
 
-        <h3>Operational Architecture &amp; Performance Benchmarks</h3>
+        <h3>Operational Traction &amp; Architecture Benchmarks</h3>
         <div class="table-container">
           <table>
             <thead>
               <tr>
                 <th>Operational Metric</th>
-                <th>Performance Benchmark</th>
+                <th>Verified Performance</th>
                 <th>Verification &amp; Architecture</th>
               </tr>
             </thead>
             <tbody>
+              <tr>
+                <td><strong>Total Processed Volume (TPV)</strong></td>
+                <td><strong>$7,000+ Processed</strong></td>
+                <td>Cumulative settled volume across NGN domestic bank rails and Solana on/offramps.</td>
+              </tr>
+              <tr>
+                <td><strong>Active Transacting Users</strong></td>
+                <td><strong>30+ Active Traders</strong></td>
+                <td>Unique non-custodial wallets and verified $FiatTag accounts with repeat settlement activity.</td>
+              </tr>
               <tr>
                 <td><strong>Average Settlement Speed</strong></td>
                 <td><strong>&lt; 45 Seconds</strong></td>
