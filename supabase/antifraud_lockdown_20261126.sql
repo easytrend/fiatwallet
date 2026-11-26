@@ -3,7 +3,46 @@
 -- Run this in the Supabase Dashboard: SQL Editor -> New Query -> Run
 -- =============================================================================
 
--- 1. Upgrade client metadata and security trigger
+-- ── 1. TEMPORARILY DETACH OLD TRIGGERS ───────────────────────────────────────
+-- Detach triggers first so historical fraud rows can be updated/neutralized
+-- without trigger conflicts or self-interfering compliance checks.
+DROP TRIGGER IF EXISTS trg_capture_client_metadata_p2p ON public.p2p_transactions;
+DROP TRIGGER IF EXISTS trg_capture_client_metadata_sessions ON public.paj_sessions;
+
+-- ── 2. NEUTRALIZE KNOWN ATTACKER ORDERS & CLEAN UP PROBES ────────────────────
+-- Neutralize the Nov 25 curl probe order
+UPDATE public.p2p_transactions 
+  SET status = 'REJECTED_PROBE', 
+      signature = 'REJECTED_PROBE_159.195.249.251',
+      deposit_address = 'REJECTED: Unauthorized external curl probe'
+  WHERE order_id = '6b07280bdc0851b14ebe8dac';
+
+-- Neutralize the Nov 6 impersonation order (spoofed ultradefi email to burner wallet)
+UPDATE public.p2p_transactions 
+  SET status = 'BLOCKED_FRAUD_IMPERSONATION', 
+      deposit_address = 'BLOCKED: Attacker spoofed ultradefi email to burner wallet 8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc'
+  WHERE order_id = '6aed85523eaff631a9e7eb52';
+
+-- Remove any session rows associated with the attacker's wallets or test probes
+DELETE FROM public.paj_sessions 
+  WHERE wallet_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx')
+     OR wallet_address LIKE 'test_%' 
+     OR wallet_address LIKE 'TEST%' 
+     OR email LIKE '%@example.com';
+
+-- Remove any probe transactions
+DELETE FROM public.p2p_transactions 
+  WHERE order_id LIKE 'test_%' 
+     OR order_id LIKE 'mock_%' 
+     OR user_address LIKE 'test_%';
+
+-- Remove any probe wallets
+DELETE FROM public.wallets 
+  WHERE wallet_address LIKE '%Probe%' 
+     OR wallet_address LIKE 'test_%' 
+     OR wallet_address = 'SwarmProbe1111111111111111111111111111111';
+
+-- ── 3. INSTALL HARDENED CLIENT METADATA & COMPLIANCE TRIGGER ─────────────────
 CREATE OR REPLACE FUNCTION public.capture_client_metadata()
 RETURNS trigger AS $$
 DECLARE
@@ -27,7 +66,7 @@ BEGIN
     client_ua := NULL;
   END;
 
-  -- Detect caller authentication role
+  -- Detect caller authentication role (PostgREST JWT claim)
   BEGIN
     req_role := current_setting('request.jwt.claim.role', true);
   EXCEPTION WHEN OTHERS THEN
@@ -53,6 +92,11 @@ BEGIN
     IF NEW.session_token IS NULL OR length(trim(NEW.session_token)) < 15 THEN
       RAISE EXCEPTION 'Invalid or insufficient session token';
     END IF;
+
+    -- Block blacklisted wallet addresses on paj_sessions
+    IF NEW.wallet_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+      RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', NEW.wallet_address;
+    END IF;
   END IF;
 
   -- ── RULE 4: Validate Solana user address on p2p_transactions ───────────────
@@ -62,14 +106,22 @@ BEGIN
       RAISE EXCEPTION 'Invalid Solana user address format: %', NEW.user_address;
     END IF;
 
-    -- Block blacklisted wallet addresses from creating transactions
-    IF NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+    -- Block blacklisted wallet addresses from creating new transactions or changing to a blacklisted address
+    IF (TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.user_address IS DISTINCT FROM NEW.user_address)) THEN
+      IF NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+        RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', NEW.user_address;
+      END IF;
+    END IF;
+
+    -- Block anonymous client API calls from modifying blacklisted rows
+    IF TG_OP = 'UPDATE' AND req_role = 'anon' 
+       AND NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
       RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', NEW.user_address;
     END IF;
 
     -- ── RULE 5: Anon clients can NEVER mark onramps as COMPLETED ────────────
     -- Only backend service_role (webhooks/relayer) can finalize onramp completion
-    IF req_role = 'anon' OR req_role IS NULL THEN
+    IF req_role = 'anon' THEN
       IF NEW.transaction_type = 'p2p_onramp' AND (NEW.status = 'COMPLETED' OR NEW.status = 'FORWARDED_SUCCESS') THEN
         NEW.status := 'INIT';
       END IF;
@@ -93,41 +145,24 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Reattach trigger to p2p_transactions
-DROP TRIGGER IF EXISTS trg_capture_client_metadata_p2p ON public.p2p_transactions;
 CREATE TRIGGER trg_capture_client_metadata_p2p
   BEFORE INSERT OR UPDATE ON public.p2p_transactions
   FOR EACH ROW
   EXECUTE FUNCTION public.capture_client_metadata();
 
 -- Reattach trigger to paj_sessions
-DROP TRIGGER IF EXISTS trg_capture_client_metadata_sessions ON public.paj_sessions;
 CREATE TRIGGER trg_capture_client_metadata_sessions
   BEFORE INSERT OR UPDATE ON public.paj_sessions
   FOR EACH ROW
   EXECUTE FUNCTION public.capture_client_metadata();
 
--- 2. Clean up any leftover bogus probe and test rows
-DELETE FROM public.paj_sessions WHERE wallet_address LIKE 'test_%' OR wallet_address LIKE 'TEST%' OR email LIKE '%@example.com';
-DELETE FROM public.p2p_transactions WHERE order_id LIKE 'test_%' OR order_id LIKE 'mock_%' OR user_address LIKE 'test_%';
-DELETE FROM public.wallets WHERE wallet_address LIKE '%Probe%' OR wallet_address LIKE 'test_%' OR wallet_address = 'SwarmProbe1111111111111111111111111111111';
-UPDATE public.p2p_transactions 
-  SET status = 'REJECTED_PROBE', 
-      signature = 'REJECTED_PROBE_159.195.249.251',
-      deposit_address = 'REJECTED: Unauthorized external curl probe'
-  WHERE order_id = '6b07280bdc0851b14ebe8dac';
-
-UPDATE public.p2p_transactions 
-  SET status = 'BLOCKED_FRAUD_IMPERSONATION', 
-      deposit_address = 'BLOCKED: Attacker spoofed ultradefi email to burner wallet 8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc'
-  WHERE order_id = '6aed85523eaff631a9e7eb52';
-
--- 3. Revoke dangerous permissions from public/anon
+-- ── 4. REVOKE DANGEROUS PERMISSIONS FROM PUBLIC/ANON ─────────────────────────
 REVOKE DELETE ON TABLE public.p2p_transactions FROM anon;
 REVOKE DELETE ON TABLE public.paj_sessions FROM anon;
 REVOKE DELETE ON TABLE public.fiat_tags FROM anon;
 REVOKE DELETE ON TABLE public.wallets FROM anon;
 
--- 4. CRITICAL: Prevent Session Scraping and User Email Harvesting
+-- ── 5. PREVENT SESSION SCRAPING & USER EMAIL HARVESTING ──────────────────────
 -- Create a secure RPC lookup that ONLY returns the session for the specific connected wallet.
 CREATE OR REPLACE FUNCTION public.get_paj_session(lookup_wallet text)
 RETURNS TABLE (
@@ -150,5 +185,6 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO authenticated;
 
--- Revoke broad SELECT on paj_sessions from anon (Prevents dumping all user session tokens and emails)
+-- Revoke broad SELECT on paj_sessions from anon (Stops all user session and email scraping)
 REVOKE SELECT ON TABLE public.paj_sessions FROM anon;
+DROP POLICY IF EXISTS "Allow anon select paj_sessions" ON public.paj_sessions;
