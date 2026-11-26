@@ -343,11 +343,11 @@
       height: auto !important;
     }
 
-    /* ── Metrics Grid ── */
+    /* ── Metrics Grid (3x2 Desktop, 2x3 Mobile) ── */
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
       margin: 20px 0;
     }
 
@@ -657,6 +657,7 @@
       }
 
       .metric-grid {
+        grid-template-columns: repeat(2, 1fr);
         gap: 8px;
       }
 
@@ -889,9 +890,24 @@
 
         <div class="metric-grid">
           <div class="metric-box">
+            <div class="metric-val">$500K+</div>
+            <div class="metric-label">Total Volume (TPV)</div>
+            <div class="metric-sub">Cumulative settlement flow</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val">3,500+</div>
+            <div class="metric-label">Active Users (MAU)</div>
+            <div class="metric-sub">Monthly transacting wallets</div>
+          </div>
+          <div class="metric-box">
             <div class="metric-val">&lt; 45s</div>
             <div class="metric-label">Avg. Settlement</div>
             <div class="metric-sub">98% automated on/offramps</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val">68%</div>
+            <div class="metric-label">User Retention</div>
+            <div class="metric-sub">30-day recurring activity</div>
           </div>
           <div class="metric-box">
             <div class="metric-val">100%</div>
@@ -901,14 +917,55 @@
           <div class="metric-box">
             <div class="metric-val">99.9%</div>
             <div class="metric-label">System Uptime</div>
-            <div class="metric-sub">Serverless edge network</div>
-          </div>
-          <div class="metric-box">
-            <div class="metric-val">#2 Global</div>
-            <div class="metric-label">Adoption Market</div>
-            <div class="metric-sub">Nigeria leads P2P volume</div>
+            <div class="metric-sub">Multi-RPC edge relayer</div>
           </div>
         </div>
+
+        <h3>Operational Traction &amp; Performance Benchmarks</h3>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Operational Metric</th>
+                <th>Performance Benchmark</th>
+                <th>Verification &amp; Architecture</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Total Processed Volume (TPV)</strong></td>
+                <td><strong>$500,000+</strong></td>
+                <td>Cumulative settled volume across NGN domestic rails and multi-chain bridge routes.</td>
+              </tr>
+              <tr>
+                <td><strong>Active Transacting Users</strong></td>
+                <td><strong>3,500+ MAU</strong></td>
+                <td>Monthly active non-custodial wallets and verified $FiatTag accounts transacting on Solana.</td>
+              </tr>
+              <tr>
+                <td><strong>Average Settlement Speed</strong></td>
+                <td><strong>&lt; 45 Seconds</strong></td>
+                <td>98% of orders execute end-to-end automatically with instant on-chain Solscan confirmation.</td>
+              </tr>
+              <tr>
+                <td><strong>User Retention Rate</strong></td>
+                <td><strong>68% Recurring</strong></td>
+                <td>High-frequency 30-day repeat usage by freelancers, merchants, and OTC crypto traders.</td>
+              </tr>
+              <tr>
+                <td><strong>Gasless Relayer Efficiency</strong></td>
+                <td><strong>100% Success</strong></td>
+                <td>Zero user drop-offs due to insufficient native SOL gas fees for offramps or swaps.</td>
+              </tr>
+              <tr>
+                <td><strong>Platform Reliability</strong></td>
+                <td><strong>99.9% Uptime</strong></td>
+                <td>Fault-tolerant edge serverless routing with automated RPC health failovers.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-hint">Swipe horizontally to view full table ⟷</div>
       </section>
 
       <!-- Section 2: Problem & Opportunity -->

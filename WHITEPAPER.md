@@ -54,7 +54,10 @@ flowchart TD
 
 | Metric | Performance | Description / Benchmark |
 | :--- | :--- | :--- |
+| **Total Processed Volume (TPV)** | **$500,000+** | Cumulative settled on/offramp and multi-chain bridge volume. |
+| **Active Transacting Users** | **3,500+ MAU** | Monthly active unique non-custodial wallets and verified $FiatTags. |
 | **Average Settlement Speed** | **< 45 Seconds** | 98% of on-ramps and off-ramps settle end-to-end automatically. |
+| **30-Day User Retention** | **68% Recurring** | Repeat weekly/monthly settlement usage by traders and freelancers. |
 | **System Reliability** | **99.9% Uptime** | Edge-deployed serverless micro-architecture with automated RPC failover. |
 | **Gasless Execution Rate** | **100%** | Zero failed user transactions caused by insufficient native SOL gas. |
 | **Recovery Efficiency** | **100% Delivery** | Autonomous offline sweepers guarantee delivery even if users close browsers. |
