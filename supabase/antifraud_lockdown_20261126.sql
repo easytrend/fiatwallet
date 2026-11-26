@@ -121,3 +121,29 @@ REVOKE DELETE ON TABLE public.p2p_transactions FROM anon;
 REVOKE DELETE ON TABLE public.paj_sessions FROM anon;
 REVOKE DELETE ON TABLE public.fiat_tags FROM anon;
 REVOKE DELETE ON TABLE public.wallets FROM anon;
+
+-- 4. CRITICAL: Prevent Session Scraping and User Email Harvesting
+-- Create a secure RPC lookup that ONLY returns the session for the specific connected wallet.
+CREATE OR REPLACE FUNCTION public.get_paj_session(lookup_wallet text)
+RETURNS TABLE (
+  email text,
+  session_token text,
+  expires_at timestamptz
+)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  RETURN QUERY
+  SELECT s.email, s.session_token, s.expires_at
+  FROM public.paj_sessions s
+  WHERE s.wallet_address = lookup_wallet
+    AND s.expires_at > now()
+  ORDER BY s.updated_at DESC
+  LIMIT 1;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO authenticated;
+
+-- Revoke broad SELECT on paj_sessions from anon (Prevents dumping all user session tokens and emails)
+REVOKE SELECT ON TABLE public.paj_sessions FROM anon;

@@ -724,7 +724,16 @@ export async function loadSession(walletAddress) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress) return null;
   try {
-    // 1. Try exact match first
+    // 1. Secure RPC lookup (prevents table scraping attacks)
+    try {
+      const { data: rpcRows, error: rpcErr } = await client
+        .rpc('get_paj_session', { lookup_wallet: walletAddress });
+      if (!rpcErr && rpcRows && rpcRows.length > 0) {
+        return rpcRows[0];
+      }
+    } catch (_) {}
+
+    // 2. Try exact match first
     let { data, error } = await client
       .from('paj_sessions')
       .select('email, session_token, expires_at')
