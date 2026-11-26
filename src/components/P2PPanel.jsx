@@ -1165,6 +1165,28 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setManualWalletAddress(storedWallet);
       setGuestOnrampWallet(prev => prev || storedWallet);
       setManualTagModalWallet(storedWallet);
+
+      // Actively validate guest session with Supabase
+      loadSession(storedWallet).then(row => {
+        if (row && row.session_token && !row.session_token.startsWith('EXPIRED_')) {
+          const expiryMs = new Date(row.expires_at).getTime();
+          setSessionToken(row.session_token);
+          setSessionEmail(row.email);
+          setEmailInput(row.email);
+          setAuthStep('logged_in');
+          localStorage.setItem('paj_manual_sessionToken', row.session_token);
+          localStorage.setItem('paj_manual_sessionEmail', row.email);
+          localStorage.setItem('paj_manual_sessionExpiry', String(expiryMs));
+        } else if (!row || !row.session_token || row.session_token.startsWith('EXPIRED_')) {
+          localStorage.removeItem('paj_manual_sessionToken');
+          localStorage.removeItem('paj_manual_sessionEmail');
+          localStorage.removeItem('paj_manual_sessionExpiry');
+          setSessionToken('');
+          setSessionEmail('');
+          setAuthStep('input_email');
+        }
+      }).catch(() => {});
+
       getFiatTagByWallet(storedWallet).then(tag => {
         if (tag) {
           setUserTagData(tag);

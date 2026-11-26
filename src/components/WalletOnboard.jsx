@@ -100,25 +100,31 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
         getP2PTransactionsByUser(cleanWallet),
       ]);
 
-      const hasAccount = Boolean(session?.session_token || tag || (txs && txs.length > 0));
+      const hasValidSession = Boolean(
+        session?.session_token && 
+        !session.session_token.startsWith('EXPIRED_') &&
+        (!session.expires_at || new Date(session.expires_at).getTime() > Date.now())
+      );
 
-      if (hasAccount) {
-        // User already has an account: reinstate their existing details with no email verification needed
+      if (hasValidSession) {
+        // User already has an active valid session: reinstate details
         const foundEmail = session?.email || tag?.email || txs?.find(t => t.user_email)?.user_email || '';
-        const foundToken = session?.session_token || '';
-        const foundTag = tag?.tag_name ? `$${tag.tag_name}` : '';
+        const foundToken = session.session_token;
+        const foundTag = tag?.tag_name ? ('$' + tag.tag_name) : '';
 
         localStorage.setItem('paj_manual_wallet', cleanWallet);
         if (foundEmail) localStorage.setItem('paj_manual_sessionEmail', foundEmail);
-        if (foundToken) {
-          localStorage.setItem('paj_manual_sessionToken', foundToken);
-          localStorage.setItem(`paj_sessionToken_${cleanWallet}`, foundToken);
-        }
+        localStorage.setItem('paj_manual_sessionToken', foundToken);
+        localStorage.setItem(`paj_sessionToken_${cleanWallet}`, foundToken);
         if (foundEmail) localStorage.setItem(`paj_sessionEmail_${cleanWallet}`, foundEmail);
-        if (session?.expires_at) {
-          localStorage.setItem('paj_manual_sessionExpiry', String(new Date(session.expires_at).getTime()));
+        if (session.expires_at) {
+          const expStr = String(new Date(session.expires_at).getTime());
+          localStorage.setItem('paj_manual_sessionExpiry', expStr);
+          localStorage.setItem(`paj_sessionExpiry_${cleanWallet}`, expStr);
         } else {
-          localStorage.setItem('paj_manual_sessionExpiry', String(Date.now() + 30 * 24 * 60 * 60 * 1000));
+          const expStr = String(Date.now() + 20 * 365 * 24 * 60 * 60 * 1000);
+          localStorage.setItem('paj_manual_sessionExpiry', expStr);
+          localStorage.setItem(`paj_sessionExpiry_${cleanWallet}`, expStr);
         }
 
         setReinstatedDetails({
@@ -129,7 +135,15 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
         });
         setGuestStep('reinstated');
       } else {
-        // Wallet has not been linked: proceed to verify email and link to the address provided
+        // Session expired, revoked, or first time: require clean email OTP verification
+        const existingEmail = session?.email || tag?.email || txs?.find(t => t.user_email)?.user_email || '';
+        if (existingEmail) {
+          setGuestEmailInput(existingEmail);
+        }
+        localStorage.removeItem('paj_manual_sessionToken');
+        localStorage.removeItem('paj_manual_sessionExpiry');
+        localStorage.removeItem(`paj_sessionToken_${cleanWallet}`);
+        localStorage.removeItem(`paj_sessionExpiry_${cleanWallet}`);
         setGuestStep('email');
       }
     } catch (err) {
@@ -391,12 +405,16 @@ export default function WalletOnboard({ onWalletReady, onConnectExternal, onCont
       recordWalletRegistration(pendingPublicKey, pendingSource);
       try {
         loadSession(pendingPublicKey).then(row => {
-          if (row && row.session_token) {
+          if (row && row.session_token && !row.session_token.startsWith('EXPIRED_')) {
             localStorage.setItem(`paj_sessionToken_${pendingPublicKey}`, row.session_token);
             if (row.email) localStorage.setItem(`paj_sessionEmail_${pendingPublicKey}`, row.email);
             if (row.expires_at) {
               localStorage.setItem(`paj_sessionExpiry_${pendingPublicKey}`, String(new Date(row.expires_at).getTime()));
             }
+          } else {
+            localStorage.removeItem(`paj_sessionToken_${pendingPublicKey}`);
+            localStorage.removeItem(`paj_sessionEmail_${pendingPublicKey}`);
+            localStorage.removeItem(`paj_sessionExpiry_${pendingPublicKey}`);
           }
         }).catch(() => {});
       } catch (e) {}
