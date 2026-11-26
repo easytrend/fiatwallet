@@ -122,8 +122,12 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 
 <div style="clear: both; margin-bottom: 12px;"></div>
 
+<img src="public/team-olatunde.jpg" width="60" height="60" alt="Micheal Olatunde" style="border-radius: 12px; float: left; margin-right: 14px; object-fit: cover; object-position: center 20%;" />
+
 * **Micheal Olatunde** — Operations & Data Analyst  
   *Overseeing daily fiat-to-crypto settlement operations, liquidity tracking, interbank transaction reconciliation, and user data analytics.*
+
+<div style="clear: both; margin-bottom: 12px;"></div>
 * **Favour Michael** — Social Media Manager  
   *Managing multi-channel social growth, Web3 brand narrative, community engagement, and digital education across consumer touchpoints.*
 * **Core Contributor** — Engineering & Infrastructure *(Announcing Soon)*
