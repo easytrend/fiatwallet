@@ -94,7 +94,7 @@ BEGIN
     END IF;
 
     -- Block blacklisted wallet addresses on paj_sessions
-    IF NEW.wallet_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+    IF NEW.wallet_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx', '8JdQg7rmUUoApHitvDcAznf7ZCqpuTUeB5XKJ6qQYNsp') THEN
       RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', NEW.wallet_address;
     END IF;
   END IF;
@@ -108,14 +108,14 @@ BEGIN
 
     -- Block blacklisted wallet addresses from creating new transactions or changing to a blacklisted address
     IF (TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.user_address IS DISTINCT FROM NEW.user_address)) THEN
-      IF NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+      IF NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx', '8JdQg7rmUUoApHitvDcAznf7ZCqpuTUeB5XKJ6qQYNsp') THEN
         RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', NEW.user_address;
       END IF;
     END IF;
 
     -- Block anonymous client API calls from modifying blacklisted rows
     IF TG_OP = 'UPDATE' AND req_role = 'anon' 
-       AND NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx') THEN
+       AND NEW.user_address IN ('8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx', '8JdQg7rmUUoApHitvDcAznf7ZCqpuTUeB5XKJ6qQYNsp') THEN
       RAISE EXCEPTION 'Access Denied: Compliance violation on wallet %', NEW.user_address;
     END IF;
 

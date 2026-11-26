@@ -16,6 +16,7 @@ export const BLACKLISTED_IPS = [
 ];
 
 export const BLACKLISTED_WALLETS = [
+  '8JdQg7rmUUoApHitvDcAznf7ZCqpuTUeB5XKJ6qQYNsp', // Attacker wallet that received spoofed onramp funds (Nov 6, 2026)
   '8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', // Attacker / probe wallet used in onramp injection (Nov 25, 2026)
   '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx',
   '95JKwZKEAgzj25USUFGJ7FgXT7fwu7H7mFS8a3BjvJRu',
