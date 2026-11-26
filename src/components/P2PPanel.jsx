@@ -1063,24 +1063,19 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const cachedEmail  = localStorage.getItem(`paj_sessionEmail_${key}`);
     const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
 
-    // 1. Same device: restore from localStorage instantly (no network)
+    // 1. Same device: restore from localStorage optimistically (zero UI flicker)
     if (cachedToken && cachedExpiry && Date.now() < Number(cachedExpiry)) {
       setSessionToken(cachedToken);
       setSessionEmail(cachedEmail || '');
       setAuthStep('logged_in');
-      return;
+    } else {
+      setAuthStep('checking');
     }
 
-    // localStorage expired or missing — clear stale entries
-    localStorage.removeItem(`paj_sessionToken_${key}`);
-    localStorage.removeItem(`paj_sessionEmail_${key}`);
-    localStorage.removeItem(`paj_sessionExpiry_${key}`);
-
-    // 2. Check Supabase for existing linked session
-    setAuthStep('checking');
+    // 2. Validate against Supabase authoritative session in the background
     loadSession(key)
       .then(row => {
-        if (row && row.session_token) {
+        if (row && row.session_token && !row.session_token.startsWith('EXPIRED_')) {
           const expiryMs = new Date(row.expires_at).getTime();
           setSessionToken(row.session_token);
           setSessionEmail(row.email);
@@ -1090,15 +1085,21 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           localStorage.setItem(`paj_sessionEmail_${key}`, row.email);
           localStorage.setItem(`paj_sessionExpiry_${key}`, String(expiryMs));
         } else {
+          // Session was expired or revoked on server - require re-verification
+          localStorage.removeItem(`paj_sessionToken_${key}`);
+          localStorage.removeItem(`paj_sessionEmail_${key}`);
+          localStorage.removeItem(`paj_sessionExpiry_${key}`);
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
         }
       })
       .catch(() => {
-        setSessionToken('');
-        setSessionEmail('');
-        setAuthStep('input_email');
+        if (!cachedToken) {
+          setSessionToken('');
+          setSessionEmail('');
+          setAuthStep('input_email');
+        }
       });
   }, [publicKey]);
 

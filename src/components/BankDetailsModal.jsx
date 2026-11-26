@@ -227,15 +227,13 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             if (isMounted) {
               setSessionToken(cachedToken);
               setSessionEmail(cachedEmail || '');
-              setSessionLoading(false);
             }
-            return;
           }
 
-          // Check Supabase paj_sessions table
+          // Validate against Supabase paj_sessions table
           try {
             const row = await loadSession(effectiveWallet);
-            if (row?.session_token && isMounted) {
+            if (row?.session_token && !row.session_token.startsWith('EXPIRED_') && isMounted) {
               const expiryMs = row.expires_at
                 ? new Date(row.expires_at).getTime()
                 : Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
@@ -247,6 +245,17 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
               localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, row.session_token);
               if (row.email) localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, row.email);
               localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
+              return;
+            } else if (!row?.session_token || row.session_token.startsWith('EXPIRED_')) {
+              // Server session expired or revoked
+              localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
+              localStorage.removeItem(`paj_sessionEmail_${effectiveWallet}`);
+              localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
+              if (isMounted) {
+                setSessionToken('');
+                setSessionEmail('');
+                setSessionLoading(false);
+              }
               return;
             }
           } catch (e) {
