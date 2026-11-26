@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
   <title>FiatWallet — Executive Brief & Strategic Whitepaper</title>
   <meta name="description" content="Official Executive Overview & Strategic Whitepaper for FiatWallet — Compliant on-chain Solana P2P Gateway, Cross-Chain Bridge & Smart Wallet.">
   <link rel="icon" type="image/png" href="/icon512.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <style>
     :root {
@@ -17,6 +17,7 @@
       --card-border: rgba(255, 255, 255, 0.08);
       --accent: #a3e635;
       --accent-soft: rgba(163, 230, 53, 0.12);
+      --accent-hover: #bef264;
       --text-main: #f3f4f6;
       --text-muted: #9ca3af;
       --text-dim: #6b7280;
@@ -37,70 +38,82 @@
       color: var(--text-main);
       font-family: var(--font-body);
       font-size: 15px;
-      line-height: 1.7;
+      line-height: 1.65;
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
 
-    /* Floating Action Bar */
+    /* ── Sticky Action Bar ── */
     .action-bar {
       position: sticky;
       top: 0;
       z-index: 100;
-      background: rgba(7, 13, 24, 0.85);
-      backdrop-filter: blur(12px);
+      background: rgba(7, 13, 24, 0.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--border-line);
-      padding: 12px 24px;
+      padding: 10px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
     }
 
     .action-logo {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       text-decoration: none;
       color: white;
       font-family: var(--font-heading);
       font-weight: 700;
-      font-size: 18px;
+      font-size: 17px;
+      min-width: 0;
     }
 
     .action-logo img {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      flex-shrink: 0;
+    }
+
+    .action-logo span {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .action-buttons {
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
+      flex-shrink: 0;
     }
 
     .btn {
-      padding: 9px 18px;
-      border-radius: 10px;
-      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 9px;
+      font-size: 12px;
       font-weight: 700;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       transition: all 0.2s ease;
       text-decoration: none;
+      white-space: nowrap;
     }
 
     .btn-primary {
       background: var(--accent);
       color: #070d18;
       border: none;
-      box-shadow: 0 4px 14px rgba(163, 230, 53, 0.25);
+      box-shadow: 0 2px 10px rgba(163, 230, 53, 0.25);
     }
 
-    .btn-primary:hover {
-      background: #bef264;
-      transform: translateY(-1px);
+    .btn-primary:hover, .btn-primary:active {
+      background: var(--accent-hover);
     }
 
     .btn-outline {
@@ -113,74 +126,84 @@
       background: rgba(255, 255, 255, 0.1);
     }
 
-    /* Container */
+    /* ── Main Document Container ── */
     .document-wrapper {
       max-width: 860px;
-      margin: 40px auto 80px;
-      padding: 0 24px;
+      margin: 28px auto 60px;
+      padding: 0 16px;
     }
 
     .doc-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 24px;
-      padding: 56px 48px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      border-radius: 20px;
+      padding: 40px 36px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
     }
 
-    /* Document Header */
+    /* ── Document Header ── */
     .doc-header {
       border-bottom: 1px solid var(--border-line);
-      padding-bottom: 32px;
-      margin-bottom: 36px;
+      padding-bottom: 24px;
+      margin-bottom: 28px;
     }
 
     .badge {
       display: inline-block;
-      padding: 4px 12px;
+      padding: 4px 10px;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       background: var(--accent-soft);
       color: var(--accent);
       border: 1px solid rgba(163, 230, 53, 0.25);
-      margin-bottom: 16px;
+      margin-bottom: 12px;
     }
 
     h1 {
       font-family: var(--font-heading);
-      font-size: 32px;
+      font-size: clamp(22px, 5vw, 32px);
       font-weight: 800;
       line-height: 1.25;
       color: #ffffff;
       margin-bottom: 12px;
       letter-spacing: -0.02em;
+      word-break: break-word;
     }
 
     .subtitle {
-      font-size: 16px;
+      font-size: clamp(13px, 3.2vw, 15px);
       color: var(--text-muted);
-      margin-bottom: 24px;
-      line-height: 1.5;
+      margin-bottom: 20px;
+      line-height: 1.55;
     }
 
+    /* ── Meta Grid (Links & Contact) ── */
     .meta-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
       padding-top: 16px;
       border-top: 1px dashed var(--border-line);
-      font-size: 12px;
+    }
+
+    .meta-item {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 10px 12px;
+      min-width: 0;
     }
 
     .meta-item span {
       display: block;
       color: var(--text-dim);
-      font-size: 11px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
+      font-weight: 600;
       margin-bottom: 2px;
     }
 
@@ -188,113 +211,154 @@
       color: #f3f4f6;
       text-decoration: none;
       font-family: var(--font-mono);
+      font-size: 12px;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .meta-item a:hover {
       color: var(--accent);
     }
 
-    /* Typography & Sections */
+    /* ── Headings & Sections ── */
     h2 {
       font-family: var(--font-heading);
-      font-size: 22px;
+      font-size: clamp(17px, 4vw, 21px);
       font-weight: 700;
       color: #ffffff;
-      margin: 40px 0 16px;
+      margin: 32px 0 12px;
       padding-bottom: 8px;
       border-bottom: 1px solid var(--border-line);
       letter-spacing: -0.01em;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
 
     h3 {
       font-family: var(--font-heading);
-      font-size: 16px;
-      font-weight: 600;
+      font-size: clamp(14px, 3.4vw, 16px);
+      font-weight: 700;
       color: #e5e7eb;
-      margin: 24px 0 10px;
+      margin: 20px 0 8px;
     }
 
     p {
       color: #d1d5db;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
+      font-size: clamp(13.5px, 3.2vw, 14.5px);
     }
 
     ul, ol {
-      margin-left: 20px;
-      margin-bottom: 20px;
+      padding-left: 20px;
+      margin-bottom: 18px;
       color: #d1d5db;
     }
 
     li {
-      margin-bottom: 8px;
+      margin-bottom: 7px;
+      font-size: clamp(13.5px, 3.2vw, 14.5px);
     }
 
     li strong {
       color: #ffffff;
     }
 
-    /* Callout & Metrics Boxes */
+    code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: 5px;
+      word-break: break-word;
+    }
+
+    /* ── Architecture Diagram Box ── */
+    .arch-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-line);
+      border-radius: 12px;
+      padding: 14px;
+      margin: 16px 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.4;
+      color: #93c5fd;
+    }
+
+    /* ── Metrics Grid ── */
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin: 24px 0;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 20px 0;
     }
 
     .metric-box {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border-line);
-      border-radius: 16px;
-      padding: 20px 16px;
+      border-radius: 14px;
+      padding: 14px 12px;
       text-align: center;
     }
 
     .metric-val {
       font-family: var(--font-heading);
-      font-size: 28px;
+      font-size: clamp(20px, 5vw, 26px);
       font-weight: 800;
       color: var(--accent);
-      margin-bottom: 4px;
+      margin-bottom: 2px;
+      line-height: 1.2;
     }
 
     .metric-label {
-      font-size: 12px;
-      color: var(--text-muted);
-      font-weight: 600;
+      font-size: 11px;
+      color: var(--text-main);
+      font-weight: 700;
     }
 
     .metric-sub {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-dim);
-      margin-top: 4px;
+      margin-top: 3px;
+      line-height: 1.3;
     }
 
-    /* Tables */
-    table {
+    /* ── Responsive Table ── */
+    .table-container {
       width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-      margin: 24px 0;
-      font-size: 13px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 16px 0;
       border: 1px solid var(--border-line);
       border-radius: 12px;
-      overflow: hidden;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    table {
+      width: 100%;
+      min-width: 480px;
+      border-collapse: collapse;
+      font-size: 12.5px;
     }
 
     th {
-      background: rgba(255, 255, 255, 0.04);
-      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 10px 12px;
       text-align: left;
       font-weight: 700;
       color: #ffffff;
       border-bottom: 1px solid var(--border-line);
+      white-space: nowrap;
     }
 
     td {
-      padding: 12px 16px;
+      padding: 10px 12px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       color: #d1d5db;
     }
@@ -303,16 +367,97 @@
       border-bottom: none;
     }
 
-    /* Print Styles (Clean White Paper Layout) */
+    .table-hint {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-align: right;
+      margin-top: 4px;
+      margin-bottom: 12px;
+      font-family: var(--font-mono);
+      display: none;
+    }
+
+    /* ── Mobile Specific Media Query (max-width: 640px) ── */
+    @media screen and (max-width: 640px) {
+      .document-wrapper {
+        margin: 12px auto 40px;
+        padding: 0 8px;
+      }
+
+      .doc-card {
+        padding: 22px 16px;
+        border-radius: 16px;
+      }
+
+      .action-bar {
+        padding: 8px 12px;
+      }
+
+      .action-logo span {
+        font-size: 15px;
+      }
+
+      .action-logo img {
+        width: 24px;
+        height: 24px;
+      }
+
+      .btn {
+        padding: 6px 10px;
+        font-size: 11px;
+        border-radius: 7px;
+      }
+
+      .meta-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .meta-item {
+        padding: 8px 9px;
+      }
+
+      .meta-item a, .meta-item strong {
+        font-size: 11px;
+      }
+
+      .metric-grid {
+        gap: 8px;
+      }
+
+      .metric-box {
+        padding: 10px 8px;
+      }
+
+      .table-hint {
+        display: block;
+      }
+
+      ul, ol {
+        padding-left: 16px;
+      }
+    }
+
+    /* ── Mobile Very Small (max-width: 380px) ── */
+    @media screen and (max-width: 380px) {
+      .meta-grid {
+        grid-template-columns: 1fr;
+      }
+      .action-buttons .btn-outline {
+        display: none;
+      }
+    }
+
+    /* ── Print / Save as PDF Stylesheet ── */
     @media print {
       body {
         background: #ffffff !important;
         color: #111827 !important;
-        font-size: 11pt;
+        font-size: 10.5pt;
         line-height: 1.5;
       }
 
-      .action-bar {
+      .action-bar, .table-hint {
         display: none !important;
       }
 
@@ -331,20 +476,20 @@
 
       h1 {
         color: #111827 !important;
-        font-size: 22pt;
+        font-size: 20pt;
       }
 
       h2 {
         color: #111827 !important;
-        font-size: 14pt;
+        font-size: 13pt;
         border-bottom: 1px solid #e5e7eb !important;
-        margin-top: 24pt;
+        margin-top: 20pt;
         page-break-after: avoid;
       }
 
       h3 {
         color: #1f2937 !important;
-        font-size: 12pt;
+        font-size: 11pt;
         page-break-after: avoid;
       }
 
@@ -358,6 +503,19 @@
         border: 1px solid #d1d5db !important;
       }
 
+      .meta-grid {
+        border-top: 1px solid #e5e7eb !important;
+      }
+
+      .meta-item {
+        background: #f9fafb !important;
+        border: 1px solid #e5e7eb !important;
+      }
+
+      .meta-item strong, .meta-item a {
+        color: #111827 !important;
+      }
+
       .metric-box {
         background: #f9fafb !important;
         border: 1px solid #e5e7eb !important;
@@ -367,7 +525,11 @@
         color: #15803d !important;
       }
 
-      table {
+      .metric-label {
+        color: #111827 !important;
+      }
+
+      .table-container {
         border: 1px solid #e5e7eb !important;
         page-break-inside: avoid;
       }
@@ -382,37 +544,41 @@
         border-bottom: 1px solid #f3f4f6 !important;
       }
 
-      .meta-grid {
-        border-top: 1px solid #e5e7eb !important;
+      .arch-box {
+        background: #f9fafb !important;
+        color: #1e3a8a !important;
+        border: 1px solid #e5e7eb !important;
       }
 
-      .meta-item strong, .meta-item a {
+      code {
+        background: #f3f4f6 !important;
         color: #111827 !important;
+        border: 1px solid #e5e7eb !important;
       }
 
       @page {
-        margin: 1.8cm;
+        margin: 1.6cm;
       }
     }
   </style>
 </head>
 <body>
 
-  <!-- Sticky Top Action Bar (Hidden in Print/PDF) -->
+  <!-- Sticky Top Action Bar -->
   <header class="action-bar">
     <a href="https://fiatwallet.app" class="action-logo">
       <img src="/logo.png" alt="FiatWallet Logo">
       <span>FiatWallet</span>
     </a>
     <div class="action-buttons">
-      <a href="https://fiatwallet.app" class="btn btn-outline" target="_blank">Launch App ↗</a>
+      <a href="https://fiatwallet.app" class="btn btn-outline" target="_blank">App ↗</a>
       <button class="btn btn-primary" onclick="window.print()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 6 2 18 2 18 9"></polyline>
           <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
           <rect x="6" y="14" width="12" height="8"></rect>
         </svg>
-        Download / Print PDF
+        Save PDF
       </button>
     </div>
   </header>
@@ -421,12 +587,12 @@
   <div class="document-wrapper">
     <main class="doc-card">
 
-      <!-- Header -->
+      <!-- Header Section -->
       <section class="doc-header">
-        <span class="badge">Official Strategic Brief &amp; Whitepaper</span>
-        <h1>FiatWallet: Compliant On-Chain Solana P2P Gateway &amp; Smart Wallet</h1>
+        <span class="badge">Official Strategic Brief</span>
+        <h1>FiatWallet: Compliant On-Chain Solana P2P Gateway</h1>
         <p class="subtitle">
-          Bridging emerging market banking with decentralized digital dollar liquidity through automated sub-45 second settlement, sponsored gasless transactions, and institutional KYC compliance.
+          Bridging emerging market banking with digital dollar liquidity through automated sub-45s settlement, sponsored gasless transactions, and institutional KYC compliance.
         </p>
 
         <div class="meta-grid">
@@ -435,21 +601,21 @@
             <a href="https://fiatwallet.app">fiatwallet.app</a>
           </div>
           <div class="meta-item">
-            <span>Official X (Twitter)</span>
+            <span>Official X</span>
             <a href="https://x.com/fiatwallet">@fiatwallet</a>
           </div>
           <div class="meta-item">
-            <span>Community Telegram</span>
+            <span>Telegram Community</span>
             <a href="https://t.me/fiatwalletApp">t.me/fiatwalletApp</a>
           </div>
           <div class="meta-item">
-            <span>Contact Email</span>
+            <span>Direct Email</span>
             <strong>fiatwalletapp@gmail.com</strong>
           </div>
         </div>
       </section>
 
-      <!-- Section 1 -->
+      <!-- Section 1: Executive Summary -->
       <section>
         <h2>1. Executive Summary</h2>
         <p>
@@ -462,30 +628,30 @@
         <div class="metric-grid">
           <div class="metric-box">
             <div class="metric-val">&lt; 45s</div>
-            <div class="metric-label">Avg. Settlement Speed</div>
-            <div class="metric-sub">98% settled end-to-end automatically</div>
+            <div class="metric-label">Avg. Settlement</div>
+            <div class="metric-sub">98% automated on/offramps</div>
           </div>
           <div class="metric-box">
             <div class="metric-val">100%</div>
-            <div class="metric-label">Gas-Sponsored Offramps</div>
-            <div class="metric-sub">Zero SOL balance needed to cash out</div>
+            <div class="metric-label">Gas Sponsored</div>
+            <div class="metric-sub">0 SOL required to cash out</div>
           </div>
           <div class="metric-box">
             <div class="metric-val">99.9%</div>
             <div class="metric-label">System Uptime</div>
-            <div class="metric-sub">Serverless edge micro-architecture</div>
+            <div class="metric-sub">Serverless edge network</div>
           </div>
           <div class="metric-box">
-            <div class="metric-val">#2</div>
-            <div class="metric-label">Global Target Market</div>
-            <div class="metric-sub">Nigeria leads global P2P volume</div>
+            <div class="metric-val">#2 Global</div>
+            <div class="metric-label">Adoption Market</div>
+            <div class="metric-sub">Nigeria leads P2P volume</div>
           </div>
         </div>
       </section>
 
-      <!-- Section 2 -->
+      <!-- Section 2: Problem & Opportunity -->
       <section>
-        <h2>2. Problem &amp; Market Opportunity (Why Nigeria, Why Now)</h2>
+        <h2>2. The Problem &amp; Market Opportunity</h2>
         <h3>The Pain Points in Existing P2P</h3>
         <ul>
           <li><strong>The Bank Freeze Epidemic (PND):</strong> Informal P2P platforms (Binance P2P, Bybit, Telegram OTC) route funds through unvetted personal accounts. A single flagged payment cascades into Post-No-Debit (PND) account freezes by commercial banks.</li>
@@ -493,62 +659,80 @@
           <li><strong>Cryptographic Complexity:</strong> 44-character base58 Solana addresses and manual 10-digit account number entries lead to costly human error and user anxiety.</li>
         </ul>
 
-        <h3>Market Drivers</h3>
+        <h3>Market Drivers (Why Nigeria, Why Now)</h3>
         <ul>
           <li><strong>Global Leader in Adoption:</strong> Nigeria ranks <strong>#2 globally in crypto adoption</strong> (Chainalysis) and leads the world in peer-to-peer transaction volume.</li>
-          <li><strong>The Flight to Digital Dollars:</strong> With local currency depreciation, stablecoins (USDC/USDT) have transitioned from speculative trading assets to essential tools for wealth preservation, cross-border commerce, and remittances ($50B+ annual sub-Saharan volume).</li>
-          <li><strong>The Regulatory Shift:</strong> Regulatory bodies (including SEC Nigeria's VASP and Accelerated Regulatory Incubation Programme - ARIP) are establishing frameworks that favor transparent, compliant, KYC-verified fintech rails over shadow P2P.</li>
+          <li><strong>Flight to Digital Dollars:</strong> With local currency depreciation, stablecoins (USDC/USDT) are now essential tools for capital preservation, cross-border commerce, and remittances ($50B+ annual sub-Saharan volume).</li>
+          <li><strong>Regulatory Shift:</strong> Regulatory bodies (including SEC Nigeria's VASP and Accelerated Regulatory Incubation Programme - ARIP) are actively favoring transparent, compliant, KYC-verified fintech rails over shadow P2P.</li>
         </ul>
       </section>
 
-      <!-- Section 3 -->
+      <!-- Section 3: Architecture & Features -->
       <section>
-        <h2>3. Core Product Suite &amp; Architecture</h2>
+        <h2>3. Product Suite &amp; Architecture</h2>
+        
+        <div class="arch-box">
+[Consumer / Trader] ──&gt; [$FiatTag Handles &amp; Camera OCR]
+        │
+        ▼
+[4-Mode Onboarding: Connect | Create | Import | Guest]
+        │
+        ▼
+[P2P Settlement Core] &lt;── [NEAR Intents Multi-Chain Bridge: BTC, Tron, EVM]
+        │
+        ├─► [Licensed Bank Sync + BVN/NIN Verification]
+        └─► [Sponsored Relayer] ──► [On-Chain Delivery: Solscan Verified]
+        </div>
+
         <ul>
           <li><strong>Instant Automated P2P Gateway:</strong> Sub-45 second automated settlement for buying and selling stablecoins via domestic bank transfers, verified by on-chain Solscan receipts.</li>
           <li><strong>Sponsored Gasless Relayer:</strong> Serverless relayer co-signs and sponsors network fees so users can transact seamlessly even with 0 SOL in their wallet.</li>
           <li><strong>Universal Multi-Chain Ingestion (NEAR Intents):</strong> Direct native deposits from <strong>Bitcoin (BTC)</strong>, <strong>Tron (TRC-20 USDT/TRX)</strong>, and EVM chains (<strong>Base, Arbitrum, Polygon, Ethereum, BNB</strong>) straight into Solana with zero wrapped-token friction.</li>
           <li><strong>Human-Readable FiatTags ($tag):</strong> Handles like <code>$fiatwallet</code> or <code>$ultradefi</code> eliminate long public keys and 10-digit account numbers.</li>
-          <li><strong>Camera OCR Scanner:</strong> Computer vision scanner reads printed or written 10-digit bank account numbers in one click.</li>
+          <li><strong>Camera OCR Scanner:</strong> Computer vision scanner reads printed or written 10-digit bank account numbers in one tap.</li>
           <li><strong>Flexible Onboarding:</strong> Connect existing wallets (Phantom, Solflare, Mobile Wallet Adapter), create a new 12-word seed phrase, import an existing vault, or explore via <strong>Guest Room</strong>.</li>
           <li><strong>Solana Rent Reclaim:</strong> Built-in tool audits closed SPL token accounts to recover dormant SOL rent fees back to the user.</li>
         </ul>
       </section>
 
-      <!-- Section 4 -->
+      <!-- Section 4: Business Model -->
       <section>
         <h2>4. Business Model &amp; Unit Economics</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Revenue Stream</th>
-              <th>Mechanism</th>
-              <th>Pricing / Margin</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Onramp Protocol Fee</strong></td>
-              <td>Automated deduction on gross fiat-to-crypto forwards</td>
-              <td><strong>0.40%</strong> per tx ($0.10 minimum floor)</td>
-            </tr>
-            <tr>
-              <td><strong>FX Conversion Spread</strong></td>
-              <td>Dynamic spread on real-time NGN/USDC liquidity pairs</td>
-              <td><strong>0.50% – 1.00%</strong></td>
-            </tr>
-            <tr>
-              <td><strong>Cross-Chain Bridge Routing</strong></td>
-              <td>Ingestion spread on native BTC, Tron, and EVM transfers</td>
-              <td><strong>0.25% – 0.50%</strong></td>
-            </tr>
-            <tr>
-              <td><strong>B2B Merchant API (Upcoming)</strong></td>
-              <td>Merchant gateway fees for Web2/Web3 apps accepting payouts</td>
-              <td><strong>0.75% – 1.20%</strong></td>
-            </tr>
-          </tbody>
-        </table>
+        
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Revenue Stream</th>
+                <th>Mechanism</th>
+                <th>Pricing / Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Onramp Protocol Fee</strong></td>
+                <td>Automated deduction on gross forwards</td>
+                <td><strong>0.40%</strong> per tx ($0.10 min)</td>
+              </tr>
+              <tr>
+                <td><strong>FX Conversion Spread</strong></td>
+                <td>Dynamic spread on NGN/USDC liquidity</td>
+                <td><strong>0.50% – 1.00%</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Cross-Chain Routing</strong></td>
+                <td>Ingestion spread on BTC, Tron, EVM</td>
+                <td><strong>0.25% – 0.50%</strong></td>
+              </tr>
+              <tr>
+                <td><strong>B2B Merchant API</strong></td>
+                <td>Gateway fees for Web2/Web3 checkouts</td>
+                <td><strong>0.75% – 1.20%</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-hint">Swipe horizontally to view full table ⟷</div>
 
         <h3>Unit Economics &amp; Net Margins</h3>
         <ul>
@@ -557,7 +741,7 @@
         </ul>
       </section>
 
-      <!-- Section 5 -->
+      <!-- Section 5: The Moat -->
       <section>
         <h2>5. Competitive Advantage (The Moat)</h2>
         <ol>
@@ -568,7 +752,7 @@
         </ol>
       </section>
 
-      <!-- Section 6 -->
+      <!-- Section 6: Regulatory Strategy -->
       <section>
         <h2>6. Regulatory &amp; Banking Strategy</h2>
         <ul>
@@ -578,7 +762,7 @@
         </ul>
       </section>
 
-      <!-- Section 7 -->
+      <!-- Section 7: Team & The Ask -->
       <section>
         <h2>7. The Team &amp; The Ask</h2>
         <h3>Core Competencies</h3>
