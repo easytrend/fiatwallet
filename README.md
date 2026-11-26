@@ -1,6 +1,6 @@
 # FiatWallet P2P Gateway
 
-FiatWallet is an onchain P2P gateway, cross-chain deposit bridge, and non-custodial wallet infrastructure built for the Solana ecosystem. It enables zero-KYC fiat-to-crypto and crypto-to-fiat settlements, multi-chain bridge deposits from Bitcoin (BTC), Tron (TRX/USDT), and EVM networks (Base, Arbitrum, Polygon, Ethereum, BNB Chain) into Solana, and instant decentralized finance operations.
+FiatWallet is an onchain P2P gateway, cross-chain deposit bridge, and non-custodial wallet infrastructure built for the Solana ecosystem. It enables compliant fiat-to-crypto and crypto-to-fiat settlements, multi-chain bridge deposits from Bitcoin (BTC), Tron (TRX/USDT), and EVM networks (Base, Arbitrum, Polygon, Ethereum, BNB Chain) into Solana, and instant decentralized finance operations.
 
 ---
 
