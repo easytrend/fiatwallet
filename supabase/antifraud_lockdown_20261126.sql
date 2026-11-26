@@ -109,6 +109,7 @@ CREATE TRIGGER trg_capture_client_metadata_sessions
 -- 2. Clean up any leftover bogus probe and test rows
 DELETE FROM public.paj_sessions WHERE wallet_address LIKE 'test_%' OR wallet_address LIKE 'TEST%' OR email LIKE '%@example.com';
 DELETE FROM public.p2p_transactions WHERE order_id LIKE 'test_%' OR order_id LIKE 'mock_%' OR user_address LIKE 'test_%';
+DELETE FROM public.wallets WHERE wallet_address LIKE '%Probe%' OR wallet_address LIKE 'test_%' OR wallet_address = 'SwarmProbe1111111111111111111111111111111';
 UPDATE public.p2p_transactions 
   SET status = 'REJECTED_PROBE', 
       signature = 'REJECTED_PROBE_159.195.249.251',
@@ -119,3 +120,4 @@ UPDATE public.p2p_transactions
 REVOKE DELETE ON TABLE public.p2p_transactions FROM anon;
 REVOKE DELETE ON TABLE public.paj_sessions FROM anon;
 REVOKE DELETE ON TABLE public.fiat_tags FROM anon;
+REVOKE DELETE ON TABLE public.wallets FROM anon;

@@ -1129,6 +1129,12 @@ export async function recordWalletRegistration(walletAddress, walletType = 'crea
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress) return null;
 
+  // Enforce valid Solana wallet format
+  if (!isValidSolanaAddress(walletAddress)) {
+    console.warn('[Supabase] recordWalletRegistration rejected: invalid Solana address:', walletAddress);
+    return null;
+  }
+
   try {
     const { data: existing } = await client
       .from('wallets')
