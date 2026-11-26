@@ -116,6 +116,11 @@ UPDATE public.p2p_transactions
       deposit_address = 'REJECTED: Unauthorized external curl probe'
   WHERE order_id = '6b07280bdc0851b14ebe8dac';
 
+UPDATE public.p2p_transactions 
+  SET status = 'BLOCKED_FRAUD_IMPERSONATION', 
+      deposit_address = 'BLOCKED: Attacker spoofed ultradefi email to burner wallet 8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc'
+  WHERE order_id = '6aed85523eaff631a9e7eb52';
+
 -- 3. Revoke dangerous permissions from public/anon
 REVOKE DELETE ON TABLE public.p2p_transactions FROM anon;
 REVOKE DELETE ON TABLE public.paj_sessions FROM anon;
