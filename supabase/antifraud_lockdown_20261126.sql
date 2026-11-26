@@ -17,9 +17,10 @@ UPDATE public.p2p_transactions
       deposit_address = 'REJECTED: Unauthorized external curl probe'
   WHERE order_id = '6b07280bdc0851b14ebe8dac';
 
--- Reconcile Nov 6 order (settled on PajCash developer portal, ₦26,000 paid, delivered on-chain)
+-- Reconcile Nov 6 order (settled on PajCash developer portal, ₦26,000 paid, delivered on-chain to $ultradefi)
 UPDATE public.p2p_transactions 
-  SET status = 'COMPLETED', 
+  SET user_address = '8JdQg7rmUUoApHitvDcAznf7ZCqpuTUeB5XKJ6qQYNsp',
+      status = 'COMPLETED', 
       signature = '2G4ecD7c9Y6ZbcfdHzwMauCjuzfsZNhfr5LmMHV7a7dnbqGpiiJie5q58UXgJ9j2sZEigcbERoriN1rouGuo49L6',
       deposit_address = 'FORWARDED: q9JQVAGL94X4DWhRngxpU7J5Jb8PK4t67ivb5eKZt9mH3Fx17NXXh7VSFEhu7VrPtFdZDbdyba51iBW1N81uXzn'
   WHERE order_id = '6aed85523eaff631a9e7eb52';
