@@ -451,8 +451,8 @@
     }
 
     .team-avatar {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       border-radius: 12px;
       background: linear-gradient(135deg, #a3e635 0%, #4ade80 100%);
       color: #070d18;
@@ -464,6 +464,16 @@
       font-size: 16px;
       flex-shrink: 0;
       box-shadow: 0 4px 12px rgba(163, 230, 53, 0.2);
+      overflow: hidden;
+      border: 1.5px solid rgba(163, 230, 53, 0.35);
+    }
+
+    .team-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 20%;
+      display: block;
     }
 
     .team-info {
@@ -1001,7 +1011,9 @@ flowchart TD
         <div class="team-grid">
           <div class="team-card">
             <div class="team-card-top">
-              <div class="team-avatar">AO</div>
+              <div class="team-avatar">
+                <img src="/team-augustine.jpg" alt="Augustine Onimisi" onerror="this.style.display='none'; this.parentNode.innerText='AO';" />
+              </div>
               <div class="team-info">
                 <div class="team-name">Augustine Onimisi (easytrend)</div>
                 <div class="team-role">Founder &amp; Lead Architect</div>

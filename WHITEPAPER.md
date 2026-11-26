@@ -113,9 +113,15 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 ## 8. The Team & "The Ask"
 
 ### Founding Leadership
+
+<img src="public/team-augustine.jpg" width="60" height="60" alt="Augustine Onimisi" style="border-radius: 12px; float: left; margin-right: 14px; object-fit: cover; object-position: center 20%;" />
+
 * **Augustine Onimisi (easytrend)** — Founder & Lead Architect  
   **X (Twitter):** [@easytrend_](https://x.com/easytrend_)  
   *Leading product architecture, high-throughput Solana relayer infrastructure, and compliant fintech settlement rails across emerging markets.*
+
+<div style="clear: both; margin-bottom: 12px;"></div>
+
 * **Core Contributor** — Engineering & Infrastructure *(Announcing Soon)*
 * **Core Contributor** — Compliance & Banking Rails *(Announcing Soon)*
 * **Core Contributor** — Product & Ecosystem Growth *(Announcing Soon)*
