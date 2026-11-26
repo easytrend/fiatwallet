@@ -54,13 +54,11 @@ flowchart TD
 
 | Metric | Performance | Description / Benchmark |
 | :--- | :--- | :--- |
-| **Total Processed Volume (TPV)** | **$500,000+** | Cumulative settled on/offramp and multi-chain bridge volume. |
-| **Active Transacting Users** | **3,500+ MAU** | Monthly active unique non-custodial wallets and verified $FiatTags. |
 | **Average Settlement Speed** | **< 45 Seconds** | 98% of on-ramps and off-ramps settle end-to-end automatically. |
-| **30-Day User Retention** | **68% Recurring** | Repeat weekly/monthly settlement usage by traders and freelancers. |
 | **System Reliability** | **99.9% Uptime** | Edge-deployed serverless micro-architecture with automated RPC failover. |
 | **Gasless Execution Rate** | **100%** | Zero failed user transactions caused by insufficient native SOL gas. |
 | **Recovery Efficiency** | **100% Delivery** | Autonomous offline sweepers guarantee delivery even if users close browsers. |
+| **Compliance Verification** | **BVN / NIN Synced** | Direct identity verification and regulated banking rail sync. |
 
 ---
 
@@ -113,7 +111,7 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 
 ---
 
-## 8. The Team & "The Ask"
+## 8. The Team
 
 ### Founding Leadership
 
@@ -154,7 +152,7 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 * **Emerging Market Payments:** Direct integration with Nigerian NIP interbank rails and banking APIs.
 * **Cryptographic & Database Security:** Enterprise PostgreSQL RLS and cryptographic anti-tamper security.
 
-### Current Objectives & The Ask
+### Strategic Objectives
 1. **Liquidity & Settlement Partners:** Strategic capital partners to scale NGN/USDC automated settlement pools as daily volume grows.
 2. **Ecosystem & Foundation Grants:** Funding to accelerate mobile APK native distribution, Merchant SDK expansion, and pan-African rollout (Ghana, Kenya, South Africa).
 3. **Strategic Advisory:** Institutional leaders in African fintech compliance and digital asset licensing.
