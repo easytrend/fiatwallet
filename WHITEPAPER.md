@@ -125,13 +125,24 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 <img src="public/team-olatunde.jpg" width="60" height="60" alt="Micheal Olatunde" style="border-radius: 12px; float: left; margin-right: 14px; object-fit: cover; object-position: center 20%;" />
 
 * **Micheal Olatunde** — Operations & Data Analyst  
-  **X (Twitter):** [@realcryptopikin](https://x.com/realcryptopikin)  
+  **X (Twitter):** [@realcryptopikin](https://x.com/realcryptopikin) | **LinkedIn:** [miczino](https://linkedin.com/in/miczino)  
   *Overseeing daily fiat-to-crypto settlement operations, liquidity tracking, interbank transaction reconciliation, and user data analytics.*
 
 <div style="clear: both; margin-bottom: 12px;"></div>
+
 * **Favour Michael** — Social Media Manager  
+  **LinkedIn:** [favourmichaell](https://linkedin.com/in/favourmichaell)  
   *Managing multi-channel social growth, Web3 brand narrative, community engagement, and digital education across consumer touchpoints.*
-* **Core Contributor** — Engineering & Infrastructure *(Announcing Soon)*
+
+<div style="clear: both; margin-bottom: 12px;"></div>
+
+<img src="public/team-valentine.jpg" width="60" height="60" alt="Arudi Valentine" style="border-radius: 12px; float: left; margin-right: 14px; object-fit: cover; object-position: center 20%;" />
+
+* **Arudi Valentine** — Software & Technical Support Engineer  
+  **X (Twitter):** [@arudi_valentine](https://x.com/arudi_valentine)  
+  *Leading core software engineering, technical support architecture, and user-centric system innovations across the FiatWallet ecosystem.*
+
+<div style="clear: both; margin-bottom: 12px;"></div>
 
 ### Core Capabilities
 * **High-Throughput Solana Infrastructure:** Low-latency RPC routing, custom transaction relayers, and serialized token forwards.
