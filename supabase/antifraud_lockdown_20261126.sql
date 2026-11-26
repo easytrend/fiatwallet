@@ -21,8 +21,8 @@ UPDATE public.p2p_transactions
 UPDATE public.p2p_transactions 
   SET user_address = '8JdQg7rmUUoApHitvDcAznf7ZCqpuTUeB5XKJ6qQYNsp',
       status = 'COMPLETED', 
-      signature = '2G4ecD7c9Y6ZbcfdHzwMauCjuzfsZNhfr5LmMHV7a7dnbqGpiiJie5q58UXgJ9j2sZEigcbERoriN1rouGuo49L6',
-      deposit_address = 'FORWARDED: q9JQVAGL94X4DWhRngxpU7J5Jb8PK4t67ivb5eKZt9mH3Fx17NXXh7VSFEhu7VrPtFdZDbdyba51iBW1N81uXzn'
+      signature = 'q9JQVAGL94X4DWhRngxpU7J5Jb8PK4t67ivb5eKZt9mH3Fx17NXXh7VSFEhu7VrPtFdZDbdyba51iBW1N81uXzn',
+      deposit_address = 'FORWARDED_SUCCESS'
   WHERE order_id = '6aed85523eaff631a9e7eb52';
 
 -- Remove any session rows associated with the attacker's wallets or test probes
