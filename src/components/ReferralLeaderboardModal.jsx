@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
@@ -176,33 +176,50 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={loadData}
+              disabled={loading}
               title="Refresh Leaderboard"
+              aria-label="Refresh Leaderboard"
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: '10px',
                 color: 'var(--cyan, #22d3ee)',
-                padding: '6px 10px',
-                fontSize: '13px',
-                cursor: 'pointer',
+                padding: '7px 10px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
-              Γå╗
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+              </svg>
             </button>
             <button
               onClick={onClose}
+              title="Close"
+              aria-label="Close"
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: '10px',
                 color: 'white',
-                padding: '6px 10px',
-                fontSize: '13px',
+                padding: '7px 10px',
                 cursor: 'pointer',
-                fontWeight: '700',
+                transition: 'all 0.15s ease',
               }}
             >
-              Γ£ò
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
             </button>
           </div>
         </div>
@@ -277,6 +294,9 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                 <button
                   onClick={handleCopyLink}
                   style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
                     background: copied ? 'var(--lime, #a3e635)' : 'rgba(255, 255, 255, 0.1)',
                     color: copied ? '#0a1628' : 'white',
                     border: 'none',
@@ -288,7 +308,14 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {copied ? 'Copied Γ£ô' : 'Copy'}
+                  {copied ? (
+                    <>
+                      Copied
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </>
+                  ) : 'Copy'}
                 </button>
                 <button
                   onClick={handleShareLink}
@@ -392,7 +419,7 @@ export default function ReferralLeaderboardModal({ isOpen, onClose, walletAddres
                     cursor: 'pointer',
                   }}
                 >
-                  Share Referral Link ΓåÆ
+                  Share Referral Link <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '4px' }}><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                 </button>
               </div>
             ) : (

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchLeaderboard } from '../services/leaderboardService';
 import { fetchReferralStats, getReferralLink } from '../services/referralService';
 import { getFiatTagByWallet } from '../services/supabase';
@@ -226,33 +226,50 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={loadData}
+              disabled={loading}
               title="Refresh Leaderboard"
+              aria-label="Refresh Leaderboard"
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: '10px',
                 color: 'var(--cyan, #22d3ee)',
-                padding: '6px 10px',
-                fontSize: '13px',
-                cursor: 'pointer',
+                padding: '7px 10px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
               }}
             >
-              Γå╗
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 16h5v5"/>
+              </svg>
             </button>
             <button
               onClick={onClose}
+              title="Close"
+              aria-label="Close"
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 background: 'rgba(255, 255, 255, 0.06)',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 borderRadius: '10px',
                 color: 'white',
-                padding: '6px 10px',
-                fontSize: '13px',
+                padding: '7px 10px',
                 cursor: 'pointer',
-                fontWeight: '700',
+                transition: 'all 0.15s ease',
               }}
             >
-              Γ£ò
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
             </button>
           </div>
         </div>
@@ -433,7 +450,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   <span style={{ fontWeight: '700', color: 'white' }}>Invite Friends & Earn Points: </span>
                   <span style={{ color: 'var(--text3, #94a3b8)' }}>Get 1 Point for every 10 USD completed by friends</span>
                 </div>
-                <span style={{ color: 'var(--lime, #a3e635)', fontWeight: '700', fontSize: '12px' }}>ΓåÆ</span>
+                <span style={{ color: 'var(--lime, #a3e635)', display: 'inline-flex', alignItems: 'center' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></span>
               </div>
 
               {/* Timeframe Filter Tabs */}
@@ -662,7 +679,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                     </div>
                   </div>
                   <span style={{ color: 'var(--cyan, #22d3ee)', fontWeight: '700', fontSize: '12px' }}>
-                    View Rankings ΓåÆ
+                    View Rankings <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '4px' }}><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                   </span>
                 </div>
               )}
@@ -704,7 +721,7 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                         {fiatTag.startsWith('$') ? fiatTag : `$${fiatTag}`}
                       </span>
                     </div>
-                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active Γ£ô</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text3, #94a3b8)' }}>Custom Branded Link Active <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--lime, #a3e635)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', marginLeft: '4px' }}><polyline points="20 6 9 17 4 12"></polyline></svg></span>
                   </div>
                 )}
 
@@ -732,6 +749,9 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                   <button
                     onClick={handleCopyLink}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
                       background: copied ? 'var(--lime, #a3e635)' : 'rgba(255, 255, 255, 0.1)',
                       color: copied ? '#0a1628' : 'white',
                       border: 'none',
@@ -744,7 +764,14 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {copied ? 'Copied Γ£ô' : 'Copy Link'}
+                    {copied ? (
+                      <>
+                        Copied
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      </>
+                    ) : 'Copy Link'}
                   </button>
                   <button
                     onClick={handleShareLink}
@@ -769,15 +796,15 @@ export default function LeaderboardModal({ isOpen, onClose, walletAddress, onOpe
                 <div style={{ fontSize: '11px', color: 'var(--text3, #94a3b8)', marginTop: '8px', lineHeight: '1.4' }}>
                   {fiatTag ? (
                     <>
-                      ΓÇó Your referral link is personalized with your Fiat Tag.
+                      &bull; Your referral link is personalized with your Fiat Tag.
                       <br />
-                      ΓÇó Previous referral links using your wallet address also still work seamlessly.
+                      &bull; Previous referral links using your wallet address also still work seamlessly.
                     </>
                   ) : (
                     <>
-                      ΓÇó Share this link with friends to earn points on their ramp volume.
+                      &bull; Share this link with friends to earn points on their ramp volume.
                       <br />
-                      ΓÇó <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
+                      &bull; <span style={{ color: 'var(--cyan, #22d3ee)' }}>Tip:</span> Create a Fiat Tag in your Wallet Menu to turn this into a short custom branded link (e.g. fiatwallet.app/?ref=yourname).
                     </>
                   )}
                 </div>

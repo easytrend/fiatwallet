@@ -1,5 +1,5 @@
 ﻿/**
- * api/leaderboard.js ΓÇö Vercel Serverless Function
+ * api/leaderboard.js — Vercel Serverless Function
  *
  * FiatWallet Points & Volume Leaderboard Endpoint
  *
@@ -153,7 +153,7 @@ export default async function handler(req, res) {
         }
       }
     } catch (e) {
-      // Soft fail ΓÇö do not block leaderboard if RPC has a momentary hiccup
+      // Soft fail — do not block leaderboard if RPC has a momentary hiccup
     }
 
     // Attempt 1: If timeframe is 'all', try reading from public.leaderboard_view
