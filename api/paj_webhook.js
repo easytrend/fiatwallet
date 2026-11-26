@@ -181,6 +181,87 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // ── Action: test_alert ─────────────────────────────────────────────────────
+  if (req.query?.action === 'test_alert' || req.url?.includes('test_alert')) {
+    const hasToken = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+    const hasChatId = Boolean(process.env.TELEGRAM_CHAT_ID);
+
+    if (!hasToken || !hasChatId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Telegram environment variables missing in Vercel.',
+        details: {
+          TELEGRAM_BOT_TOKEN: hasToken ? 'Configured' : 'MISSING',
+          TELEGRAM_CHAT_ID: hasChatId ? 'Configured' : 'MISSING',
+        },
+        hint: 'After adding them in Vercel Project Settings, you must Redeploy your latest deployment for them to take effect.'
+      });
+    }
+
+    try {
+      const sent = await sendTelegramAlert({
+        level: 'SUCCESS',
+        title: 'Telegram Alert System Online',
+        source: 'Fiatwallet Health Check',
+        message: 'Your Fiatwallet monitoring bot is connected and ready to send real-time alerts!',
+        details: {
+          status: 'Online & Actively Monitoring',
+          time: new Date().toUTCString(),
+        }
+      });
+
+      if (sent) {
+        return res.status(200).json({
+          success: true,
+          message: 'Test message sent! Check your Telegram app for the notification.'
+        });
+      } else {
+        return res.status(500).json({
+          success: false,
+          error: 'Telegram API rejected the request. Please verify your token and chat ID.'
+        });
+      }
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // ── Action: report_error ───────────────────────────────────────────────────
+  if (req.query?.action === 'report_error' || req.url?.includes('report_error')) {
+    try {
+      let body = req.body;
+      if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch (_) {}
+      }
+
+      const { message, stack, url, wallet, component, fatal } = body || {};
+      const clientIp = req.headers['cf-connecting-ip'] || 
+                       req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+                       req.socket?.remoteAddress;
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+
+      await sendTelegramAlert({
+        level: fatal ? 'CRITICAL' : 'WARNING',
+        title: fatal ? 'Frontend Crash (White-Screen)' : 'Frontend Runtime Error',
+        source: 'Fiatwallet App (Client)',
+        message: message || 'Unspecified client error',
+        details: {
+          page: url || 'N/A',
+          component: component || 'React Root',
+          wallet: wallet || 'Not Connected',
+          ip: clientIp || 'N/A',
+          userAgent: userAgent.slice(0, 80),
+          stackTrace: stack ? stack.slice(0, 300) : 'None',
+        },
+      });
+
+      return res.status(200).json({ reported: true });
+    } catch (err) {
+      console.warn('[report_error] Exception handling report:', err.message);
+      return res.status(200).json({ reported: false });
+    }
+  }
+
   if (req.method === 'GET') {
     return res.status(200).json({ status: 'active', endpoint: 'paj_webhook' });
   }
@@ -189,6 +270,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  let orderId = 'Unknown';
   try {
     let payload = req.body;
     if (typeof payload === 'string') {
@@ -206,7 +288,7 @@ export default async function handler(req, res) {
     }
 
     // PajCash may supply the order id under id, orderId, or order_id
-    const orderId = String(payload.id || payload.orderId || payload.order_id || '').trim();
+    orderId = String(payload.id || payload.orderId || payload.order_id || '').trim();
     if (!orderId) {
       console.warn('[paj_webhook] Received webhook with no orderId:', payload);
       return res.status(400).json({ error: 'Missing orderId' });

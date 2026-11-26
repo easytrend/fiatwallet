@@ -6,6 +6,8 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/api/webhook", "destination": "/api/paj_webhook" },
-    { "source": "/api/leaderboard_claim", "destination": "/api/leaderboard?action=claim" }
+    { "source": "/api/leaderboard_claim", "destination": "/api/leaderboard?action=claim" },
+    { "source": "/api/test_alert", "destination": "/api/paj_webhook?action=test_alert" },
+    { "source": "/api/report_error", "destination": "/api/paj_webhook?action=report_error" }
   ]
 }
