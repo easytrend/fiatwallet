@@ -419,6 +419,88 @@
       border-bottom: none;
     }
 
+    
+    /* ── Team Grid & Cards ── */
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin: 16px 0 24px;
+    }
+
+    .team-card {
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .team-avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #a3e635 0%, #4ade80 100%);
+      color: #070d18;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-heading);
+      font-weight: 800;
+      font-size: 17px;
+      flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(163, 230, 53, 0.2);
+    }
+
+    .team-info {
+      min-width: 0;
+    }
+
+    .team-name {
+      font-family: var(--font-heading);
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.3;
+    }
+
+    .team-role {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-top: 2px;
+      margin-bottom: 6px;
+    }
+
+    .team-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transition: all 0.15s ease;
+    }
+
+    .team-link:hover {
+      color: var(--accent);
+      border-color: rgba(163, 230, 53, 0.3);
+    }
+
+    .team-bio {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.45;
+      margin-top: 8px;
+    }
+
     .table-hint {
       font-size: 10px;
       color: var(--text-dim);
@@ -609,6 +691,30 @@
         background: #f3f4f6 !important;
         color: #111827 !important;
         border: 1px solid #e5e7eb !important;
+      }
+
+      
+      .team-card {
+        background: #f9fafb !important;
+        border: 1px solid #e5e7eb !important;
+      }
+      .team-avatar {
+        background: #e5e7eb !important;
+        color: #111827 !important;
+      }
+      .team-name {
+        color: #111827 !important;
+      }
+      .team-role {
+        color: #15803d !important;
+      }
+      .team-link {
+        color: #374151 !important;
+        background: #ffffff !important;
+        border: 1px solid #d1d5db !important;
+      }
+      .team-bio {
+        color: #4b5563 !important;
       }
 
       @page {
@@ -830,6 +936,23 @@ flowchart TD
       <!-- Section 7: Team & The Ask -->
       <section>
         <h2>7. The Team &amp; The Ask</h2>
+        
+        <h3>Founding Leadership</h3>
+        <div class="team-grid">
+          <div class="team-card">
+            <div class="team-avatar">AO</div>
+            <div class="team-info">
+              <div class="team-name">Augustine Onimisi (easytrend)</div>
+              <div class="team-role">Founder &amp; Lead Architect</div>
+              <a href="https://x.com/easytrend_" target="_blank" rel="noopener" class="team-link">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                @easytrend_
+              </a>
+              <div class="team-bio">Leading product architecture, high-throughput Solana relayer infrastructure, and compliant fintech settlement rails across emerging markets.</div>
+            </div>
+          </div>
+        </div>
+
         <h3>Core Competencies</h3>
         <p>
           Founded by blockchain engineers and fintech operators with deep domain expertise in high-throughput Solana infrastructure, Nigerian NIP interbank clearing, and enterprise cryptographic security.
