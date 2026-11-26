@@ -18,36 +18,24 @@ By unifying **institutional-grade identity compliance (BVN / NIN verification)**
 
 ## 2. Key Product Architecture
 
-```
-                                  +------------------------------------+
-                                  |            FiatWallet UI           |
-                                  |  (Connected Wallet or Guest Mode)  |
-                                  +-----------------+------------------+
-                                                    |
-                 +----------------------------------+----------------------------------+
-                 |                                  |                                  |
-                 v                                  v                                  v
-      +--------------------+             +--------------------+             +--------------------+
-      |    Fiat P2P Ramp   |             | Cross-Chain Bridge |             | Solana DeFi & MWA  |
-      | (PajCash Gateway)  |             |   (NEAR Intents)   |             | (Jupiter, Accounts)|
-      +----------+---------+             +----------+---------+             +----------+---------+
-                 |                                  |                                  |
-                 v                                  v                                  v
-+------------------------------------------------------------------------------------------------+
-|                               Vercel Serverless Functions (`api/`)                             |
-|  • relay_onramp_fee.js (Fee forwarder)               • relay_bridge.js (Deposit forwarder)     |
-|  • relay.js (Gasless offramp relayer)                • relay_swap.js (Jupiter swap proxy)      |
-|  • paj_webhook.js (Payment status listener)          • leaderboard.js (Weekly rewards & claims)|
-|  • _compliance_blacklist.js (Anti-fraud guard)       • rpc.js (Multi-provider resilient RPC)  |
-+-----------------------------------------------+------------------------------------------------+
-                                                |
-                 +------------------------------+------------------------------+
-                 |                                                             |
-                 v                                                             v
-      +--------------------+                                        +--------------------+
-      |  Supabase Database |                                        |   Solana Mainnet   |
-      | (Postgres RLS, Tx) |                                        |  (Onchain Delivery)|
-      +--------------------+                                        +--------------------+
+```mermaid
+flowchart TD
+    subgraph Users ["User Experience Layer"]
+        A["Everyday Consumer / Trader"] --> B["$FiatTag Handles & Camera OCR"]
+        B --> C["Gasless Onboarding (Connect, Create, Import, Guest)"]
+    end
+
+    subgraph Rails ["Core Settlement & Bridge Engine"]
+        E["Bitcoin / Tron / EVM Deposits"] --> I["NEAR Intents Bridge"]
+        I --> D["FiatWallet P2P Gateway (Sub-45s Settlement)"]
+        C --> D
+    end
+
+    subgraph Security ["Compliance & Execution"]
+        D --> F["Licensed Bank Sync + BVN/NIN Identity Verification"]
+        D --> G["Solana Relayer (Gas Sponsored)"]
+        G --> H["Non-Custodial On-Chain Delivery (Solscan Verified)"]
+    end
 ```
 
 ### Core Innovations:
@@ -128,6 +116,9 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 * **Augustine Onimisi (easytrend)** — Founder & Lead Architect  
   **X (Twitter):** [@easytrend_](https://x.com/easytrend_)  
   *Leading product architecture, high-throughput Solana relayer infrastructure, and compliant fintech settlement rails across emerging markets.*
+* **Core Contributor** — Engineering & Infrastructure *(Announcing Soon)*
+* **Core Contributor** — Compliance & Banking Rails *(Announcing Soon)*
+* **Core Contributor** — Product & Ecosystem Growth *(Announcing Soon)*
 
 ### Core Capabilities
 * **High-Throughput Solana Infrastructure:** Low-latency RPC routing, custom transaction relayers, and serialized token forwards.
