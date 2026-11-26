@@ -544,6 +544,36 @@
       border: 1px dashed rgba(255, 255, 255, 0.18);
     }
 
+    .team-avatar.avatar-blue {
+      background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%);
+      color: #070d18;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
+      border: 1.5px solid rgba(56, 189, 248, 0.35);
+    }
+
+    .team-avatar.avatar-purple {
+      background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%);
+      color: #070d18;
+      box-shadow: 0 4px 12px rgba(192, 132, 252, 0.2);
+      border: 1.5px solid rgba(192, 132, 252, 0.35);
+    }
+
+    .team-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: #93c5fd;
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .team-tag.tag-purple {
+      color: #e9d5ff;
+      background: rgba(168, 85, 247, 0.08);
+      border-color: rgba(168, 85, 247, 0.2);
+    }
+
     .team-status-tag {
       font-family: var(--font-mono);
       font-size: 10px;
@@ -1028,6 +1058,34 @@ flowchart TD
             <div class="team-bio">Leading product architecture, high-throughput Solana relayer infrastructure, and compliant fintech settlement rails across emerging markets.</div>
           </div>
 
+          <div class="team-card">
+            <div class="team-card-top">
+              <div class="team-avatar avatar-blue">MO</div>
+              <div class="team-info">
+                <div class="team-name">Micheal Olatunde</div>
+                <div class="team-role">Operations &amp; Data Analyst</div>
+                <div class="team-badge-row">
+                  <span class="team-tag">Operations &amp; Analytics</span>
+                </div>
+              </div>
+            </div>
+            <div class="team-bio">Overseeing daily fiat-to-crypto settlement operations, liquidity tracking, interbank transaction reconciliation, and user data analytics.</div>
+          </div>
+
+          <div class="team-card">
+            <div class="team-card-top">
+              <div class="team-avatar avatar-purple">FM</div>
+              <div class="team-info">
+                <div class="team-name">Favour Michael</div>
+                <div class="team-role">Social Media Manager</div>
+                <div class="team-badge-row">
+                  <span class="team-tag tag-purple">Community &amp; Growth</span>
+                </div>
+              </div>
+            </div>
+            <div class="team-bio">Managing multi-channel social growth, Web3 brand narrative, community engagement, and digital education across consumer touchpoints.</div>
+          </div>
+
           <div class="team-card placeholder">
             <div class="team-card-top">
               <div class="team-avatar placeholder">ENG</div>
@@ -1040,34 +1098,6 @@ flowchart TD
               </div>
             </div>
             <div class="team-bio">Focusing on high-concurrency RPC orchestration, gasless relayer load-balancing, and smart wallet cryptographic signing pipelines.</div>
-          </div>
-
-          <div class="team-card placeholder">
-            <div class="team-card-top">
-              <div class="team-avatar placeholder">CMP</div>
-              <div class="team-info">
-                <div class="team-name">Core Contributor</div>
-                <div class="team-role">Compliance &amp; Banking Rails</div>
-                <div class="team-badge-row">
-                  <span class="team-status-tag">Announcing Soon</span>
-                </div>
-              </div>
-            </div>
-            <div class="team-bio">Leading regulatory compliance, Tier-1 interbank clearing integration, and automated KYC/AML verification protocols.</div>
-          </div>
-
-          <div class="team-card placeholder">
-            <div class="team-card-top">
-              <div class="team-avatar placeholder">GRW</div>
-              <div class="team-info">
-                <div class="team-name">Core Contributor</div>
-                <div class="team-role">Product &amp; Ecosystem Growth</div>
-                <div class="team-badge-row">
-                  <span class="team-status-tag">Announcing Soon</span>
-                </div>
-              </div>
-            </div>
-            <div class="team-bio">Driving consumer onboarding, cross-chain liquidity partnerships, and regional developer merchant adoption across Africa.</div>
           </div>
         </div>
 

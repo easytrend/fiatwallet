@@ -122,9 +122,11 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 
 <div style="clear: both; margin-bottom: 12px;"></div>
 
+* **Micheal Olatunde** — Operations & Data Analyst  
+  *Overseeing daily fiat-to-crypto settlement operations, liquidity tracking, interbank transaction reconciliation, and user data analytics.*
+* **Favour Michael** — Social Media Manager  
+  *Managing multi-channel social growth, Web3 brand narrative, community engagement, and digital education across consumer touchpoints.*
 * **Core Contributor** — Engineering & Infrastructure *(Announcing Soon)*
-* **Core Contributor** — Compliance & Banking Rails *(Announcing Soon)*
-* **Core Contributor** — Product & Ecosystem Growth *(Announcing Soon)*
 
 ### Core Capabilities
 * **High-Throughput Solana Infrastructure:** Low-latency RPC routing, custom transaction relayers, and serialized token forwards.
