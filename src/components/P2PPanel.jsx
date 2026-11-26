@@ -61,6 +61,13 @@ export function getRelayEndpoint(path) {
   return path;
 }
 
+const maskSensitive = (val, visibleCount = 4) => {
+  if (!val) return '';
+  const str = String(val).trim();
+  if (str.length <= visibleCount) return '••••••';
+  return '••••••' + str.slice(-visibleCount);
+};
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -577,6 +584,30 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [tagModalSaving, setTagModalSaving] = useState(false);
   const [tagModalError, setTagModalError] = useState(null);
   const [kycSyncState, setKycSyncState] = useState({ syncing: false, synced: false, error: '' });
+
+  const hasBvnNinError = Boolean(
+    userTagData &&
+    userTagData.bvn &&
+    userTagData.nin &&
+    userTagData.bvn.trim() === userTagData.nin.trim()
+  );
+
+  const isMissingKyc = Boolean(
+    userTagData &&
+    (!userTagData.bvn || !userTagData.nin || !userTagData.phone_number)
+  );
+
+  const isAccountLocked = Boolean(
+    userTagData &&
+    userTagData.account_number &&
+    userTagData.tag_name
+  );
+
+  const isTagLocked = Boolean(
+    isAccountLocked &&
+    !hasBvnNinError &&
+    !isMissingKyc
+  );
 
   const [recipientTagInput, setRecipientTagInput] = useState('');
   const [resolvedTagData, setResolvedTagData] = useState(null);
@@ -1994,6 +2025,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
   // ── Save user's Fiat Tag to Supabase ─────────────────────────────────────
   const handleSaveFiatTag = useCallback(async () => {
+    if (isTagLocked) {
+      setTagModalError('Your bank details and Fiat Tag are locked for security. Please contact support@fiatwallet.app to request any changes.');
+      return;
+    }
+
     const effectiveWallet = (publicKey ? publicKey.toBase58() : manualTagModalWallet.trim()) || manualWalletAddress;
     if (!effectiveWallet) {
       setTagModalError('Please enter your Solana wallet address.');
@@ -2003,15 +2039,21 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setTagModalError('Please enter a valid Solana wallet address (32–44 characters).');
       return;
     }
-    if (!tagModalInput || tagModalInput.trim().length < 3) {
+
+    const effectiveTagInput = isAccountLocked ? (userTagData?.tag_name || tagModalInput) : tagModalInput;
+    const effectiveBank = isAccountLocked ? (userTagData?.bank_name || tagModalBank) : tagModalBank;
+    const cleanAcct = isAccountLocked 
+      ? String(userTagData?.account_number || '').replace(/\D/g, '').trim()
+      : tagModalAcctNumber.replace(/\D/g, '').trim();
+
+    if (!effectiveTagInput || effectiveTagInput.trim().length < 3) {
       setTagModalError('Please enter a valid tag name (minimum 3 characters).');
       return;
     }
-    if (tagModalBank === 'Choose Bank') {
+    if (effectiveBank === 'Choose Bank') {
       setTagModalError('Please select a bank.');
       return;
     }
-    const cleanAcct = tagModalAcctNumber.replace(/\D/g, '').trim();
     if (cleanAcct.length !== 10) {
       setTagModalError('Please enter a valid 10-digit account number.');
       return;
@@ -2043,9 +2085,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setTagModalSaving(true);
     setTagModalError(null);
     try {
-      const bankObj = findMatchingBankObj(apiBanks, tagModalBank);
+      const bankObj = findMatchingBankObj(apiBanks, effectiveBank);
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
-      const canonicalBankName = bankObj ? getBankNameString(bankObj) : tagModalBank;
+      const canonicalBankName = bankObj ? getBankNameString(bankObj) : effectiveBank;
       const pajCountry = mapToPajCountry(selectedCountry?.code || selectedCountry?.currency || 'NG');
 
       // Validate & sync BVN/NIN with PajCash BEFORE locking in Supabase if OTP session is active
@@ -2069,11 +2111,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
       const registered = await registerFiatTag({
         walletAddress: effectiveWallet,
-        tagName: tagModalInput,
+        tagName: effectiveTagInput,
         bankName: canonicalBankName,
         bankCode,
         accountNumber: cleanAcct,
-        accountName: tagModalAcctName || 'Account Holder',
+        accountName: isAccountLocked ? (userTagData?.account_name || tagModalAcctName || 'Account Holder') : (tagModalAcctName || 'Account Holder'),
         bvn: cleanBvn,
         phoneNumber: cleanPhone,
         nin: cleanNin,
@@ -2115,7 +2157,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     } finally {
       setTagModalSaving(false);
     }
-  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, sessionEmail, emailInput, selectedCountry, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks, clearExpiredKycSession, applyKycSyncResult]);
+  }, [publicKey, manualTagModalWallet, manualWalletAddress, sessionToken, sessionEmail, emailInput, selectedCountry, tagModalInput, tagModalBank, tagModalAcctNumber, tagModalAcctName, tagModalPhone, tagModalBvn, tagModalNin, apiBanks, clearExpiredKycSession, applyKycSyncResult, isTagLocked, isAccountLocked, userTagData]);
 
   // ── Routing animation ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -6643,16 +6685,38 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'white', marginBottom: '6px' }}>
-                {userTagData
+                {isTagLocked
+                  ? '🔒 Your Verified Fiat Tag'
+                  : userTagData
                   ? (userTagData.bvn && userTagData.nin && userTagData.phone_number ? 'Edit Your Fiat Tag' : 'Complete Verification')
                   : 'Create & Link Fiat Tag'}
               </h3>
               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', margin: 0, lineHeight: '1.4' }}>
-                {userTagData && (!userTagData.bvn || !userTagData.nin || !userTagData.phone_number)
+                {isTagLocked
+                  ? 'Your bank account and Fiat Tag are locked and permanently bound to your wallet.'
+                  : userTagData && (!userTagData.bvn || !userTagData.nin || !userTagData.phone_number)
                   ? 'Please complete your BVN, Phone Number, and NIN to verify your profile and unlock buying crypto.'
                   : 'Link your bank account to a unique Fiat Tag with BVN and NIN verification.'}
               </p>
             </div>
+
+            {isTagLocked && (
+              <div style={{
+                background: 'rgba(163, 230, 53, 0.08)',
+                border: '1px solid rgba(163, 230, 53, 0.25)',
+                borderRadius: '12px',
+                padding: '10px 14px',
+                marginBottom: '16px',
+                fontSize: '11.5px',
+                color: 'rgba(255, 255, 255, 0.8)',
+                lineHeight: '1.4',
+              }}>
+                <div style={{ fontWeight: '700', color: 'var(--lime)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🔒</span> Details Locked for Security
+                </div>
+                Your bank details and Fiat Tag are locked to prevent unauthorized tampering. Another wallet or email cannot reuse or modify any of these details. If you need corrections, please contact <a href="mailto:support@fiatwallet.app" style={{ color: 'var(--lime)', textDecoration: 'underline' }}>support@fiatwallet.app</a>.
+              </div>
+            )}
 
             {userTagData && (userTagData.bvn || userTagData.nin) && userTagData.bvn !== userTagData.nin && (
               <div style={{
@@ -6822,7 +6886,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     value={manualTagModalWallet}
                     onChange={e => setManualTagModalWallet(e.target.value.trim())}
                     placeholder="Enter Solana wallet address (e.g. 7xK...)"
-                    style={{ fontSize: '13px', fontWeight: '500', fontFamily: 'monospace' }}
+                    disabled={isTagLocked || isAccountLocked}
+                    style={{ fontSize: '13px', fontWeight: '500', fontFamily: 'monospace', opacity: (isTagLocked || isAccountLocked) ? 0.75 : 1 }}
                   />
                 </div>
                 <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>
@@ -6844,7 +6909,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     setTagModalInput(val ? `$${val}` : '');
                   }}
                   placeholder="yourtag"
-                  style={{ fontSize: '14px', fontWeight: '600', flex: 1 }}
+                  disabled={isTagLocked || isAccountLocked}
+                  style={{ fontSize: '14px', fontWeight: '600', flex: 1, opacity: (isTagLocked || isAccountLocked) ? 0.75 : 1 }}
                 />
               </div>
             </div>
@@ -6854,13 +6920,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               <div className="field-label">Bank</div>
               <div
                 className="input-wrap"
-                onClick={() => setBankOpen(v => !v)}
-                style={{ cursor: 'pointer', justifyContent: 'space-between' }}
+                onClick={(isTagLocked || isAccountLocked) ? undefined : () => setBankOpen(v => !v)}
+                style={{ cursor: (isTagLocked || isAccountLocked) ? 'not-allowed' : 'pointer', opacity: (isTagLocked || isAccountLocked) ? 0.75 : 1, justifyContent: 'space-between' }}
               >
                 <span>{tagModalBank}</span>
                 <span style={{ fontSize: '11px', color: 'var(--text3)' }}>▼</span>
               </div>
-              {bankOpen && (
+              {bankOpen && !(isTagLocked || isAccountLocked) && (
                 <div className="drop-menu" style={{ left: 0, right: 0, width: '100%', zIndex: 1000 }} onClick={e => e.stopPropagation()}>
                   <div style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
                     <input
@@ -6895,10 +6961,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 <input
                   type="text"
                   maxLength={10}
-                  value={tagModalAcctNumber}
+                  value={(isTagLocked || isAccountLocked) ? maskSensitive(tagModalAcctNumber) : tagModalAcctNumber}
                   onChange={e => setTagModalAcctNumber(e.target.value.replace(/\D/g, ''))}
                   placeholder="0000000000"
-                  style={{ fontSize: '14px', fontWeight: '600' }}
+                  disabled={isTagLocked || isAccountLocked}
+                  style={{ fontSize: '14px', fontWeight: '600', opacity: (isTagLocked || isAccountLocked) ? 0.75 : 1 }}
                 />
               </div>
               <div style={{ marginTop: '4px', minHeight: '14px', fontSize: '11px', color: 'var(--lime)', fontWeight: 'bold' }}>
@@ -6916,10 +6983,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               <div className="input-wrap">
                 <input
                   type="tel"
-                  value={tagModalPhone}
+                  value={isTagLocked ? maskSensitive(tagModalPhone) : tagModalPhone}
                   onChange={e => setTagModalPhone(e.target.value)}
                   placeholder="e.g. 08012345678"
-                  style={{ fontSize: '14px', fontWeight: '500' }}
+                  disabled={isTagLocked}
+                  style={{ fontSize: '14px', fontWeight: '500', opacity: isTagLocked ? 0.75 : 1 }}
                 />
               </div>
             </div>
@@ -6931,10 +6999,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 <input
                   type="text"
                   maxLength={11}
-                  value={tagModalBvn}
+                  value={isTagLocked ? maskSensitive(tagModalBvn) : tagModalBvn}
                   onChange={e => setTagModalBvn(e.target.value.replace(/\D/g, ''))}
                   placeholder="11-digit BVN"
-                  style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+                  disabled={isTagLocked}
+                  style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px', opacity: isTagLocked ? 0.75 : 1 }}
                 />
               </div>
               <div style={{ marginTop: '4px', fontSize: '10.5px', color: 'rgba(255,255,255,0.45)' }}>
@@ -6949,23 +7018,54 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 <input
                   type="text"
                   maxLength={11}
-                  value={tagModalNin}
+                  value={isTagLocked ? maskSensitive(tagModalNin) : tagModalNin}
                   onChange={e => setTagModalNin(e.target.value.replace(/\D/g, ''))}
                   placeholder="11-digit NIN"
-                  style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px' }}
+                  disabled={isTagLocked}
+                  style={{ fontSize: '14px', fontWeight: '500', letterSpacing: '1px', opacity: isTagLocked ? 0.75 : 1 }}
                 />
               </div>
             </div>
 
             {/* Action Button */}
-            <button
-              className="send-btn"
-              onClick={handleSaveFiatTag}
-              disabled={tagModalSaving || tagModalResolving}
-              style={{ marginTop: '10px' }}
-            >
-              {tagModalSaving ? 'Saving...' : (userTagData ? (userTagData.bvn ? 'Update Fiat Tag' : 'Complete Verification') : 'Create Fiat Tag')}
-            </button>
+            {isTagLocked ? (
+              <button
+                className="send-btn"
+                disabled={true}
+                style={{
+                  marginTop: '10px',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  color: 'rgba(255, 255, 255, 0.45)',
+                  cursor: 'not-allowed',
+                }}
+              >
+                🔒 Bank Details & Fiat Tag Locked
+              </button>
+            ) : hasBvnNinError ? (
+              <button
+                className="send-btn"
+                onClick={handleSaveFiatTag}
+                disabled={tagModalSaving || tagModalResolving}
+                style={{
+                  marginTop: '10px',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  color: '#000',
+                  fontWeight: '700',
+                }}
+              >
+                {tagModalSaving ? 'Saving Corrections...' : 'Correct & Secure Identity Details'}
+              </button>
+            ) : (
+              <button
+                className="send-btn"
+                onClick={handleSaveFiatTag}
+                disabled={tagModalSaving || tagModalResolving}
+                style={{ marginTop: '10px' }}
+              >
+                {tagModalSaving ? 'Saving...' : (isMissingKyc ? 'Complete Verification' : (userTagData ? 'Update Fiat Tag' : 'Create Fiat Tag'))}
+              </button>
+            )}
           </div>
         </div>
       )}

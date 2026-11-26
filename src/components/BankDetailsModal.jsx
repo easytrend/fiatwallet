@@ -199,10 +199,15 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     (!userTagData.bvn || !userTagData.nin || !userTagData.phone_number)
   );
 
-  // Lock account details only when bank account AND complete distinct KYC details are saved
-  const isLocked = Boolean(
+  const isAccountLocked = Boolean(
     userTagData &&
     userTagData.account_number &&
+    userTagData.tag_name
+  );
+
+  // Lock account details only when bank account AND complete distinct KYC details are saved
+  const isLocked = Boolean(
+    isAccountLocked &&
     !hasBvnNinError &&
     !isMissingKyc
   );
@@ -1131,8 +1136,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                 setTagModalInput(val ? `$${val}` : '');
               }}
               placeholder="yourtag"
-              disabled={isLocked}
-              style={{ fontSize: '14px', fontWeight: '600', flex: 1, opacity: isLocked ? 0.75 : 1 }}
+              disabled={isLocked || isAccountLocked}
+              style={{ fontSize: '14px', fontWeight: '600', flex: 1, opacity: (isLocked || isAccountLocked) ? 0.75 : 1 }}
             />
           </div>
         </div>
@@ -1142,13 +1147,13 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           <div className="field-label">Bank</div>
           <div
             className="input-wrap"
-            onClick={isLocked ? undefined : () => setBankOpen(v => !v)}
-            style={{ cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.75 : 1, justifyContent: 'space-between' }}
+            onClick={(isLocked || isAccountLocked) ? undefined : () => setBankOpen(v => !v)}
+            style={{ cursor: (isLocked || isAccountLocked) ? 'not-allowed' : 'pointer', opacity: (isLocked || isAccountLocked) ? 0.75 : 1, justifyContent: 'space-between' }}
           >
             <span>{tagModalBank}</span>
             <span style={{ fontSize: '11px', color: 'var(--text3)' }}>▼</span>
           </div>
-          {bankOpen && (
+          {bankOpen && !(isLocked || isAccountLocked) && (
             <div className="drop-menu" style={{ left: 0, right: 0, width: '100%', zIndex: 1000 }} onClick={e => e.stopPropagation()}>
               <div style={{ padding: '8px', borderBottom: '1px solid var(--border)' }}>
                 <input
@@ -1195,11 +1200,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             <input
               type="text"
               maxLength={10}
-              value={isLocked ? maskSensitive(tagModalAcctNumber) : tagModalAcctNumber}
+              value={(isLocked || isAccountLocked) ? maskSensitive(tagModalAcctNumber) : tagModalAcctNumber}
               onChange={e => setTagModalAcctNumber(e.target.value.replace(/\D/g, ''))}
               placeholder="0000000000"
-              disabled={isLocked}
-              style={{ fontSize: '14px', fontWeight: '600', opacity: isLocked ? 0.75 : 1 }}
+              disabled={isLocked || isAccountLocked}
+              style={{ fontSize: '14px', fontWeight: '600', opacity: (isLocked || isAccountLocked) ? 0.75 : 1 }}
             />
           </div>
           <div style={{ marginTop: '4px', minHeight: '14px', fontSize: '11px', color: 'var(--lime)', fontWeight: 'bold' }}>

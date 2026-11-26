@@ -189,3 +189,40 @@ GRANT EXECUTE ON FUNCTION public.get_paj_session(text) TO authenticated;
 -- Revoke broad SELECT on paj_sessions from anon (Stops all user session and email scraping)
 REVOKE SELECT ON TABLE public.paj_sessions FROM anon;
 DROP POLICY IF EXISTS "Allow anon select paj_sessions" ON public.paj_sessions;
+
+
+-- ── 6. LOCK FIAT TAGS (PREVENT TAMPERING & HIJACKING) ────────────────────────
+CREATE OR REPLACE FUNCTION public.protect_fiat_tags_lock()
+RETURNS trigger AS $$
+DECLARE
+  req_role text;
+BEGIN
+  BEGIN
+    req_role := current_setting('request.jwt.claim.role', true);
+  EXCEPTION WHEN OTHERS THEN
+    req_role := NULL;
+  END;
+
+  -- Prevent altering wallet_address or tag_name on an existing tag
+  IF OLD.wallet_address IS DISTINCT FROM NEW.wallet_address THEN
+    RAISE EXCEPTION 'Fiat Tag wallet address is permanently bound and cannot be changed.';
+  END IF;
+  
+  IF OLD.tag_name IS DISTINCT FROM NEW.tag_name THEN
+    RAISE EXCEPTION 'Fiat Tag name is permanently locked and cannot be changed.';
+  END IF;
+
+  -- If bank account was already set, prevent altering it from client/anon
+  IF req_role = 'anon' AND OLD.account_number IS NOT NULL AND OLD.account_number IS DISTINCT FROM NEW.account_number THEN
+    RAISE EXCEPTION 'Bank details are locked for security. Contact support to request modifications.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_protect_fiat_tags_lock ON public.fiat_tags;
+CREATE TRIGGER trg_protect_fiat_tags_lock
+  BEFORE UPDATE ON public.fiat_tags
+  FOR EACH ROW
+  EXECUTE FUNCTION public.protect_fiat_tags_lock();
