@@ -32,6 +32,12 @@ DELETE FROM public.paj_sessions
      OR wallet_address LIKE 'TEST%' 
      OR email LIKE '%@example.com';
 
+-- Force re-verification across all user accounts (including $ultradefi) and destroy old token strings
+UPDATE public.paj_sessions 
+  SET expires_at = now() - interval '1 hour',
+      session_token = 'EXPIRED_' || replace(gen_random_uuid()::text, '-', ''),
+      updated_at = now();
+
 -- Remove any probe transactions
 DELETE FROM public.p2p_transactions 
   WHERE order_id LIKE 'test_%' 
