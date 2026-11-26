@@ -211,6 +211,36 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing orderId' });
     }
 
+    const clientIp = req.headers['cf-connecting-ip'] ||
+      (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : '') ||
+      req.socket?.remoteAddress || '';
+    const userAgent = String(req.headers['user-agent'] || '');
+
+    // 1. Blacklist check on connecting client IP
+    if (clientIp) {
+      const ipCheck = isBlacklisted({ ip: clientIp });
+      if (ipCheck.blacklisted) {
+        console.warn(`[paj_webhook] Blocked webhook request from blacklisted IP ${clientIp}`);
+        return res.status(403).json({ error: 'Access denied: Blacklisted IP' });
+      }
+    }
+
+    // 2. Reject automated CLI User-Agents (curl, python, postman)
+    if (/^(curl|python|postman|insomnia|httpie)/i.test(userAgent.trim())) {
+      console.warn(`[paj_webhook] Blocked webhook request from unauthorized user-agent: ${userAgent} (IP: ${clientIp})`);
+      return res.status(403).json({ error: 'Automated CLI clients are not permitted' });
+    }
+
+    // 3. Webhook signature/secret verification if configured
+    const expectedSecret = process.env.PAJCASH_WEBHOOK_SECRET;
+    if (expectedSecret) {
+      const incomingSig = req.headers['x-webhook-signature'] || req.headers['authorization'];
+      if (!incomingSig || incomingSig.replace(/^Bearer\s+/i, '').trim() !== expectedSecret.trim()) {
+        console.warn(`[paj_webhook] Unauthorized webhook signature from IP ${clientIp}`);
+        return res.status(401).json({ error: 'Invalid webhook signature' });
+      }
+    }
+
     const rawStatus = String(payload.status || payload.state || '').toUpperCase().trim();
     const signature = payload.signature || payload.txHash || payload.tx_hash || payload.transactionHash || null;
 
@@ -226,6 +256,31 @@ export default async function handler(req, res) {
       supabaseStatus = 'INIT';
     } else if (['PAID', 'PENDING', 'PROCESSING', 'FORWARDING'].includes(rawStatus)) {
       supabaseStatus = 'PENDING';
+    }
+
+    // 4. PajCash Server-to-Server Verification
+    // STRICT ANTI-SPOOFING: Before accepting a 'COMPLETED' status, verify directly with PajCash API
+    const pajApiKey = process.env.VITE_PAJCASH_API_KEY || process.env.PAJCASH_API_KEY;
+    if (supabaseStatus === 'COMPLETED' && pajApiKey) {
+      try {
+        const verifyRes = await fetch(`https://api.paj.cash/pub/transactions/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${pajApiKey}` },
+        });
+        if (verifyRes.ok) {
+          const verifiedData = await verifyRes.json();
+          const remoteStatus = String(verifiedData?.status || '').toUpperCase();
+          const isRemoteCompleted = ['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE', 'SUCCESS', 'SETTLED', 'PAID_OUT'].includes(remoteStatus);
+          if (!isRemoteCompleted) {
+            console.warn(`[paj_webhook] Spoof attempt blocked: Webhook claimed COMPLETED for ${orderId}, but PajCash API status is "${remoteStatus}".`);
+            supabaseStatus = 'PENDING';
+          }
+        } else {
+          console.warn(`[paj_webhook] Could not verify order ${orderId} on PajCash API (HTTP ${verifyRes.status}). Rejecting COMPLETED transition.`);
+          supabaseStatus = 'PENDING';
+        }
+      } catch (err) {
+        console.warn(`[paj_webhook] PajCash API verification failed for ${orderId}:`, err.message);
+      }
     }
 
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;

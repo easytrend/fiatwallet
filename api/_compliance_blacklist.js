@@ -11,7 +11,12 @@ export const BLACKLISTED_EMAILS = [
   'dbyoutubefamily@gmail.com',
 ];
 
+export const BLACKLISTED_IPS = [
+  '159.195.249.251', // Attacker / probe VPS in Vienna, Austria
+];
+
 export const BLACKLISTED_WALLETS = [
+  '8YWmU7FNZJxREyioU36Tqga2UifeYNUJUe9GhbyV3njc', // Attacker / probe wallet used in onramp injection (Nov 25, 2026)
   '6obmHBMC5Qf2KrJmmVKjPZ8WY7Hq99wje3ZTwzuNqbDx',
   '95JKwZKEAgzj25USUFGJ7FgXT7fwu7H7mFS8a3BjvJRu',
   'GaZsMXHYSt9DMe5LQJr8DuBEmZpYMgXwkWuwwewkTe2x',
@@ -66,10 +71,21 @@ const BLACKLISTED_WALLETS_SET = new Set(
   BLACKLISTED_WALLETS.map(w => w.trim())
 );
 
+const BLACKLISTED_IPS_SET = new Set(
+  BLACKLISTED_IPS.map(ip => ip.trim())
+);
+
 /**
- * Checks if a given email or wallet address is flagged on the compliance blacklist.
+ * Checks if a given email, wallet address, or IP address is flagged on the compliance blacklist.
  */
-export function isBlacklisted({ email = '', walletAddress = '' } = {}) {
+export function isBlacklisted({ email = '', walletAddress = '', ip = '' } = {}) {
+  if (ip && typeof ip === 'string') {
+    const cleanIp = ip.trim();
+    if (BLACKLISTED_IPS_SET.has(cleanIp)) {
+      return { blacklisted: true, reason: `Blacklisted IP address: ${cleanIp}` };
+    }
+  }
+
   if (email) {
     const normalized = normalizeEmail(email);
     if (NORMALIZED_BLACKLISTED_EMAILS.has(normalized)) {
@@ -92,8 +108,8 @@ export function isBlacklisted({ email = '', walletAddress = '' } = {}) {
  * dynamic cross-referencing against database records (paj_sessions, p2p_transactions, fiat_tags)
  * to catch wallets associated with blacklisted emails (even if the user switches wallets).
  */
-export async function isBlacklistedEntityAsync({ email = '', walletAddress = '', supabase = null } = {}) {
-  const sync = isBlacklisted({ email, walletAddress });
+export async function isBlacklistedEntityAsync({ email = '', walletAddress = '', ip = '', supabase = null } = {}) {
+  const sync = isBlacklisted({ email, walletAddress, ip });
   if (sync.blacklisted) return sync;
 
   if (supabase && walletAddress) {

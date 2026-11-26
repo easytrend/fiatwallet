@@ -87,6 +87,15 @@ export function normalizeSupabaseStatus(rawStatus) {
 }
 
 /**
+ * Validates a base58 Solana public key.
+ */
+export function isValidSolanaAddress(addr) {
+  if (!addr || typeof addr !== 'string') return false;
+  const clean = addr.trim();
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
+}
+
+/**
  * Log a live P2P transaction (onramp or offramp) with full metadata.
  */
 export async function logP2PTransaction({
@@ -110,6 +119,18 @@ export async function logP2PTransaction({
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !orderId) return;
 
+  // Enforce valid Solana wallet address
+  if (userAddress && !isValidSolanaAddress(userAddress)) {
+    console.warn('[Supabase] logP2PTransaction rejected: invalid Solana userAddress:', userAddress);
+    return;
+  }
+
+  // Anti-tamper: Client-side calls can NEVER directly insert an onramp as COMPLETED or FORWARDED
+  let safeStatus = normalizeSupabaseStatus(status);
+  if (type === 'p2p_onramp' && (safeStatus === 'COMPLETED' || safeStatus === 'FORWARDED_SUCCESS')) {
+    safeStatus = 'INIT';
+  }
+
   const actualSignature = signature || `pending_${type}_${orderId}`;
   const storedReferrer = (typeof window !== 'undefined' && window.localStorage)
     ? (window.localStorage.getItem('fw_referrer') || null)
@@ -128,7 +149,7 @@ export async function logP2PTransaction({
     bank_name: bankName || null,
     account_number: accountNumber || null,
     account_name: accountName || null,
-    status: normalizeSupabaseStatus(status),
+    status: safeStatus,
     user_email: userEmail || null,
     deposit_address: depositAddress || null,
     recipient_tag: recipientTag || null,
@@ -638,6 +659,18 @@ export async function checkEmailWalletBinding(email, walletAddress) {
 export async function saveSession(walletAddress, email, token, expiryMs) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress || !token) return;
+
+  // Validate Solana wallet format
+  if (!isValidSolanaAddress(walletAddress)) {
+    console.warn('[Supabase] saveSession rejected: invalid Solana wallet address:', walletAddress);
+    return;
+  }
+
+  // Validate session token sanity
+  if (typeof token !== 'string' || token.trim().length < 15) {
+    console.warn('[Supabase] saveSession rejected: invalid or too short session token');
+    return;
+  }
 
   // Strict 1-to-1 Email to Wallet validation
   if (email && walletAddress) {
