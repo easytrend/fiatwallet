@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FiatWallet — Executive Brief & Strategic Whitepaper</title>
+  <meta name="description" content="Official Executive Overview & Strategic Whitepaper for FiatWallet — Compliant on-chain Solana P2P Gateway, Cross-Chain Bridge & Smart Wallet.">
+  <link rel="icon" type="image/png" href="/icon512.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #070d18;
+      --card-bg: #0d1726;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #a3e635;
+      --accent-soft: rgba(163, 230, 53, 0.12);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --border-line: rgba(255, 255, 255, 0.1);
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-heading: 'Space Grotesk', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      font-size: 15px;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Floating Action Bar */
+    .action-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(7, 13, 24, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-line);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .action-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: white;
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .action-logo img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #070d18;
+      border: none;
+      box-shadow: 0 4px 14px rgba(163, 230, 53, 0.25);
+    }
+
+    .btn-primary:hover {
+      background: #bef264;
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.05);
+      color: #e5e7eb;
+      border: 1px solid var(--border-line);
+    }
+
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Container */
+    .document-wrapper {
+      max-width: 860px;
+      margin: 40px auto 80px;
+      padding: 0 24px;
+    }
+
+    .doc-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 56px 48px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Document Header */
+    .doc-header {
+      border-bottom: 1px solid var(--border-line);
+      padding-bottom: 32px;
+      margin-bottom: 36px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid rgba(163, 230, 53, 0.25);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: var(--font-heading);
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #ffffff;
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      padding-top: 16px;
+      border-top: 1px dashed var(--border-line);
+      font-size: 12px;
+    }
+
+    .meta-item span {
+      display: block;
+      color: var(--text-dim);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+
+    .meta-item a, .meta-item strong {
+      color: #f3f4f6;
+      text-decoration: none;
+      font-family: var(--font-mono);
+    }
+
+    .meta-item a:hover {
+      color: var(--accent);
+    }
+
+    /* Typography & Sections */
+    h2 {
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 40px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-line);
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3 {
+      font-family: var(--font-heading);
+      font-size: 16px;
+      font-weight: 600;
+      color: #e5e7eb;
+      margin: 24px 0 10px;
+    }
+
+    p {
+      color: #d1d5db;
+      margin-bottom: 16px;
+    }
+
+    ul, ol {
+      margin-left: 20px;
+      margin-bottom: 20px;
+      color: #d1d5db;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    li strong {
+      color: #ffffff;
+    }
+
+    /* Callout & Metrics Boxes */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .metric-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-line);
+      border-radius: 16px;
+      padding: 20px 16px;
+      text-align: center;
+    }
+
+    .metric-val {
+      font-family: var(--font-heading);
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .metric-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 24px 0;
+      font-size: 13px;
+      border: 1px solid var(--border-line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 700;
+      color: #ffffff;
+      border-bottom: 1px solid var(--border-line);
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #d1d5db;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Print Styles (Clean White Paper Layout) */
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #111827 !important;
+        font-size: 11pt;
+        line-height: 1.5;
+      }
+
+      .action-bar {
+        display: none !important;
+      }
+
+      .document-wrapper {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .doc-card {
+        background: #ffffff !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }
+
+      h1 {
+        color: #111827 !important;
+        font-size: 22pt;
+      }
+
+      h2 {
+        color: #111827 !important;
+        font-size: 14pt;
+        border-bottom: 1px solid #e5e7eb !important;
+        margin-top: 24pt;
+        page-break-after: avoid;
+      }
+
+      h3 {
+        color: #1f2937 !important;
+        font-size: 12pt;
+        page-break-after: avoid;
+      }
+
+      p, li, td {
+        color: #374151 !important;
+      }
+
+      .badge {
+        background: #f3f4f6 !important;
+        color: #111827 !important;
+        border: 1px solid #d1d5db !important;
+      }
+
+      .metric-box {
+        background: #f9fafb !important;
+        border: 1px solid #e5e7eb !important;
+      }
+
+      .metric-val {
+        color: #15803d !important;
+      }
+
+      table {
+        border: 1px solid #e5e7eb !important;
+        page-break-inside: avoid;
+      }
+
+      th {
+        background: #f3f4f6 !important;
+        color: #111827 !important;
+        border-bottom: 1px solid #e5e7eb !important;
+      }
+
+      td {
+        border-bottom: 1px solid #f3f4f6 !important;
+      }
+
+      .meta-grid {
+        border-top: 1px solid #e5e7eb !important;
+      }
+
+      .meta-item strong, .meta-item a {
+        color: #111827 !important;
+      }
+
+      @page {
+        margin: 1.8cm;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Top Action Bar (Hidden in Print/PDF) -->
+  <header class="action-bar">
+    <a href="https://fiatwallet.app" class="action-logo">
+      <img src="/logo.png" alt="FiatWallet Logo">
+      <span>FiatWallet</span>
+    </a>
+    <div class="action-buttons">
+      <a href="https://fiatwallet.app" class="btn btn-outline" target="_blank">Launch App ↗</a>
+      <button class="btn btn-primary" onclick="window.print()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+        Download / Print PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- Document Body -->
+  <div class="document-wrapper">
+    <main class="doc-card">
+
+      <!-- Header -->
+      <section class="doc-header">
+        <span class="badge">Official Strategic Brief &amp; Whitepaper</span>
+        <h1>FiatWallet: Compliant On-Chain Solana P2P Gateway &amp; Smart Wallet</h1>
+        <p class="subtitle">
+          Bridging emerging market banking with decentralized digital dollar liquidity through automated sub-45 second settlement, sponsored gasless transactions, and institutional KYC compliance.
+        </p>
+
+        <div class="meta-grid">
+          <div class="meta-item">
+            <span>Live Product</span>
+            <a href="https://fiatwallet.app">fiatwallet.app</a>
+          </div>
+          <div class="meta-item">
+            <span>Official X (Twitter)</span>
+            <a href="https://x.com/fiatwallet">@fiatwallet</a>
+          </div>
+          <div class="meta-item">
+            <span>Community Telegram</span>
+            <a href="https://t.me/fiatwalletApp">t.me/fiatwalletApp</a>
+          </div>
+          <div class="meta-item">
+            <span>Contact Email</span>
+            <strong>fiatwalletapp@gmail.com</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 1 -->
+      <section>
+        <h2>1. Executive Summary</h2>
+        <p>
+          <strong>FiatWallet</strong> is an on-chain, non-custodial Solana smart wallet, universal cross-chain bridge, and compliant P2P gateway engineered to resolve the fiat-to-crypto last mile across emerging markets. 
+        </p>
+        <p>
+          By unifying <strong>institutional-grade identity compliance (BVN / NIN verification)</strong> with <strong>gasless Web2 consumer UX</strong>, FiatWallet enables individuals, merchants, and institutions to buy, sell, swap, and bridge digital dollars (USDC/USDT) directly to and from domestic bank accounts in <strong>under 45 seconds</strong>.
+        </p>
+
+        <div class="metric-grid">
+          <div class="metric-box">
+            <div class="metric-val">&lt; 45s</div>
+            <div class="metric-label">Avg. Settlement Speed</div>
+            <div class="metric-sub">98% settled end-to-end automatically</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val">100%</div>
+            <div class="metric-label">Gas-Sponsored Offramps</div>
+            <div class="metric-sub">Zero SOL balance needed to cash out</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val">99.9%</div>
+            <div class="metric-label">System Uptime</div>
+            <div class="metric-sub">Serverless edge micro-architecture</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-val">#2</div>
+            <div class="metric-label">Global Target Market</div>
+            <div class="metric-sub">Nigeria leads global P2P volume</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2 -->
+      <section>
+        <h2>2. Problem &amp; Market Opportunity (Why Nigeria, Why Now)</h2>
+        <h3>The Pain Points in Existing P2P</h3>
+        <ul>
+          <li><strong>The Bank Freeze Epidemic (PND):</strong> Informal P2P platforms (Binance P2P, Bybit, Telegram OTC) route funds through unvetted personal accounts. A single flagged payment cascades into Post-No-Debit (PND) account freezes by commercial banks.</li>
+          <li><strong>The "Gas Trap" &amp; High Drop-off:</strong> Non-technical users receive stablecoins but cannot move or cash them out because they do not own native SOL to pay blockchain transaction fees.</li>
+          <li><strong>Cryptographic Complexity:</strong> 44-character base58 Solana addresses and manual 10-digit account number entries lead to costly human error and user anxiety.</li>
+        </ul>
+
+        <h3>Market Drivers</h3>
+        <ul>
+          <li><strong>Global Leader in Adoption:</strong> Nigeria ranks <strong>#2 globally in crypto adoption</strong> (Chainalysis) and leads the world in peer-to-peer transaction volume.</li>
+          <li><strong>The Flight to Digital Dollars:</strong> With local currency depreciation, stablecoins (USDC/USDT) have transitioned from speculative trading assets to essential tools for wealth preservation, cross-border commerce, and remittances ($50B+ annual sub-Saharan volume).</li>
+          <li><strong>The Regulatory Shift:</strong> Regulatory bodies (including SEC Nigeria's VASP and Accelerated Regulatory Incubation Programme - ARIP) are establishing frameworks that favor transparent, compliant, KYC-verified fintech rails over shadow P2P.</li>
+        </ul>
+      </section>
+
+      <!-- Section 3 -->
+      <section>
+        <h2>3. Core Product Suite &amp; Architecture</h2>
+        <ul>
+          <li><strong>Instant Automated P2P Gateway:</strong> Sub-45 second automated settlement for buying and selling stablecoins via domestic bank transfers, verified by on-chain Solscan receipts.</li>
+          <li><strong>Sponsored Gasless Relayer:</strong> Serverless relayer co-signs and sponsors network fees so users can transact seamlessly even with 0 SOL in their wallet.</li>
+          <li><strong>Universal Multi-Chain Ingestion (NEAR Intents):</strong> Direct native deposits from <strong>Bitcoin (BTC)</strong>, <strong>Tron (TRC-20 USDT/TRX)</strong>, and EVM chains (<strong>Base, Arbitrum, Polygon, Ethereum, BNB</strong>) straight into Solana with zero wrapped-token friction.</li>
+          <li><strong>Human-Readable FiatTags ($tag):</strong> Handles like <code>$fiatwallet</code> or <code>$ultradefi</code> eliminate long public keys and 10-digit account numbers.</li>
+          <li><strong>Camera OCR Scanner:</strong> Computer vision scanner reads printed or written 10-digit bank account numbers in one click.</li>
+          <li><strong>Flexible Onboarding:</strong> Connect existing wallets (Phantom, Solflare, Mobile Wallet Adapter), create a new 12-word seed phrase, import an existing vault, or explore via <strong>Guest Room</strong>.</li>
+          <li><strong>Solana Rent Reclaim:</strong> Built-in tool audits closed SPL token accounts to recover dormant SOL rent fees back to the user.</li>
+        </ul>
+      </section>
+
+      <!-- Section 4 -->
+      <section>
+        <h2>4. Business Model &amp; Unit Economics</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Revenue Stream</th>
+              <th>Mechanism</th>
+              <th>Pricing / Margin</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Onramp Protocol Fee</strong></td>
+              <td>Automated deduction on gross fiat-to-crypto forwards</td>
+              <td><strong>0.40%</strong> per tx ($0.10 minimum floor)</td>
+            </tr>
+            <tr>
+              <td><strong>FX Conversion Spread</strong></td>
+              <td>Dynamic spread on real-time NGN/USDC liquidity pairs</td>
+              <td><strong>0.50% – 1.00%</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Cross-Chain Bridge Routing</strong></td>
+              <td>Ingestion spread on native BTC, Tron, and EVM transfers</td>
+              <td><strong>0.25% – 0.50%</strong></td>
+            </tr>
+            <tr>
+              <td><strong>B2B Merchant API (Upcoming)</strong></td>
+              <td>Merchant gateway fees for Web2/Web3 apps accepting payouts</td>
+              <td><strong>0.75% – 1.20%</strong></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Unit Economics &amp; Net Margins</h3>
+        <ul>
+          <li><strong>Near-Zero Gas Overhead:</strong> Solana transaction fees average <strong>~$0.00025 per transaction (&lt; 0.000005 SOL)</strong>, allowing FiatWallet to sponsor user fees while maintaining <strong>&gt; 90% gross profit margins</strong> on protocol fees.</li>
+          <li><strong>High Lifetime Value (LTV):</strong> High user retention driven by daily and weekly recurring settlement needs (freelance payouts, merchant settlements, trading profits).</li>
+        </ul>
+      </section>
+
+      <!-- Section 5 -->
+      <section>
+        <h2>5. Competitive Advantage (The Moat)</h2>
+        <ol>
+          <li><strong>Compliance as a Shield:</strong> Direct BVN/NIN identity verification and verified banking rails completely eliminate account freezes and fraud that plague informal P2P.</li>
+          <li><strong>Web2 Simplicity on Web3 Rails:</strong> Human-readable $FiatTag handles, camera OCR scanner, 4 flexible onboarding modes, and gasless relayer allow seamless adoption by everyday non-crypto users.</li>
+          <li><strong>Multi-Chain Liquidity Ingestion:</strong> Frictionless deposits from Bitcoin, Tron, and EVM chains directly into Solana via NEAR Intents chain abstraction.</li>
+          <li><strong>Strictly Non-Custodial Integrity:</strong> Private keys and seed phrases remain encrypted locally on client devices (AES-256 vault) and never touch centralized servers.</li>
+        </ol>
+      </section>
+
+      <!-- Section 6 -->
+      <section>
+        <h2>6. Regulatory &amp; Banking Strategy</h2>
+        <ul>
+          <li><strong>Licensed Partner Rails:</strong> Fiat transactions and domestic banking disbursements are executed via licensed payment gateway infrastructure (<strong>PajCash</strong>), ensuring strict AML/CFT compliance.</li>
+          <li><strong>Regulatory Alignment:</strong> Architecture built to align with <strong>SEC Nigeria’s Virtual Asset Service Provider (VASP)</strong> and <strong>ARIP</strong> sandbox guidelines.</li>
+          <li><strong>Segregated Risk Architecture:</strong> Commercial banks settle purely domestic fiat-to-fiat transactions without direct crypto balance exposure, insulating users and banking partners from regulatory friction.</li>
+        </ul>
+      </section>
+
+      <!-- Section 7 -->
+      <section>
+        <h2>7. The Team &amp; The Ask</h2>
+        <h3>Core Competencies</h3>
+        <p>
+          Founded by blockchain engineers and fintech operators with deep domain expertise in high-throughput Solana infrastructure, Nigerian NIP interbank clearing, and enterprise cryptographic security.
+        </p>
+
+        <h3>Strategic Objectives &amp; The Ask</h3>
+        <ul>
+          <li><strong>Liquidity &amp; Settlement Partners:</strong> Capital partners to scale automated NGN/USDC settlement pools as daily volume grows.</li>
+          <li><strong>Ecosystem &amp; Foundation Grants:</strong> Strategic funding to accelerate mobile APK native distribution, Developer Merchant SDK, and pan-African expansion (Ghana, Kenya, South Africa).</li>
+          <li><strong>Strategic Advisory:</strong> Institutional leaders in African fintech compliance and digital asset licensing.</li>
+        </ul>
+      </section>
+
+    </main>
+  </div>
+
+</body>
+</html>
