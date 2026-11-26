@@ -125,6 +125,7 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 <img src="public/team-olatunde.jpg" width="60" height="60" alt="Micheal Olatunde" style="border-radius: 12px; float: left; margin-right: 14px; object-fit: cover; object-position: center 20%;" />
 
 * **Micheal Olatunde** — Operations & Data Analyst  
+  **X (Twitter):** [@realcryptopikin](https://x.com/realcryptopikin)  
   *Overseeing daily fiat-to-crypto settlement operations, liquidity tracking, interbank transaction reconciliation, and user data analytics.*
 
 <div style="clear: both; margin-bottom: 12px;"></div>
