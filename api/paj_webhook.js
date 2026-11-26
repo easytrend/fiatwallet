@@ -11,6 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
+import { sendTelegramAlert } from './_telegram.js';
 
 // ---------------------------------------------------------------------------
 // Transaction receipt email — fire-and-forget, never blocks webhook response
@@ -221,6 +222,13 @@ export default async function handler(req, res) {
       const ipCheck = isBlacklisted({ ip: clientIp });
       if (ipCheck.blacklisted) {
         console.warn(`[paj_webhook] Blocked webhook request from blacklisted IP ${clientIp}`);
+        sendTelegramAlert({
+          level: 'SECURITY',
+          title: 'Blocked Blacklisted IP on Webhook',
+          source: 'PajCash Webhook',
+          message: `Blocked webhook request from blacklisted IP ${clientIp} (${userAgent})`,
+          details: { ip: clientIp, userAgent, orderId: orderId || 'None' }
+        }).catch(() => {});
         return res.status(403).json({ error: 'Access denied: Blacklisted IP' });
       }
     }
@@ -228,6 +236,13 @@ export default async function handler(req, res) {
     // 2. Reject automated CLI User-Agents (curl, python, postman)
     if (/^(curl|python|postman|insomnia|httpie)/i.test(userAgent.trim())) {
       console.warn(`[paj_webhook] Blocked webhook request from unauthorized user-agent: ${userAgent} (IP: ${clientIp})`);
+      sendTelegramAlert({
+        level: 'SECURITY',
+        title: 'Blocked CLI Tool on Webhook',
+        source: 'PajCash Webhook',
+        message: `Blocked unauthorized ${userAgent} attempt from IP ${clientIp}`,
+        details: { ip: clientIp, userAgent, orderId: orderId || 'None' }
+      }).catch(() => {});
       return res.status(403).json({ error: 'Automated CLI clients are not permitted' });
     }
 
@@ -272,6 +287,13 @@ export default async function handler(req, res) {
           const isRemoteCompleted = ['COMPLETED', 'SUCCESSFUL', 'CONFIRMED', 'DONE', 'SUCCESS', 'SETTLED', 'PAID_OUT'].includes(remoteStatus);
           if (!isRemoteCompleted) {
             console.warn(`[paj_webhook] Spoof attempt blocked: Webhook claimed COMPLETED for ${orderId}, but PajCash API status is "${remoteStatus}".`);
+            sendTelegramAlert({
+              level: 'SECURITY',
+              title: 'Spoof Attempt Blocked',
+              source: 'Anti-Spoofing Guard',
+              message: `Webhook claimed COMPLETED for order ${orderId}, but PajCash API verified status as "${remoteStatus}".`,
+              details: { orderId, claimedStatus: rawStatus, verifiedStatus: remoteStatus, ip: clientIp }
+            }).catch(() => {});
             supabaseStatus = 'PENDING';
           }
         } else {
@@ -329,6 +351,13 @@ export default async function handler(req, res) {
 
     if (compliance.blacklisted) {
       console.warn(`[paj_webhook] Order ${orderId} matches compliance blacklist (${compliance.reason}). Setting status to HELD_COMPLIANCE_REVIEW.`);
+      sendTelegramAlert({
+        level: 'SECURITY',
+        title: 'Compliance Blacklist Intercepted',
+        source: 'Compliance Guard',
+        message: `Order ${orderId} was intercepted and held in treasury (${compliance.reason}).`,
+        details: { orderId, reason: compliance.reason, email: resolvedEmail }
+      }).catch(() => {});
       supabaseStatus = 'HELD_COMPLIANCE_REVIEW';
     }
 
@@ -483,6 +512,13 @@ export default async function handler(req, res) {
     return res.status(200).json({ received: true, orderId, status: supabaseStatus });
   } catch (err) {
     console.error('[paj_webhook] Unexpected error:', err);
+    sendTelegramAlert({
+      level: 'CRITICAL',
+      title: 'Webhook Server Crash',
+      source: 'PajCash Webhook',
+      message: `Unexpected error processing webhook for order ${orderId || 'Unknown'}: ${err.message}`,
+      details: { orderId: orderId || 'Unknown', error: err.message }
+    }).catch(() => {});
     return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 }

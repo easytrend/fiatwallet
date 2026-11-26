@@ -79,6 +79,23 @@ class ErrorBoundary extends Component {
   }
   componentDidCatch(error, errorInfo) {
     console.error('Fiatwallet rendering error:', error, errorInfo);
+    try {
+      const activeWallet = (typeof localStorage !== 'undefined')
+        ? (localStorage.getItem('fw_wallet_pubkey') || localStorage.getItem('paj_manual_wallet') || '')
+        : '';
+      fetch('/api/report_error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: error?.message || String(error),
+          stack: (error?.stack || '') + '\n' + (errorInfo?.componentStack || ''),
+          url: typeof window !== 'undefined' ? window.location.href : '',
+          wallet: activeWallet,
+          component: 'ReactErrorBoundary',
+          fatal: true,
+        }),
+      }).catch(() => {});
+    } catch (_) {}
   }
   render() {
     if (this.state.hasError) {

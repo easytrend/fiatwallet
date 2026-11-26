@@ -21,6 +21,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import nacl from 'tweetnacl';
 import { isBlacklisted, isBlacklistedEntityAsync } from './_compliance_blacklist.js';
+import { sendTelegramAlert } from './_telegram.js';
 
 // Zero-dependency Base58 Decoder
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -521,6 +522,21 @@ export default async function handler(req, res) {
     const { blockhash } = await connection.getLatestBlockhash('confirmed');
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = relayerKp.publicKey;
+
+    // Check relayer SOL gas balance (fire-and-forget alert if low)
+    try {
+      const relayerLamports = await connection.getBalance(relayerKp.publicKey, 'confirmed');
+      const relayerSol = relayerLamports / 1e9;
+      if (relayerSol < 0.05) {
+        sendTelegramAlert({
+          level: 'RELAYER',
+          title: 'Low Relayer SOL Balance',
+          source: 'Relayer Gas Guard',
+          message: `Relayer SOL balance is low (${relayerSol.toFixed(4)} SOL). Top up soon to avoid failed forwards.`,
+          details: { relayer: relayerKp.publicKey.toBase58(), balance: `${relayerSol.toFixed(4)} SOL` }
+        }).catch(() => {});
+      }
+    } catch (_) {}
     
     transaction.sign(relayerKp);
 
@@ -531,6 +547,20 @@ export default async function handler(req, res) {
     });
 
     console.log(`[relay_onramp_fee] Forwarded ${netAmount} USDC to ${userAddressStr}. Tx: ${sig}`);
+
+    // Fire-and-forget payout success alert to Telegram
+    sendTelegramAlert({
+      level: 'SUCCESS',
+      title: 'USDC Payout Delivered',
+      source: 'Relayer (Onramp)',
+      message: `Delivered ${netAmount} USDC for Order ${orderId}`,
+      details: {
+        orderId,
+        recipient: userAddressStr,
+        amount: `${netAmount} USDC`,
+        tx: sig,
+      }
+    }).catch(() => {});
 
     // 6. Update database status to COMPLETED (matching PajCash developer portal status)
     await supabase
@@ -546,6 +576,18 @@ export default async function handler(req, res) {
     return res.status(200).json({ signature: sig, netAmount });
   } catch (error) {
     console.error('[relay_onramp_fee] Unhandled crash:', error);
+
+    // Fire alert to admin Telegram
+    sendTelegramAlert({
+      level: 'CRITICAL',
+      title: 'Relayer Forward Failed',
+      source: 'Relayer (Onramp)',
+      message: `Failed to forward payout for Order ${globalOrderId || 'Unknown'}: ${error.message}`,
+      details: {
+        orderId: globalOrderId || 'Unknown',
+        error: error.message,
+      }
+    }).catch(() => {});
     
     // Remote logging to Supabase so we can query it using query_failed_order.js
     if (supabase && globalOrderId) {
