@@ -1064,7 +1064,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${key}`);
 
     // 1. Same device: restore from localStorage optimistically (zero UI flicker)
-    if (cachedToken && cachedExpiry && Date.now() < Number(cachedExpiry)) {
+    if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
       setSessionToken(cachedToken);
       setSessionEmail(cachedEmail || '');
       setAuthStep('logged_in');
@@ -1076,7 +1076,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     loadSession(key)
       .then(row => {
         if (row && row.session_token && !row.session_token.startsWith('EXPIRED_')) {
-          const expiryMs = new Date(row.expires_at).getTime();
+          const expiryMs = row.expires_at ? new Date(row.expires_at).getTime() : Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
           setSessionToken(row.session_token);
           setSessionEmail(row.email);
           setEmailInput(row.email);
@@ -1084,24 +1084,55 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           localStorage.setItem(`paj_sessionToken_${key}`, row.session_token);
           localStorage.setItem(`paj_sessionEmail_${key}`, row.email);
           localStorage.setItem(`paj_sessionExpiry_${key}`, String(expiryMs));
-        } else {
-          // Session was expired or revoked on server - require re-verification
+        } else if (row && row.session_token && row.session_token.startsWith('EXPIRED_')) {
+          // Explicit server revocation only
           localStorage.removeItem(`paj_sessionToken_${key}`);
           localStorage.removeItem(`paj_sessionEmail_${key}`);
           localStorage.removeItem(`paj_sessionExpiry_${key}`);
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
+        } else if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+          // Server returned no row or lookup was skipped, keep valid local session
+          setSessionToken(cachedToken);
+          setSessionEmail(cachedEmail || '');
+          setAuthStep('logged_in');
+        } else {
+          setSessionToken('');
+          setSessionEmail('');
+          setAuthStep('input_email');
         }
       })
       .catch(() => {
-        if (!cachedToken) {
+        if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+          setSessionToken(cachedToken);
+          setSessionEmail(cachedEmail || '');
+          setAuthStep('logged_in');
+        } else {
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
         }
       });
   }, [publicKey]);
+
+  // Synchronize live session changes across components (e.g. BankDetailsModal <-> P2PPanel)
+  useEffect(() => {
+    const handleSessionUpdated = (e) => {
+      const { token, email, wallet } = e.detail || {};
+      const currentKey = publicKey ? publicKey.toBase58() : (manualWalletAddress || guestOnrampWallet);
+      if (token && (!wallet || !currentKey || wallet.toLowerCase() === currentKey.toLowerCase())) {
+        setSessionToken(token);
+        if (email) {
+          setSessionEmail(email);
+          setEmailInput(email);
+        }
+        setAuthStep('logged_in');
+      }
+    };
+    window.addEventListener('fiatwallet:session_updated', handleSessionUpdated);
+    return () => window.removeEventListener('fiatwallet:session_updated', handleSessionUpdated);
+  }, [publicKey, manualWalletAddress, guestOnrampWallet]);
 
   // Re-check Supabase session when dynamic remote config arrives if not already logged in
   useEffect(() => {
@@ -1169,7 +1200,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       // Actively validate guest session with Supabase
       loadSession(storedWallet).then(row => {
         if (row && row.session_token && !row.session_token.startsWith('EXPIRED_')) {
-          const expiryMs = new Date(row.expires_at).getTime();
+          const expiryMs = row.expires_at ? new Date(row.expires_at).getTime() : Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
           setSessionToken(row.session_token);
           setSessionEmail(row.email);
           setEmailInput(row.email);
@@ -1177,13 +1208,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           localStorage.setItem('paj_manual_sessionToken', row.session_token);
           localStorage.setItem('paj_manual_sessionEmail', row.email);
           localStorage.setItem('paj_manual_sessionExpiry', String(expiryMs));
-        } else if (!row || !row.session_token || row.session_token.startsWith('EXPIRED_')) {
+        } else if (row && row.session_token && row.session_token.startsWith('EXPIRED_')) {
           localStorage.removeItem('paj_manual_sessionToken');
           localStorage.removeItem('paj_manual_sessionEmail');
           localStorage.removeItem('paj_manual_sessionExpiry');
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
+        } else if (cachedToken && cachedEmail && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+          setSessionToken(cachedToken);
+          setSessionEmail(cachedEmail);
+          setEmailInput(cachedEmail);
+          setAuthStep('logged_in');
         }
       }).catch(() => {});
 
@@ -1845,11 +1881,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   );
 
   const effectiveKycSynced = Boolean(
-    userTagData && (userTagData.bvn || userTagData.nin) && (kycSyncState.synced || isCachedKycSynced || isTagKycComplete)
+    userTagData && (userTagData.bvn || userTagData.nin) && ((kycSyncState.synced || isCachedKycSynced || isTagKycComplete) && !kycSyncState.error)
   );
 
   const clearExpiredKycSession = useCallback((walletAddr) => {
-    // Only clears LOCAL state and localStorage.
+    // Only clears LOCAL state and localStorage on explicit user logout.
     // Does NOT call deleteSession() — that would revoke the valid Supabase session
     // every time a PajCash KYC error is detected client-side.
     setSessionToken('');
@@ -1868,23 +1904,24 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const applyKycSyncResult = useCallback((res, walletAddr) => {
     if (!res) return;
     if (res.sessionExpired) {
-      clearExpiredKycSession(walletAddr);
+      // PajCash KYC document submission requires email verification.
+      // Do NOT log the user out of the app!
       setKycSyncState({
         syncing: false,
         synced: false,
-        error: 'Email session expired. Please verify your email below to sync KYC.',
+        error: 'PajCash requires email verification to sync KYC documents.',
       });
       return;
     }
     setKycSyncState({
       syncing: false,
       synced: Boolean(res.synced),
-      error: res.error || '',
+      error: res.synced ? '' : (res.error || ''),
     });
     if (walletAddr) {
-      updateFiatTagKycSync(walletAddr, { synced: res.synced, error: res.error });
+      updateFiatTagKycSync(walletAddr, { synced: Boolean(res.synced), error: res.error });
     }
-  }, [clearExpiredKycSession]);
+  }, []);
 
   // ── Automatically sync saved BVN / NIN with PajCash once user has an OTP sessionToken ──
   const syncStoredKycWithPajCash = useCallback(async (token, tagObj, force = false) => {
@@ -1921,7 +1958,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   }, [publicKey, manualWalletAddress, guestOnrampWallet, selectedCountry, authStep, applyKycSyncResult]);
 
   useEffect(() => {
-    if (authStep !== 'logged_in' || !sessionToken || !userTagData || (!userTagData.bvn && !userTagData.nin) || isCachedKycSynced) {
+    if (authStep !== 'logged_in' || !sessionToken || !userTagData || (!userTagData.bvn && !userTagData.nin) || isCachedKycSynced || kycSyncState.synced) {
       return;
     }
     if (userTagData.bvn && userTagData.nin && userTagData.bvn.trim() === userTagData.nin.trim()) {
@@ -1941,7 +1978,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       applyKycSyncResult(res, kycWalletScope);
     });
     return () => { cancelled = true; };
-  }, [authStep, sessionToken, userTagData, isCachedKycSynced, kycWalletScope, kycCountryCode, sessionEmail, checkIsBlacklisted, applyKycSyncResult]);
+  }, [authStep, sessionToken, userTagData, isCachedKycSynced, kycSyncState.synced, kycWalletScope, kycCountryCode, sessionEmail, checkIsBlacklisted, applyKycSyncResult]);
 
   // ── Real-time resolution of recipient Tag in standard and tag offramp ───
   useEffect(() => {
@@ -2709,8 +2746,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     setOnrampOrder(null);
     setOnrampStatus(null);
     swapTriggeredRef.current = false; // reset swap guard for new order
-    if (authStep !== 'logged_in') { setOnrampError('Please verify your email on the Sell tab first.'); return; }
-    if (!effectiveAuthToken) { setOnrampError('PajCash service configuration missing.'); return; }
+    if (!effectiveAuthToken) { setOnrampError('PajCash service configuration missing. Please try again in a moment.'); return; }
 
     const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail') || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
 
@@ -5741,10 +5777,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             </div>
           )}
 
-          {/* Session notice if not yet logged in */}
-          {authStep !== 'logged_in' && (
-            <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '10px 14px', fontSize: '11px', color: '#facc15', lineHeight: '1.5' }}>
-              • Please verify your email on the Sell tab to activate the Buy gateway.
+          {/* Tag profile prompt if not yet created */}
+          {!userTagData && (
+            <div style={{ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '11px', color: 'var(--cyan, #22d3ee)', lineHeight: '1.5' }}>
+              • Link your bank details and create your Fiat Tag to start buying crypto.
             </div>
           )}
 
@@ -5954,8 +5990,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <button
               className="send-btn"
               onClick={handleOnrampSubmit}
-              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || authStep !== 'logged_in' || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
-              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || authStep !== 'logged_in' || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || authStep !== 'logged_in' || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
+              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
+              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
               {onrampLoading ? (
                 <>
@@ -6775,7 +6811,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     <button
                       type="button"
                       onClick={() => {
-                        clearExpiredKycSession(effectiveWallet);
                         setAuthStep('input_email');
                         setKycSyncState(prev => ({
                           ...prev,

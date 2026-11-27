@@ -263,9 +263,13 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
               localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, row.session_token);
               if (row.email) localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, row.email);
               localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
+
+              window.dispatchEvent(new CustomEvent('fiatwallet:session_updated', {
+                detail: { wallet: effectiveWallet, token: row.session_token, email: row.email }
+              }));
               return;
-            } else if (!row?.session_token || row.session_token.startsWith('EXPIRED_')) {
-              // Server session expired or revoked
+            } else if (row?.session_token && row.session_token.startsWith('EXPIRED_')) {
+              // Server session explicitly revoked
               localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
               localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
               if (cachedEmail) {
@@ -274,6 +278,14 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
               }
               if (isMounted) {
                 setSessionToken('');
+                setSessionEmail(cachedEmail || '');
+                setSessionLoading(false);
+              }
+              return;
+            } else if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+              // Row was null or not returned, keep valid local session token
+              if (isMounted) {
+                setSessionToken(cachedToken);
                 setSessionEmail(cachedEmail || '');
                 setSessionLoading(false);
               }
@@ -375,7 +387,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     !isMissingKyc
   );
 
-  const effectiveKycSynced = Boolean(kycSyncState.synced || isCachedKycSynced || isLocked || isCompleteKyc);
+  const effectiveKycSynced = Boolean(
+    (kycSyncState.synced || isCachedKycSynced || isLocked || isCompleteKyc) && !kycSyncState.error
+  );
 
   const clearExpiredPajSession = useCallback(() => {
     // Only clears LOCAL state and localStorage.
@@ -410,28 +424,23 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     });
 
     if (res.sessionExpired) {
-      if (!isLocked && !isCompleteKyc) {
-        clearExpiredPajSession();
-        setKycSyncState({
-          syncing: false,
-          synced: false,
-          error: 'Email session expired. Please verify your email below to sync KYC.',
-        });
-      } else {
-        setKycSyncState({ syncing: false, synced: true, error: '' });
-      }
+      setKycSyncState({
+        syncing: false,
+        synced: false,
+        error: 'PajCash requires email verification to sync KYC documents. Please verify your email below.',
+      });
       return;
     }
 
     setKycSyncState({
       syncing: false,
-      synced: Boolean(res.synced || isLocked || isCompleteKyc),
-      error: (res.synced || isLocked || isCompleteKyc) ? '' : (res.error || ''),
+      synced: Boolean(res.synced),
+      error: res.synced ? '' : (res.error || ''),
     });
     if (effectiveWallet) {
-      updateFiatTagKycSync(effectiveWallet, { synced: res.synced || isLocked || isCompleteKyc, error: res.error });
+      updateFiatTagKycSync(effectiveWallet, { synced: Boolean(res.synced), error: res.error });
     }
-  }, [effectiveWallet, clearExpiredPajSession, isLocked, isCompleteKyc]);
+  }, [effectiveWallet]);
 
   // Automatically sync existing BVN / NIN with PajCash whenever sessionToken + userTagData exist
   useEffect(() => {
@@ -448,29 +457,24 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     }).then(res => {
       if (cancelled) return;
       if (res.sessionExpired) {
-        if (!isLocked && !isCompleteKyc) {
-          clearExpiredPajSession();
-          setKycSyncState({
-            syncing: false,
-            synced: false,
-            error: 'Email session expired. Please verify your email below to sync KYC.',
-          });
-        } else {
-          setKycSyncState({ syncing: false, synced: true, error: '' });
-        }
+        setKycSyncState({
+          syncing: false,
+          synced: false,
+          error: 'PajCash requires email verification to sync KYC documents. Please verify your email below.',
+        });
         return;
       }
       setKycSyncState({
         syncing: false,
-        synced: Boolean(res.synced || isLocked || isCompleteKyc),
-        error: (res.synced || isLocked || isCompleteKyc) ? '' : (res.error || ''),
+        synced: Boolean(res.synced),
+        error: res.synced ? '' : (res.error || ''),
       });
       if (effectiveWallet) {
-        updateFiatTagKycSync(effectiveWallet, { synced: res.synced || isLocked || isCompleteKyc, error: res.error });
+        updateFiatTagKycSync(effectiveWallet, { synced: Boolean(res.synced), error: res.error });
       }
     });
     return () => { cancelled = true; };
-  }, [sessionLoading, sessionToken, userTagData, hasBvnNinError, isCachedKycSynced, effectiveWallet, clearExpiredPajSession, isLocked, isCompleteKyc]);
+  }, [sessionLoading, sessionToken, userTagData, hasBvnNinError, isCachedKycSynced, effectiveWallet]);
 
   // 3. Fetch supported banks
   useEffect(() => {
@@ -673,6 +677,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           localStorage.setItem(`paj_userEmail_${effectiveWallet}`, emailInput.trim());
           localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
           await saveSession(effectiveWallet, emailInput.trim(), res.token, expiryMs);
+          
+          window.dispatchEvent(new CustomEvent('fiatwallet:session_updated', {
+            detail: { wallet: effectiveWallet, token: res.token, email: emailInput.trim() }
+          }));
+
           if (userTagData && (userTagData.bvn || userTagData.nin)) {
             setTagModalSuccess('Email verified! Syncing KYC with PajCash...');
             runKycSync(res.token, userTagData, true);
@@ -682,6 +691,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
         } else {
           localStorage.setItem('paj_manual_sessionToken', res.token);
           localStorage.setItem('paj_manual_sessionEmail', emailInput.trim());
+          
+          window.dispatchEvent(new CustomEvent('fiatwallet:session_updated', {
+            detail: { wallet: '', token: res.token, email: emailInput.trim() }
+          }));
+
           if (userTagData && (userTagData.bvn || userTagData.nin)) {
             setTagModalSuccess('Email verified! Syncing KYC with PajCash...');
             runKycSync(res.token, userTagData, true);
@@ -991,7 +1005,6 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                   <button
                     type="button"
                     onClick={() => {
-                      clearExpiredPajSession();
                       setKycSyncState(prev => ({
                         ...prev,
                         error: 'Please verify your email below to complete KYC sync.'
