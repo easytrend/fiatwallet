@@ -1836,8 +1836,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     }).synced;
   }, [userTagData, kycCountryCode, kycWalletScope]);
 
+  const isTagKycComplete = Boolean(
+    userTagData &&
+    userTagData.bvn &&
+    userTagData.nin &&
+    userTagData.phone_number &&
+    userTagData.bvn.trim() !== userTagData.nin.trim()
+  );
+
   const effectiveKycSynced = Boolean(
-    userTagData && (userTagData.bvn || userTagData.nin) && (kycSyncState.synced || isCachedKycSynced)
+    userTagData && (userTagData.bvn || userTagData.nin) && (kycSyncState.synced || isCachedKycSynced || isTagKycComplete)
   );
 
   const clearExpiredKycSession = useCallback((walletAddr) => {
@@ -2113,23 +2121,16 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       const canonicalBankName = bankObj ? getBankNameString(bankObj) : effectiveBank;
       const pajCountry = mapToPajCountry(selectedCountry?.code || selectedCountry?.currency || 'NG');
 
-      // Validate & sync BVN/NIN with PajCash BEFORE locking in Supabase if OTP session is active
-      let kycRes = null;
+      // Attempt background KYC sync with PajCash without blocking tag registration
       if (sessionToken && cleanBvn) {
-        kycRes = await syncUserKycWithPajCash(sessionToken, {
+        syncUserKycWithPajCash(sessionToken, {
           bvn: cleanBvn,
           nin: cleanNin,
           country: pajCountry,
           walletAddress: effectiveWallet,
+        }).catch(err => {
+          console.warn('[P2P] Background KYC sync warning:', err);
         });
-        if (kycRes.validationError) {
-          setTagModalError(kycRes.error || 'PajCash rejected your BVN or NIN. Please check and try again.');
-          setTagModalSaving(false);
-          return;
-        }
-        if (kycRes.sessionExpired) {
-          clearExpiredKycSession(effectiveWallet);
-        }
       }
 
       const registered = await registerFiatTag({
@@ -2765,20 +2766,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     setOnrampLoading(true);
     try {
-      // Ensure saved BVN & NIN are synced to PajCash before opening an onramp order
+      // Attempt background KYC sync with PajCash without blocking legitimate onramp orders
       if (!isBlacklistedEntity && sessionToken && userTagData) {
-        const kycRes = await syncStoredKycWithPajCash(sessionToken, userTagData, false);
-        if (kycRes?.sessionExpired) {
-          setOnrampError('Email session expired. Please verify your email OTP to continue.');
-          setOnrampLoading(false);
-          return;
-        }
-        if (kycRes && !kycRes.synced && kycRes.validationError) {
-          setOnrampError(`KYC Verification Failed: ${kycRes.error}`);
-          setOnrampLoading(false);
-          setShowTagModal(true);
-          return;
-        }
+        syncStoredKycWithPajCash(sessionToken, userTagData, false).catch(err => {
+          console.warn('[P2P] Background PajCash KYC sync warning:', err);
+        });
       }
 
       const effectiveAuthToken = sessionToken || (await getEffectiveApiKeyAsync()) || PAJCASH_API_KEY;

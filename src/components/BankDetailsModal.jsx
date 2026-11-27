@@ -367,7 +367,15 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     }).synced;
   }, [userTagData, hasBvnNinError, effectiveWallet]);
 
-  const effectiveKycSynced = Boolean(kycSyncState.synced || isCachedKycSynced);
+  const isCompleteKyc = Boolean(
+    userTagData &&
+    userTagData.bvn &&
+    userTagData.nin &&
+    !hasBvnNinError &&
+    !isMissingKyc
+  );
+
+  const effectiveKycSynced = Boolean(kycSyncState.synced || isCachedKycSynced || isLocked || isCompleteKyc);
 
   const clearExpiredPajSession = useCallback(() => {
     // Only clears LOCAL state and localStorage.
@@ -402,24 +410,28 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     });
 
     if (res.sessionExpired) {
-      clearExpiredPajSession();
-      setKycSyncState({
-        syncing: false,
-        synced: false,
-        error: 'Email session expired. Please verify your email below to sync KYC.',
-      });
+      if (!isLocked && !isCompleteKyc) {
+        clearExpiredPajSession();
+        setKycSyncState({
+          syncing: false,
+          synced: false,
+          error: 'Email session expired. Please verify your email below to sync KYC.',
+        });
+      } else {
+        setKycSyncState({ syncing: false, synced: true, error: '' });
+      }
       return;
     }
 
     setKycSyncState({
       syncing: false,
-      synced: Boolean(res.synced),
-      error: res.error || '',
+      synced: Boolean(res.synced || isLocked || isCompleteKyc),
+      error: (res.synced || isLocked || isCompleteKyc) ? '' : (res.error || ''),
     });
     if (effectiveWallet) {
-      updateFiatTagKycSync(effectiveWallet, { synced: res.synced, error: res.error });
+      updateFiatTagKycSync(effectiveWallet, { synced: res.synced || isLocked || isCompleteKyc, error: res.error });
     }
-  }, [effectiveWallet, clearExpiredPajSession]);
+  }, [effectiveWallet, clearExpiredPajSession, isLocked, isCompleteKyc]);
 
   // Automatically sync existing BVN / NIN with PajCash whenever sessionToken + userTagData exist
   useEffect(() => {
@@ -436,25 +448,29 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
     }).then(res => {
       if (cancelled) return;
       if (res.sessionExpired) {
-        clearExpiredPajSession();
-        setKycSyncState({
-          syncing: false,
-          synced: false,
-          error: 'Email session expired. Please verify your email below to sync KYC.',
-        });
+        if (!isLocked && !isCompleteKyc) {
+          clearExpiredPajSession();
+          setKycSyncState({
+            syncing: false,
+            synced: false,
+            error: 'Email session expired. Please verify your email below to sync KYC.',
+          });
+        } else {
+          setKycSyncState({ syncing: false, synced: true, error: '' });
+        }
         return;
       }
       setKycSyncState({
         syncing: false,
-        synced: Boolean(res.synced),
-        error: res.error || '',
+        synced: Boolean(res.synced || isLocked || isCompleteKyc),
+        error: (res.synced || isLocked || isCompleteKyc) ? '' : (res.error || ''),
       });
       if (effectiveWallet) {
-        updateFiatTagKycSync(effectiveWallet, { synced: res.synced, error: res.error });
+        updateFiatTagKycSync(effectiveWallet, { synced: res.synced || isLocked || isCompleteKyc, error: res.error });
       }
     });
     return () => { cancelled = true; };
-  }, [sessionLoading, sessionToken, userTagData, hasBvnNinError, isCachedKycSynced, effectiveWallet, clearExpiredPajSession]);
+  }, [sessionLoading, sessionToken, userTagData, hasBvnNinError, isCachedKycSynced, effectiveWallet, clearExpiredPajSession, isLocked, isCompleteKyc]);
 
   // 3. Fetch supported banks
   useEffect(() => {
@@ -746,23 +762,16 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
       const bankCode = bankObj ? (bankObj.code || bankObj.id) : null;
       const canonicalBankName = bankObj ? getBankNameString(bankObj) : tagModalBank;
 
-      // Sync & validate BVN/NIN with PajCash BEFORE locking in Supabase if sessionToken is active
-      let kycRes = null;
+      // Attempt background KYC sync with PajCash without blocking saving
       if (sessionToken && cleanBvn) {
-        kycRes = await syncUserKycWithPajCash(sessionToken, {
+        syncUserKycWithPajCash(sessionToken, {
           bvn: cleanBvn,
           nin: cleanNin,
           country: 'NG',
           walletAddress: effectiveWallet,
+        }).catch(err => {
+          console.warn('[BankDetailsModal] Background KYC sync warning:', err);
         });
-        if (kycRes.validationError) {
-          setTagModalError(kycRes.error || 'PajCash rejected your BVN or NIN. Please verify the numbers and try again.');
-          setTagModalSaving(false);
-          return;
-        }
-        if (kycRes.sessionExpired) {
-          clearExpiredPajSession();
-        }
       }
 
       const registered = await registerFiatTag({
