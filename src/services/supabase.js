@@ -795,7 +795,9 @@ export async function loadSession(walletAddress) {
 }
 
 /**
- * Delete a PajCash session from Supabase on logout.
+ * Delete a PajCash session from Supabase on explicit user logout only.
+ * Does NOT overwrite or revoke via RPC — that caused valid live sessions to be
+ * wiped whenever the app tried to handle a PajCash error client-side.
  *
  * @param {string} walletAddress - User's Solana public key (base58)
  */
@@ -803,17 +805,11 @@ export async function deleteSession(walletAddress) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress) return;
   try {
-    // 1. Invalidate via secure RPC (works under strict RLS where direct DELETE is revoked)
-    try {
-      await client.rpc('save_paj_session', {
-        p_wallet_address: walletAddress,
-        p_email: '',
-        p_session_token: 'EXPIRED_SESSION_REVOKED',
-        p_expires_at: new Date(0).toISOString()
-      });
-    } catch (_) {}
-
-    // 2. Direct delete fallback
+    // Direct delete only — anon RLS blocks this silently if revoked, which is fine.
+    // We intentionally do NOT call save_paj_session with EXPIRED_SESSION_REVOKED here
+    // because that overwrites the user's live Supabase session even when they have
+    // a valid token (e.g. when the app detects a PajCash KYC error and tries to clear
+    // local state — it should only clear localStorage, not the server record).
     const { error } = await client
       .from('paj_sessions')
       .delete()

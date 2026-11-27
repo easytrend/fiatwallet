@@ -370,6 +370,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
   const effectiveKycSynced = Boolean(kycSyncState.synced || isCachedKycSynced);
 
   const clearExpiredPajSession = useCallback(() => {
+    // Only clears LOCAL state and localStorage.
+    // Does NOT touch Supabase — calling deleteSession() here would revoke a valid
+    // server-side session every time the app detects a PajCash KYC error client-side.
     setSessionToken('');
     setAuthStep('email');
     try {
@@ -380,9 +383,6 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
         localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
       }
     } catch { /* ignore storage restrictions */ }
-    if (effectiveWallet) {
-      deleteSession(effectiveWallet);
-    }
   }, [effectiveWallet]);
 
   // 2b. Manual/retry sync helper for PajCash KYC

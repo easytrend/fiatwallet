@@ -1841,6 +1841,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   );
 
   const clearExpiredKycSession = useCallback((walletAddr) => {
+    // Only clears LOCAL state and localStorage.
+    // Does NOT call deleteSession() — that would revoke the valid Supabase session
+    // every time a PajCash KYC error is detected client-side.
     setSessionToken('');
     setSessionEmail('');
     setAuthStep('input_email');
@@ -1852,9 +1855,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         localStorage.removeItem(`paj_sessionExpiry_${walletAddr}`);
       }
     } catch { /* ignore storage restrictions */ }
-    if (walletAddr) {
-      deleteSession(walletAddr);
-    }
   }, []);
 
   const applyKycSyncResult = useCallback((res, walletAddr) => {
