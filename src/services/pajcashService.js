@@ -663,8 +663,11 @@ export async function getAllRate() {
  * @param {string} sessionToken
  */
 export async function createOnrampOrder(order, sessionToken) {
-  const token = sessionToken || getEffectiveApiKey();
-  try {
+  const apiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey();
+  // For Onramp (Buy), always prefer the platform API key so orders never fail due to expired user sessions.
+  const primaryToken = apiKey || sessionToken;
+
+  const runCreate = async (authToken) => {
     const cleanOrder = { ...order };
     if (cleanOrder.amount != null && cleanOrder.fiatAmount != null) {
       if (cleanOrder.inputMode === 'crypto') {
@@ -674,9 +677,28 @@ export async function createOnrampOrder(order, sessionToken) {
       }
     }
     delete cleanOrder.inputMode;
-    return await sdkCreateOnrampOrder(cleanOrder, token);
+    return await sdkCreateOnrampOrder(cleanOrder, authToken);
+  };
+
+  try {
+    return await runCreate(primaryToken);
   } catch (error) {
     const msg = error.response?.data?.message || error.message || String(error);
+    const isSessionErr = /session.*(invalid|expired)|unauthorized|token.*(invalid|expired)|expired.*token/i.test(msg);
+    if (isSessionErr && apiKey && primaryToken !== apiKey) {
+      console.warn('[PajCash] Token rejected for onramp. Retrying with platform API key...');
+      try {
+        return await runCreate(apiKey);
+      } catch (retryErr) {
+        const retryMsg = retryErr.response?.data?.message || retryErr.message || String(retryErr);
+        throw new Error(retryMsg);
+      }
+    }
+    if (isSessionErr && sessionToken && primaryToken !== sessionToken) {
+      try {
+        return await runCreate(sessionToken);
+      } catch (_) {}
+    }
     throw new Error(msg);
   }
 }

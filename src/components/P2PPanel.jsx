@@ -2809,7 +2809,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         });
       }
 
-      const effectiveAuthToken = sessionToken || (await getEffectiveApiKeyAsync()) || PAJCASH_API_KEY;
+      const platformApiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey() || PAJCASH_API_KEY;
+      const effectiveAuthToken = platformApiKey || sessionToken;
       if (!effectiveAuthToken) {
         setOnrampError('PajCash API configuration missing. Please verify API settings.');
         setOnrampLoading(false);
@@ -2925,7 +2926,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       onrampSocketRef.current = observer;
       observer.connect().catch(() => { /* socket unavailable */ });
     } catch (err) {
-      setOnrampError(err.message || 'Failed to create onramp order.');
+      const msg = err.message || 'Failed to create onramp order.';
+      if (/session.*(invalid|expired)|unauthorized/i.test(msg)) {
+        if (publicKey) localStorage.removeItem(`paj_sessionToken_${publicKey.toBase58()}`);
+        localStorage.removeItem('paj_manual_sessionToken');
+      }
+      setOnrampError(msg);
     } finally {
       setOnrampLoading(false);
     }
