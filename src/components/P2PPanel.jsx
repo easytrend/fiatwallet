@@ -2827,9 +2827,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       }
 
       const platformApiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey() || PAJCASH_API_KEY;
-      const effectiveAuthToken = platformApiKey || sessionToken;
-      if (!effectiveAuthToken) {
-        setOnrampError('PajCash API configuration missing. Please verify API settings.');
+      const effectiveAuthToken = sessionToken || platformApiKey;
+      if (!sessionToken && !effectiveAuthToken) {
+        setOnrampError('Session is invalid or expired. Please tap "My Tag (KYC)" above to verify your email OTP.');
         setOnrampLoading(false);
         return;
       }
@@ -2943,14 +2943,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       onrampSocketRef.current = observer;
       observer.connect().catch(() => { /* socket unavailable */ });
     } catch (err) {
-      const msg = err.message || 'Failed to create onramp order.';
+      let msg = err.message || 'Failed to create onramp order.';
       if (/session.*(invalid|expired)|unauthorized/i.test(msg)) {
         if (publicKey) localStorage.removeItem(`paj_sessionToken_${publicKey.toBase58()}`);
         localStorage.removeItem('paj_manual_sessionToken');
         setSessionToken('');
         setAuthStep('input_email');
-        const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
-        if (fallbackEmail) setEmailInput(fallbackEmail);
+        msg = 'Session is invalid or expired. Please tap "My Tag (KYC)" above to verify your email OTP.';
       }
       setOnrampError(msg);
     } finally {
@@ -5811,151 +5810,41 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             </div>
           )}
 
-          {/* Inline Email Verification Card for Buy Tab (Shown when session is invalid/expired or unauthenticated) */}
-          {(authStep !== 'logged_in' || (onrampError && /session.*(invalid|expired)|unauthorized/i.test(onrampError))) && (
+          {onrampError && (
             <div style={{
-              background: 'rgba(34, 211, 238, 0.06)',
-              border: '1px solid rgba(34, 211, 238, 0.28)',
-              borderRadius: '14px',
-              padding: '14px 16px',
-              marginBottom: '14px',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              fontSize: '11px',
+              color: '#f87171',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
               textAlign: 'left'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--cyan, #22d3ee)' }}>
-                  {authStep === 'input_otp' ? 'Enter 4-Digit OTP Code' : 'Verify Email to Activate Buy Gateway'}
-                </div>
-                {(userTagData?.email || sessionEmail) && (
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)' }}>
-                    {userTagData?.email || sessionEmail}
-                  </div>
-                )}
-              </div>
-              <div style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.65)', marginBottom: '10px', lineHeight: '1.4' }}>
-                {authStep === 'input_otp'
-                  ? `Enter the 4-digit code sent to ${emailInput.trim() || 'your email'} to activate your payment gateway:`
-                  : 'PajCash requires a quick email verification before generating your bank transfer details.'}
-              </div>
-
-              {authError && (
-                <div style={{ fontSize: '11px', color: '#f87171', marginBottom: '8px' }}>
-                  ✕ {authError}
-                </div>
+              <span>✕ {onrampError}</span>
+              {/session.*(invalid|expired)|unauthorized|my tag/i.test(onrampError) && (
+                <button
+                  type="button"
+                  onClick={() => setShowTagModal(true)}
+                  style={{
+                    background: 'var(--lime)',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontWeight: '700',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0
+                  }}
+                >
+                  Verify Email →
+                </button>
               )}
-
-              {authStep !== 'input_otp' ? (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={e => setEmailInput(e.target.value)}
-                    placeholder="name@example.com"
-                    disabled={authLoading}
-                    style={{
-                      flex: 1,
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      color: 'white',
-                      fontSize: '12.5px',
-                      outline: 'none'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!emailInput.trim()) {
-                        const fallback = userTagData?.email || sessionEmail;
-                        if (fallback) setEmailInput(fallback);
-                      }
-                      handleInitiateSession();
-                    }}
-                    disabled={authLoading || (!emailInput?.trim() && !userTagData?.email && !sessionEmail)}
-                    style={{
-                      background: 'var(--lime)',
-                      color: '#000',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '8px 14px',
-                      fontWeight: '700',
-                      fontSize: '11.5px',
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {authLoading ? 'Sending...' : 'Send OTP'}
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    value={otpInput}
-                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                    placeholder="••••"
-                    disabled={authLoading}
-                    style={{
-                      flex: 1,
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      color: 'white',
-                      fontSize: '14px',
-                      letterSpacing: '4px',
-                      textAlign: 'center',
-                      fontWeight: '700',
-                      outline: 'none'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const token = await handleVerifySession();
-                      if (token) {
-                        setOnrampError(null);
-                        setTimeout(() => handleOnrampSubmit(), 200);
-                      }
-                    }}
-                    disabled={authLoading || otpInput.trim().length !== 4}
-                    style={{
-                      background: 'var(--lime)',
-                      color: '#000',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '8px 14px',
-                      fontWeight: '700',
-                      fontSize: '11.5px',
-                      cursor: (authLoading || otpInput.trim().length !== 4) ? 'not-allowed' : 'pointer',
-                      opacity: (authLoading || otpInput.trim().length !== 4) ? 0.6 : 1,
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {authLoading ? 'Verifying...' : 'Verify & Continue →'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthStep('input_email'); setOtpInput(''); }}
-                    style={{
-                      background: 'transparent',
-                      color: 'rgba(255,255,255,0.45)',
-                      border: 'none',
-                      fontSize: '11px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Edit
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {onrampError && !/session.*(invalid|expired)|unauthorized/i.test(onrampError) && (
-            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#f87171' }}>
-              ✕ {onrampError}
             </div>
           )}
 

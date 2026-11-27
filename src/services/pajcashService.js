@@ -664,8 +664,9 @@ export async function getAllRate() {
  */
 export async function createOnrampOrder(order, sessionToken) {
   const apiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey();
-  // For Onramp (Buy), always prefer the platform API key so orders never fail due to expired user sessions.
-  const primaryToken = apiKey || sessionToken;
+  // For Onramp (Buy), PajCash /pub/onramp strictly requires a live user sessionToken JWT.
+  // Prefer sessionToken first; fall back to apiKey only if no session token is provided.
+  const primaryToken = sessionToken || apiKey;
 
   const runCreate = async (authToken) => {
     const cleanOrder = { ...order };
