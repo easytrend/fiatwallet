@@ -584,6 +584,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   const [tagModalSaving, setTagModalSaving] = useState(false);
   const [tagModalError, setTagModalError] = useState(null);
   const [kycSyncState, setKycSyncState] = useState({ syncing: false, synced: false, error: '' });
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingOnrampSubmit, setPendingOnrampSubmit] = useState(false);
 
   const hasBvnNinError = Boolean(
     userTagData &&
@@ -1140,6 +1142,17 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     window.addEventListener('fiatwallet:session_updated', handleSessionUpdated);
     return () => window.removeEventListener('fiatwallet:session_updated', handleSessionUpdated);
   }, [publicKey, manualWalletAddress, guestOnrampWallet]);
+
+  // Listen for open auth modal requests from BankDetailsModal or other components
+  useEffect(() => {
+    const handleOpenAuth = () => {
+      const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
+      if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
+      setShowAuthModal(true);
+    };
+    window.addEventListener('fiatwallet:open_auth_modal', handleOpenAuth);
+    return () => window.removeEventListener('fiatwallet:open_auth_modal', handleOpenAuth);
+  }, [userTagData, sessionEmail, publicKey, emailInput]);
 
   // Re-check Supabase session when dynamic remote config arrives if not already logged in
   useEffect(() => {
@@ -2758,12 +2771,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
   };
 
   // ── Onramp (Buy) submit handler ──────────────────────────────────────────
-  const handleOnrampSubmit = async () => {
+  const handleOnrampSubmit = async (overrideToken) => {
     setOnrampError(null);
     setOnrampOrder(null);
     setOnrampStatus(null);
     swapTriggeredRef.current = false; // reset swap guard for new order
-    if (!effectiveAuthToken) { setOnrampError('PajCash service configuration missing. Please try again in a moment.'); return; }
 
     const effectiveEmail = sessionEmail || localStorage.getItem('paj_manual_sessionEmail') || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
 
@@ -2826,10 +2838,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         });
       }
 
-      const platformApiKey = (await getEffectiveApiKeyAsync()) || getEffectiveApiKey() || PAJCASH_API_KEY;
-      const effectiveAuthToken = sessionToken || platformApiKey;
-      if (!sessionToken && !effectiveAuthToken) {
-        setOnrampError('Session is invalid or expired. Please tap "My Tag (KYC)" above to verify your email OTP.');
+      const effectiveToken = (typeof overrideToken === 'string' && overrideToken) ? overrideToken : sessionToken;
+      if (!effectiveToken) {
+        const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
+        if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
+        setPendingOnrampSubmit(true);
+        setShowAuthModal(true);
         setOnrampLoading(false);
         return;
       }
@@ -2873,7 +2887,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           mint: onrampMint,
           webhookURL: import.meta.env.VITE_PAJCASH_WEBHOOK_URL || 'https://fiatwallet.app/api/paj_webhook',
         },
-        effectiveAuthToken
+        effectiveToken
       );
 
       if (!order?.id) throw new Error('PajCash did not return a valid onramp order.');
@@ -2949,7 +2963,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
         localStorage.removeItem('paj_manual_sessionToken');
         setSessionToken('');
         setAuthStep('input_email');
-        msg = 'Session is invalid or expired. Please tap "My Tag (KYC)" above to verify your email OTP.';
+        const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
+        if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
+        setPendingOnrampSubmit(true);
+        setShowAuthModal(true);
+        return;
       }
       setOnrampError(msg);
     } finally {
@@ -6752,6 +6770,164 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               @keyframes slideUpCard { from { opacity: 0; transform: translateY(40px) scale(0.95) } to { opacity: 1; transform: translateY(0) scale(1) } }
               @keyframes pulseRing { 0%,100% { box-shadow: 0 0 0 0 rgba(132,204,22,0.3) } 50% { box-shadow: 0 0 0 10px rgba(132,204,22,0) } }
             `}</style>
+          </div>
+        </div>
+      )}
+
+      {/* ── PajCash Email OTP Verification Modal ─────────────────────────────── */}
+      {showAuthModal && (
+        <div
+          className="p2p-success-overlay"
+          onClick={() => { setShowAuthModal(false); setPendingOnrampSubmit(false); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px'
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--card, #121926)',
+              border: '1px solid rgba(34, 211, 238, 0.3)',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '380px',
+              padding: '24px',
+              position: 'relative',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            }}
+          >
+            <button
+              onClick={() => { setShowAuthModal(false); setPendingOnrampSubmit(false); }}
+              style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', color: '#8e9aa8', fontSize: '18px', cursor: 'pointer' }}
+            >✕</button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(34, 211, 238, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cyan, #22d3ee)', fontWeight: '800', fontSize: '15px' }}>
+                ⚡
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>
+                Verify Email with PajCash
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#8e9aa8', lineHeight: '1.45', marginBottom: '16px' }}>
+              {authStep === 'input_otp'
+                ? `Enter the 4-digit code sent to ${emailInput.trim() || 'your email'} to authorize your transfer:`
+                : 'PajCash requires a quick email verification to authorize your transaction and sync your identity.'}
+            </div>
+
+            {authError && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '11px', color: '#f87171', marginBottom: '12px' }}>
+                ✕ {authError}
+              </div>
+            )}
+
+            {authStep !== 'input_otp' ? (
+              <div>
+                <div style={{ marginBottom: '12px' }}>
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={e => setEmailInput(e.target.value)}
+                    placeholder="name@example.com"
+                    disabled={authLoading}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      padding: '11px 14px',
+                      color: 'white',
+                      fontSize: '13px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleInitiateSession}
+                  disabled={authLoading || !emailInput.trim()}
+                  className="send-btn"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    fontWeight: '700',
+                    fontSize: '13.5px',
+                    borderRadius: '10px'
+                  }}
+                >
+                  {authLoading ? 'Sending OTP...' : 'Send 4-Digit OTP'}
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    autoFocus
+                    value={otpInput}
+                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="••••"
+                    disabled={authLoading}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      padding: '11px 14px',
+                      color: 'white',
+                      fontSize: '18px',
+                      letterSpacing: '8px',
+                      textAlign: 'center',
+                      fontWeight: '800',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const token = await handleVerifySession();
+                    if (token) {
+                      setShowAuthModal(false);
+                      setOnrampError(null);
+                      if (pendingOnrampSubmit) {
+                        setPendingOnrampSubmit(false);
+                        setTimeout(() => handleOnrampSubmit(token), 300);
+                      }
+                    }
+                  }}
+                  disabled={authLoading || otpInput.trim().length !== 4}
+                  className="send-btn"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    fontWeight: '700',
+                    fontSize: '13.5px',
+                    borderRadius: '10px',
+                    marginBottom: '10px'
+                  }}
+                >
+                  {authLoading ? 'Verifying...' : 'Verify & Continue →'}
+                </button>
+                <div style={{ textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthStep('input_email'); setOtpInput(''); }}
+                    style={{ background: 'none', border: 'none', color: '#8e9aa8', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Change email or resend
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

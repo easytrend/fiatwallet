@@ -964,11 +964,15 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           </div>
         )}
 
-        {/* KYC Verification Status Banner */}
+        {/* PajCash KYC Verification Status Banner */}
         {userTagData && (userTagData.bvn || userTagData.nin) && !hasBvnNinError && !isMissingKyc && (
           <div style={{
-            background: 'rgba(163, 230, 53, 0.08)',
-            border: '1px solid rgba(163, 230, 53, 0.3)',
+            background: effectiveKycSynced
+              ? 'rgba(163, 230, 53, 0.08)'
+              : 'rgba(34, 211, 238, 0.06)',
+            border: effectiveKycSynced
+              ? '1px solid rgba(163, 230, 53, 0.3)'
+              : '1px solid rgba(34, 211, 238, 0.25)',
             borderRadius: '12px',
             padding: '10px 12px',
             marginBottom: '14px',
@@ -980,14 +984,37 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             lineHeight: '1.35',
           }}>
             <span style={{
-              color: 'var(--lime)',
+              color: effectiveKycSynced ? 'var(--lime)' : 'var(--cyan, #22d3ee)',
               fontWeight: '600',
               display: 'flex',
               alignItems: 'center',
               gap: '6px'
             }}>
-              ✓ Bank Details & KYC Verified
+              {effectiveKycSynced ? '✓ KYC Synced with PajCash' : 'PajCash KYC: Pending Sync'}
             </span>
+            {!effectiveKycSynced && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('fiatwallet:open_auth_modal'));
+                  onClose();
+                }}
+                style={{
+                  background: 'var(--lime)',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '4px 9px',
+                  fontSize: '10.5px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
+                }}
+              >
+                Verify & Sync →
+              </button>
+            )}
           </div>
         )}
 
