@@ -577,83 +577,9 @@ function maskEmail(email) {
 }
 
 export async function checkEmailWalletBinding(email, walletAddress) {
-  const client = (await getSupabaseAsync()) || getSupabase();
-  if (!client || !email || !walletAddress) return { allowed: true };
-
-  const cleanEmail = String(email).trim().toLowerCase();
-  const normEmail = normalizeEmail(cleanEmail);
-  const cleanWallet = String(walletAddress).trim();
-
-  try {
-    // 1. Check paj_sessions table: Has this email been linked to another wallet?
-    const { data: sessionRows } = await client
-      .from('paj_sessions')
-      .select('wallet_address, email')
-      .or(`email.ilike.${cleanEmail},email.ilike.${normEmail}`)
-      .limit(10);
-
-    if (sessionRows && sessionRows.length > 0) {
-      for (const row of sessionRows) {
-        const bound = (row.wallet_address || '').trim();
-        if (bound && bound.toLowerCase() !== cleanWallet.toLowerCase()) {
-          const maskedWallet = bound.length > 10 ? `${bound.slice(0, 4)}...${bound.slice(-4)}` : bound;
-          return {
-            allowed: false,
-            boundWallet: bound,
-            message: `This email (${cleanEmail}) is already linked to another wallet (${maskedWallet}). Each email can only be associated with one wallet. Please connect with your registered wallet or contact support@fiatwallet.app for help.`
-          };
-        }
-      }
-    }
-
-    // 2. Check p2p_transactions table (orders previously submitted with this email)
-    const { data: orderRows } = await client
-      .from('p2p_transactions')
-      .select('user_address, user_email')
-      .or(`user_email.ilike.${cleanEmail},user_email.ilike.${normEmail}`)
-      .limit(10);
-
-    if (orderRows && orderRows.length > 0) {
-      for (const row of orderRows) {
-        const bound = (row.user_address || '').trim();
-        if (bound && bound.toLowerCase() !== cleanWallet.toLowerCase()) {
-          const maskedWallet = bound.length > 10 ? `${bound.slice(0, 4)}...${bound.slice(-4)}` : bound;
-          return {
-            allowed: false,
-            boundWallet: bound,
-            message: `This email (${cleanEmail}) is already linked to another wallet (${maskedWallet}). Each email can only be associated with one wallet. Please connect with your registered wallet or contact support@fiatwallet.app for help.`
-          };
-        }
-      }
-    }
-
-    // 3. Reverse Check: Has THIS wallet already been verified with a DIFFERENT email?
-    const { data: walletSessions } = await client
-      .from('paj_sessions')
-      .select('wallet_address, email')
-      .eq('wallet_address', cleanWallet)
-      .limit(10);
-
-    if (walletSessions && walletSessions.length > 0) {
-      for (const row of walletSessions) {
-        if (!row.email) continue;
-        const rowNorm = normalizeEmail(row.email);
-        if (rowNorm && rowNorm !== normEmail) {
-          const masked = maskEmail(row.email);
-          return {
-            allowed: false,
-            boundEmail: row.email,
-            message: `This wallet is already verified with another email (${masked}). Each wallet can only be linked to its original verified email. Please use your verified email or contact support@fiatwallet.app.`
-          };
-        }
-      }
-    }
-
-    return { allowed: true };
-  } catch (err) {
-    console.warn('[Supabase] checkEmailWalletBinding error:', err.message);
-    return { allowed: true };
-  }
+  // Users can freely verify and link their email to any preferred wallet.
+  // Legitimate ownership is verified through the live PajCash 4-digit OTP code sent to the email inbox.
+  return { allowed: true };
 }
 
 export async function saveSession(walletAddress, email, token, expiryMs) {
