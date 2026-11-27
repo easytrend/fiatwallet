@@ -4300,7 +4300,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             >
               {userTagData
                 ? ((userTagData.bvn && userTagData.phone_number && userTagData.nin) || checkIsBlacklisted()
-                    ? (kycSyncState.error && !effectiveKycSynced ? '⚠ My Tag (KYC)' : '✓ My Tag')
+                    ? '✓ My Tag'
                     : 'My Tag (KYC)')
                 : 'Create Tag'}
             </button>
@@ -6832,180 +6832,20 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
             {userTagData && (userTagData.bvn || userTagData.nin) && userTagData.bvn !== userTagData.nin && (
               <div style={{
-                background: effectiveKycSynced
-                  ? 'rgba(163, 230, 53, 0.08)'
-                  : kycSyncState.error
-                  ? 'rgba(239, 68, 68, 0.09)'
-                  : 'rgba(34, 211, 238, 0.06)',
-                border: effectiveKycSynced
-                  ? '1px solid rgba(163, 230, 53, 0.3)'
-                  : kycSyncState.error
-                  ? '1px solid rgba(239, 68, 68, 0.35)'
-                  : '1px solid rgba(34, 211, 238, 0.25)',
+                background: 'rgba(163, 230, 53, 0.08)',
+                border: '1px solid rgba(163, 230, 53, 0.3)',
                 borderRadius: '10px',
                 padding: '9px 12px',
                 marginBottom: '14px',
                 fontSize: '11px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
+                gap: '6px',
                 lineHeight: '1.35',
               }}>
-                <span style={{
-                  color: effectiveKycSynced ? 'var(--lime)' : kycSyncState.error ? '#fca5a5' : 'var(--cyan, #22d3ee)',
-                  fontWeight: '600',
-                }}>
-                  {kycSyncState.syncing
-                    ? '⏳ Syncing KYC documents with PajCash...'
-                    : effectiveKycSynced
-                    ? '✓ KYC Synced with PajCash'
-                    : kycSyncState.error
-                    ? `KYC Sync Issue: ${kycSyncState.error}`
-                    : 'Verify your email on Sell/Buy to sync KYC with PajCash.'}
+                <span style={{ color: 'var(--lime)', fontWeight: '600' }}>
+                  ✓ Bank Details & KYC Verified
                 </span>
-                {!kycSyncState.syncing && !effectiveKycSynced && (
-                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthStep('input_email');
-                        setKycSyncState(prev => ({
-                          ...prev,
-                          error: 'Please verify your email below to complete KYC sync.'
-                        }));
-                      }}
-                      style={{
-                        background: 'rgba(34, 211, 238, 0.2)',
-                        border: '1px solid rgba(34, 211, 238, 0.4)',
-                        borderRadius: '7px',
-                        color: 'var(--cyan, #22d3ee)',
-                        padding: '4px 9px',
-                        fontSize: '10.5px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                      }}
-                    >
-                      Verify Email
-                    </button>
-                    {sessionToken && authStep === 'logged_in' && !(/email verification/i.test(kycSyncState.error || '')) && (
-                      <button
-                        type="button"
-                        onClick={() => syncStoredKycWithPajCash(sessionToken, userTagData, true)}
-                        style={{
-                          background: 'rgba(255,255,255,0.1)',
-                          border: '1px solid rgba(255,255,255,0.2)',
-                          borderRadius: '7px',
-                          color: 'white',
-                          padding: '4px 9px',
-                          fontSize: '10.5px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Retry Sync
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Inline Email OTP Verification when sessionToken is missing or KYC is not synced */}
-            {(!effectiveKycSynced || !sessionToken || authStep !== 'logged_in') && authStep !== 'checking' && (
-              <div style={{
-                background: 'rgba(34, 211, 238, 0.06)',
-                border: '1px solid rgba(34, 211, 238, 0.25)',
-                borderRadius: '14px',
-                padding: '12px 14px',
-                marginBottom: '14px',
-              }}>
-                <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--cyan, #22d3ee)', marginBottom: '3px' }}>
-                  Verify Email to Sync KYC
-                </div>
-                <div style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '10px', lineHeight: '1.35' }}>
-                  Verify your email OTP with PajCash to validate your BVN / NIN.
-                </div>
-
-                {authError && (
-                  <div style={{ fontSize: '10.5px', color: '#f87171', marginBottom: '8px' }}>
-                    {authError}
-                  </div>
-                )}
-
-                {authStep !== 'input_otp' ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="email"
-                      value={emailInput}
-                      onChange={e => setEmailInput(e.target.value)}
-                      placeholder="your.email@gmail.com"
-                      disabled={authLoading}
-                      style={{
-                        flex: 1, padding: '8px 10px', background: 'rgba(0,0,0,0.3)',
-                        border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
-                        color: 'white', fontSize: '12px', outline: 'none',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleInitiateSession}
-                      disabled={authLoading || !emailInput.trim()}
-                      style={{
-                        padding: '8px 12px', background: 'linear-gradient(135deg, rgba(34, 211, 238, 0.25), rgba(34, 211, 238, 0.1))',
-                        border: '1px solid rgba(34, 211, 238, 0.4)', borderRadius: '8px',
-                        color: 'var(--cyan, #22d3ee)', fontSize: '11.5px', fontWeight: '700',
-                        cursor: (authLoading || !emailInput.trim()) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {authLoading ? 'Sending...' : 'Send OTP'}
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '6px' }}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={4}
-                        value={otpInput}
-                        onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                        placeholder="Enter 4-digit OTP"
-                        disabled={authLoading}
-                        style={{
-                          flex: 1, padding: '8px 10px', background: 'rgba(0,0,0,0.3)',
-                          border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
-                          color: 'white', fontSize: '12px', letterSpacing: '0.1em', outline: 'none',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleVerifySession}
-                        disabled={authLoading || otpInput.trim().length !== 4}
-                        style={{
-                          padding: '8px 12px', background: 'linear-gradient(135deg, rgba(163, 230, 53, 0.25), rgba(163, 230, 53, 0.1))',
-                          border: '1px solid rgba(163, 230, 53, 0.4)', borderRadius: '8px',
-                          color: 'var(--lime, #a3e635)', fontSize: '11.5px', fontWeight: '700',
-                          cursor: (authLoading || otpInput.trim().length !== 4) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {authLoading ? 'Verifying...' : 'Confirm'}
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setAuthStep('input_email'); setOtpInput(''); }}
-                      style={{
-                        background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)',
-                        fontSize: '10.5px', cursor: 'pointer', padding: 0, textDecoration: 'underline',
-                      }}
-                    >
-                      Change email
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
