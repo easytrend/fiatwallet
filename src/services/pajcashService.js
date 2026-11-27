@@ -472,9 +472,9 @@ export async function submitUserKyc(sessionToken, idNumber, idType = 'BVN', coun
   }
 }
 
-const KYC_SESSION_ERR_RE = /unauthorized|session|expired|jwt|invalid token|not logged|email verification|verify.*email/i;
+const KYC_SESSION_ERR_RE = /unauthorized|session|expired|jwt|invalid token|not logged|email verification|verify.*email|user need to do email/i;
 const KYC_VALIDATION_ERR_RE = /already used|invalid|mismatch|not found|incorrect|failed verification|does not match/i;
-const KYC_ALREADY_DONE_RE = /already verified|already submitted|already completed|kyc already|user already/i;
+const KYC_ALREADY_DONE_RE = /already verified|already submitted|already completed|kyc already|user already|already exists|already registered/i;
 const KYC_UNAVAILABLE_RE = /network|failed to fetch|timeout|unavailable|not found|cannot post/i;
 
 /**

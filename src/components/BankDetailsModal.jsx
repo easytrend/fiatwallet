@@ -173,7 +173,17 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
   const [sessionLoading, setSessionLoading] = useState(true);
 
   // Inline email OTP state (fallback if no active session exists)
-  const [emailInput, setEmailInput] = useState('');
+  const [emailInput, setEmailInput] = useState(() => {
+    try {
+      const w = (walletAddress || '').trim();
+      return (
+        (w && typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_sessionEmail_${w}`) : '') ||
+        (w && typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_userEmail_${w}`) : '') ||
+        (typeof localStorage !== 'undefined' ? localStorage.getItem('paj_manual_sessionEmail') : '') ||
+        ''
+      );
+    } catch { return ''; }
+  });
   const [otpInput, setOtpInput] = useState('');
   const [authStep, setAuthStep] = useState('email'); // 'email' | 'otp'
   const [authLoading, setAuthLoading] = useState(false);
@@ -221,7 +231,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
         if (effectiveWallet) {
           const cachedToken = localStorage.getItem(`paj_sessionToken_${effectiveWallet}`);
           const cachedExpiry = localStorage.getItem(`paj_sessionExpiry_${effectiveWallet}`);
-          const cachedEmail = localStorage.getItem(`paj_sessionEmail_${effectiveWallet}`);
+          const cachedEmail = localStorage.getItem(`paj_sessionEmail_${effectiveWallet}`) || localStorage.getItem(`paj_userEmail_${effectiveWallet}`);
+
+          if (cachedEmail) {
+            setEmailInput(prev => prev || cachedEmail);
+          }
 
           if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
             if (isMounted) {
@@ -240,6 +254,10 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
 
               setSessionToken(row.session_token);
               setSessionEmail(row.email || '');
+              if (row.email) {
+                setEmailInput(prev => prev || row.email);
+                localStorage.setItem(`paj_userEmail_${effectiveWallet}`, row.email);
+              }
               setSessionLoading(false);
 
               localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, row.session_token);
@@ -249,11 +267,14 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             } else if (!row?.session_token || row.session_token.startsWith('EXPIRED_')) {
               // Server session expired or revoked
               localStorage.removeItem(`paj_sessionToken_${effectiveWallet}`);
-              localStorage.removeItem(`paj_sessionEmail_${effectiveWallet}`);
               localStorage.removeItem(`paj_sessionExpiry_${effectiveWallet}`);
+              if (cachedEmail) {
+                localStorage.setItem(`paj_userEmail_${effectiveWallet}`, cachedEmail);
+                setEmailInput(prev => prev || cachedEmail);
+              }
               if (isMounted) {
                 setSessionToken('');
-                setSessionEmail('');
+                setSessionEmail(cachedEmail || '');
                 setSessionLoading(false);
               }
               return;
@@ -633,16 +654,23 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
         if (effectiveWallet) {
           localStorage.setItem(`paj_sessionToken_${effectiveWallet}`, res.token);
           localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, emailInput.trim());
+          localStorage.setItem(`paj_userEmail_${effectiveWallet}`, emailInput.trim());
           localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
           await saveSession(effectiveWallet, emailInput.trim(), res.token, expiryMs);
           if (userTagData && (userTagData.bvn || userTagData.nin)) {
+            setTagModalSuccess('Email verified! Syncing KYC with PajCash...');
             runKycSync(res.token, userTagData, true);
+          } else {
+            setTagModalSuccess('Email verified successfully with PajCash!');
           }
         } else {
           localStorage.setItem('paj_manual_sessionToken', res.token);
           localStorage.setItem('paj_manual_sessionEmail', emailInput.trim());
           if (userTagData && (userTagData.bvn || userTagData.nin)) {
+            setTagModalSuccess('Email verified! Syncing KYC with PajCash...');
             runKycSync(res.token, userTagData, true);
+          } else {
+            setTagModalSuccess('Email verified successfully with PajCash!');
           }
         }
       } else {
@@ -1028,8 +1056,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           </div>
         )}
 
-        {/* ── Inline PajCash Email Verification (Shown when user lacks an OTP sessionToken for KYC sync) ── */}
-        {!sessionLoading && !sessionToken && (
+        {/* ── Inline PajCash Email Verification (Shown when user lacks verified session or KYC is not synced) ── */}
+        {!sessionLoading && (!effectiveKycSynced || !sessionToken) && (
           <div style={{
             background: 'rgba(34, 211, 238, 0.06)',
             border: '1px solid rgba(34, 211, 238, 0.25)',
@@ -1037,11 +1065,20 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             padding: '12px 14px',
             marginBottom: '16px',
           }}>
-            <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--cyan, #22d3ee)', marginBottom: '3px' }}>
-              Verify Email to Sync KYC
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+              <div style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--cyan, #22d3ee)' }}>
+                Verify Email to Sync KYC
+              </div>
+              {sessionEmail && (
+                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)' }}>
+                  {sessionEmail}
+                </div>
+              )}
             </div>
             <div style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '10px', lineHeight: '1.35' }}>
-              Verify your email with PajCash to register your BVN &amp; NIN for crypto purchases.
+              {authStep === 'otp'
+                ? `Enter the 4-digit OTP code sent to ${emailInput.trim() || 'your email'}.`
+                : 'Verify your email with PajCash to link and sync your BVN & NIN seamlessly.'}
             </div>
 
             {authError && (
@@ -1096,7 +1133,11 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                     inputMode="numeric"
                     maxLength={4}
                     value={otpInput}
-                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    autoFocus
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setOtpInput(val);
+                    }}
                     placeholder="Enter 4-digit OTP"
                     disabled={authLoading}
                     style={{
@@ -1107,7 +1148,8 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                       borderRadius: '8px',
                       color: 'white',
                       fontSize: '12px',
-                      letterSpacing: '0.1em',
+                      letterSpacing: '0.15em',
+                      fontWeight: '700',
                       outline: 'none',
                     }}
                   />
@@ -1127,24 +1169,42 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {authLoading ? 'Verifying...' : 'Confirm'}
+                    {authLoading ? 'Verifying...' : 'Verify & Sync'}
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { setAuthStep('email'); setOtpInput(''); }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.5)',
-                    fontSize: '10.5px',
-                    cursor: 'pointer',
-                    padding: 0,
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Change email
-                </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthStep('email'); setOtpInput(''); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'rgba(255,255,255,0.5)',
+                      fontSize: '10.5px',
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Change email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleInitiateEmail}
+                    disabled={authLoading}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--cyan, #22d3ee)',
+                      fontSize: '10.5px',
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Resend code
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -6780,31 +6780,31 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                 </span>
                 {!kycSyncState.syncing && !effectiveKycSynced && (
                   <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                    {kycSyncState.error && /email verification/i.test(kycSyncState.error) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearExpiredKycSession(effectiveWallet);
-                          setKycSyncState(prev => ({
-                            ...prev,
-                            error: 'Please verify your email below to complete KYC sync.'
-                          }));
-                        }}
-                        style={{
-                          background: 'rgba(34, 211, 238, 0.2)',
-                          border: '1px solid rgba(34, 211, 238, 0.4)',
-                          borderRadius: '7px',
-                          color: 'var(--cyan, #22d3ee)',
-                          padding: '4px 9px',
-                          fontSize: '10.5px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Verify Email
-                      </button>
-                    ) : sessionToken && authStep === 'logged_in' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearExpiredKycSession(effectiveWallet);
+                        setAuthStep('input_email');
+                        setKycSyncState(prev => ({
+                          ...prev,
+                          error: 'Please verify your email below to complete KYC sync.'
+                        }));
+                      }}
+                      style={{
+                        background: 'rgba(34, 211, 238, 0.2)',
+                        border: '1px solid rgba(34, 211, 238, 0.4)',
+                        borderRadius: '7px',
+                        color: 'var(--cyan, #22d3ee)',
+                        padding: '4px 9px',
+                        fontSize: '10.5px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Verify Email
+                    </button>
+                    {sessionToken && authStep === 'logged_in' && !(/email verification/i.test(kycSyncState.error || '')) && (
                       <button
                         type="button"
                         onClick={() => syncStoredKycWithPajCash(sessionToken, userTagData, true)}
@@ -6822,14 +6822,14 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                       >
                         Retry Sync
                       </button>
-                    ) : null}
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Inline Email OTP Verification when sessionToken is missing or expired */}
-            {(!sessionToken || authStep !== 'logged_in') && authStep !== 'checking' && (
+            {/* Inline Email OTP Verification when sessionToken is missing or KYC is not synced */}
+            {(!effectiveKycSynced || !sessionToken || authStep !== 'logged_in') && authStep !== 'checking' && (
               <div style={{
                 background: 'rgba(34, 211, 238, 0.06)',
                 border: '1px solid rgba(34, 211, 238, 0.25)',
