@@ -322,6 +322,9 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           setTagModalPhone(tag.phone_number || '');
           setTagModalBvn(tag.bvn || '');
           setTagModalNin(tag.nin || '');
+          if (tag.email) {
+            setEmailInput(prev => prev || tag.email);
+          }
         } else {
           setUserTagData(null);
         }
@@ -939,24 +942,52 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                 ? `KYC Sync Issue: ${kycSyncState.error}`
                 : 'Email verification needed to sync KYC with PajCash.'}
             </span>
-            {!kycSyncState.syncing && !effectiveKycSynced && sessionToken && (
-              <button
-                type="button"
-                onClick={() => runKycSync(sessionToken, userTagData, true)}
-                style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: '7px',
-                  color: 'white',
-                  padding: '4px 9px',
-                  fontSize: '10.5px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                Retry Sync
-              </button>
+            {!kycSyncState.syncing && !effectiveKycSynced && (
+              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                {kycSyncState.error && /email verification/i.test(kycSyncState.error) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearExpiredPajSession();
+                      setKycSyncState(prev => ({
+                        ...prev,
+                        error: 'Please verify your email below to complete KYC sync.'
+                      }));
+                    }}
+                    style={{
+                      background: 'rgba(34, 211, 238, 0.2)',
+                      border: '1px solid rgba(34, 211, 238, 0.4)',
+                      borderRadius: '7px',
+                      color: 'var(--cyan, #22d3ee)',
+                      padding: '4px 9px',
+                      fontSize: '10.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Verify Email
+                  </button>
+                ) : sessionToken ? (
+                  <button
+                    type="button"
+                    onClick={() => runKycSync(sessionToken, userTagData, true)}
+                    style={{
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: '7px',
+                      color: 'white',
+                      padding: '4px 9px',
+                      fontSize: '10.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Retry Sync
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
         )}

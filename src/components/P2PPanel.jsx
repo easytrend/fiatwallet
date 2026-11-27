@@ -6775,24 +6775,52 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
                     ? `KYC Sync Issue: ${kycSyncState.error}`
                     : 'Verify your email on Sell/Buy to sync KYC with PajCash.'}
                 </span>
-                {!kycSyncState.syncing && !effectiveKycSynced && sessionToken && authStep === 'logged_in' && (
-                  <button
-                    type="button"
-                    onClick={() => syncStoredKycWithPajCash(sessionToken, userTagData, true)}
-                    style={{
-                      background: 'rgba(255,255,255,0.1)',
-                      border: '1px solid rgba(255,255,255,0.2)',
-                      borderRadius: '7px',
-                      color: 'white',
-                      padding: '4px 9px',
-                      fontSize: '10.5px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                    }}
-                  >
-                    Retry Sync
-                  </button>
+                {!kycSyncState.syncing && !effectiveKycSynced && (
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                    {kycSyncState.error && /email verification/i.test(kycSyncState.error) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearExpiredKycSession(effectiveWallet);
+                          setKycSyncState(prev => ({
+                            ...prev,
+                            error: 'Please verify your email below to complete KYC sync.'
+                          }));
+                        }}
+                        style={{
+                          background: 'rgba(34, 211, 238, 0.2)',
+                          border: '1px solid rgba(34, 211, 238, 0.4)',
+                          borderRadius: '7px',
+                          color: 'var(--cyan, #22d3ee)',
+                          padding: '4px 9px',
+                          fontSize: '10.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Verify Email
+                      </button>
+                    ) : sessionToken && authStep === 'logged_in' ? (
+                      <button
+                        type="button"
+                        onClick={() => syncStoredKycWithPajCash(sessionToken, userTagData, true)}
+                        style={{
+                          background: 'rgba(255,255,255,0.1)',
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          borderRadius: '7px',
+                          color: 'white',
+                          padding: '4px 9px',
+                          fontSize: '10.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Retry Sync
+                      </button>
+                    ) : null}
+                  </div>
                 )}
               </div>
             )}
