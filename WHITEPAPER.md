@@ -135,7 +135,7 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 
 <img src="public/team-favour.jpg" width="60" height="60" alt="Favour Michael" style="border-radius: 12px; float: left; margin-right: 14px; object-fit: cover; object-position: center 15%;" />
 
-* **Favour Michael** — Social Media Manager  
+* **Favour Michael** — Social Media & Community Manager  
   **LinkedIn:** [favourmichaell](https://linkedin.com/in/favourmichaell)  
   *Managing multi-channel social growth, Web3 brand narrative, community engagement, and digital education across consumer touchpoints.*
 
