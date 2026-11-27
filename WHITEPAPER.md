@@ -4,7 +4,7 @@
 > **Official Website:** [https://fiatwallet.app](https://fiatwallet.app)  
 > **X (Twitter):** [@fiatwallet](https://x.com/fiatwallet)  
 > **Telegram Community:** [t.me/fiatwalletApp](https://t.me/fiatwalletApp)  
-> **Direct Contact:** `fiatwalletapp@gmail.com`  
+> **Direct Contact:** `info@fiatwallet.app`  
 
 ---
 
@@ -54,7 +54,7 @@ flowchart TD
 
 | Metric | Performance | Description / Benchmark |
 | :--- | :--- | :--- |
-| **Total Processed Volume (TPV)** | **$9,000+** | Real-world settled volume across NGN domestic rails and Solana bridge transactions. |
+| **Total Processed Volume (TPV)** | **$9,000+ (≈ ₦14,000,000+)** | Real-world settled volume across NGN domestic rails and Solana bridge transactions. |
 | **Active Transacting Users** | **30+ Active Traders** | Verified unique wallet participants actively trading and executing on-chain transfers. |
 | **Average Settlement Speed** | **< 45 Seconds** | 98% of on-ramps and off-ramps settle end-to-end automatically. |
 | **System Reliability** | **99.9% Uptime** | Edge-deployed serverless micro-architecture with automated RPC failover. |
@@ -161,4 +161,4 @@ FiatWallet generates revenue through multi-tiered transaction spreads and protoc
 
 ---
 
-*Direct Contact: **`fiatwalletapp@gmail.com`** | Telegram: **[@fiatwalletApp](https://t.me/fiatwalletApp)** | Web: **[https://fiatwallet.app](https://fiatwallet.app)***
+*Direct Contact: **`info@fiatwallet.app`** | Telegram: **[@fiatwalletApp](https://t.me/fiatwalletApp)** | Web: **[https://fiatwallet.app](https://fiatwallet.app)***
