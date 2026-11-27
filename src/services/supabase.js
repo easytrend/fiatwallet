@@ -803,11 +803,22 @@ export async function deleteSession(walletAddress) {
   const client = (await getSupabaseAsync()) || getSupabase();
   if (!client || !walletAddress) return;
   try {
+    // 1. Invalidate via secure RPC (works under strict RLS where direct DELETE is revoked)
+    try {
+      await client.rpc('save_paj_session', {
+        p_wallet_address: walletAddress,
+        p_email: '',
+        p_session_token: 'EXPIRED_SESSION_REVOKED',
+        p_expires_at: new Date(0).toISOString()
+      });
+    } catch (_) {}
+
+    // 2. Direct delete fallback
     const { error } = await client
       .from('paj_sessions')
       .delete()
       .ilike('wallet_address', walletAddress);
-    if (error) console.warn('[Supabase] deleteSession failed:', error.message);
+    if (error && error.code !== '42501') console.warn('[Supabase] deleteSession failed:', error.message);
   } catch (err) {
     console.warn('[Supabase] deleteSession error:', err.message);
   }

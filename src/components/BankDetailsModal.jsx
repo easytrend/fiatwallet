@@ -635,9 +635,15 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
           localStorage.setItem(`paj_sessionEmail_${effectiveWallet}`, emailInput.trim());
           localStorage.setItem(`paj_sessionExpiry_${effectiveWallet}`, String(expiryMs));
           await saveSession(effectiveWallet, emailInput.trim(), res.token, expiryMs);
+          if (userTagData && (userTagData.bvn || userTagData.nin)) {
+            runKycSync(res.token, userTagData, true);
+          }
         } else {
           localStorage.setItem('paj_manual_sessionToken', res.token);
           localStorage.setItem('paj_manual_sessionEmail', emailInput.trim());
+          if (userTagData && (userTagData.bvn || userTagData.nin)) {
+            runKycSync(res.token, userTagData, true);
+          }
         }
       } else {
         setAuthError('Verification succeeded but no session token was returned.');

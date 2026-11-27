@@ -2269,6 +2269,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           // replaced — on their next wallet-connect check their token will
           // not match Supabase and they will be silently kicked out.
           await saveSession(key, emailInput.trim(), res.token, expiryMs);
+          if (userTagData && (userTagData.bvn || userTagData.nin)) {
+            syncStoredKycWithPajCash(res.token, userTagData, true);
+          }
         } else {
           // Manual / Guest mode: save session to manual storage keys
           const expiryMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
