@@ -388,7 +388,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
   );
 
   const effectiveKycSynced = Boolean(
-    (kycSyncState.synced || isCachedKycSynced || isLocked || isCompleteKyc) && !kycSyncState.error
+    kycSyncState.synced || (isCachedKycSynced && !kycSyncState.error)
   );
 
   const clearExpiredPajSession = useCallback(() => {
@@ -1001,30 +1001,30 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
             </span>
             {!kycSyncState.syncing && !effectiveKycSynced && (
               <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                {kycSyncState.error && /email verification/i.test(kycSyncState.error) ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setKycSyncState(prev => ({
-                        ...prev,
-                        error: 'Please verify your email below to complete KYC sync.'
-                      }));
-                    }}
-                    style={{
-                      background: 'rgba(34, 211, 238, 0.2)',
-                      border: '1px solid rgba(34, 211, 238, 0.4)',
-                      borderRadius: '7px',
-                      color: 'var(--cyan, #22d3ee)',
-                      padding: '4px 9px',
-                      fontSize: '10.5px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                    }}
-                  >
-                    Verify Email
-                  </button>
-                ) : sessionToken ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthStep('email');
+                    setKycSyncState(prev => ({
+                      ...prev,
+                      error: 'Please verify your email below to complete KYC sync.'
+                    }));
+                  }}
+                  style={{
+                    background: 'rgba(34, 211, 238, 0.2)',
+                    border: '1px solid rgba(34, 211, 238, 0.4)',
+                    borderRadius: '7px',
+                    color: 'var(--cyan, #22d3ee)',
+                    padding: '4px 9px',
+                    fontSize: '10.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  Verify Email
+                </button>
+                {sessionToken && (
                   <button
                     type="button"
                     onClick={() => runKycSync(sessionToken, userTagData, true)}
@@ -1042,7 +1042,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
                   >
                     Retry Sync
                   </button>
-                ) : null}
+                )}
               </div>
             )}
           </div>
@@ -1079,7 +1079,7 @@ export default function BankDetailsModal({ walletAddress, isGuest = false, onClo
         )}
 
         {/* ── Inline PajCash Email Verification (Shown when user lacks verified session or KYC is not synced) ── */}
-        {!sessionLoading && (!effectiveKycSynced || !sessionToken) && (
+        {!sessionLoading && (!effectiveKycSynced || !sessionToken || authStep === 'otp' || kycSyncState.error) && (
           <div style={{
             background: 'rgba(34, 211, 238, 0.06)',
             border: '1px solid rgba(34, 211, 238, 0.25)',

@@ -643,6 +643,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       (publicKey && typeof localStorage !== 'undefined' ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '') ||
       (userTagData?.email || '');
 
+    // Registered Fiat Tag users are authenticated community members and never tainted
+    if (userTagData?.tag_name && userWallet) {
+      try {
+        localStorage.removeItem(`fw_tainted_wallet_${userWallet}`);
+      } catch {}
+    }
+
     // 1. Direct check on current email and wallet address
     const directCheck = isBlacklisted({ email: userEmail, walletAddress: userWallet });
     if (directCheck.blacklisted) {
@@ -657,7 +664,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     // 2. Check if this wallet was previously associated with a blacklisted entity in this browser
     if (userWallet && typeof localStorage !== 'undefined') {
       try {
-        if (localStorage.getItem(`fw_tainted_wallet_${userWallet}`) === '1') {
+        if (!userTagData?.tag_name && localStorage.getItem(`fw_tainted_wallet_${userWallet}`) === '1') {
           return true;
         }
       } catch {}
@@ -1226,6 +1233,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       getFiatTagByWallet(storedWallet).then(tag => {
         if (tag) {
           setUserTagData(tag);
+          if (tag.email) {
+            setEmailInput(prev => prev || tag.email);
+            setSessionEmail(prev => prev || tag.email);
+          }
           if (tag.wallet_address) {
             setGuestOnrampWallet(prev => prev || tag.wallet_address);
           }
@@ -1828,6 +1839,11 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       .then(tag => {
         if (tag) {
           setUserTagData(tag);
+          if (tag.email) {
+            setEmailInput(prev => prev || tag.email);
+            setSessionEmail(prev => prev || tag.email);
+            localStorage.setItem(`paj_userEmail_${walletAddr}`, tag.email);
+          }
           if (tag.tag_name) {
             localStorage.setItem(`paj_user_tag_${walletAddr}`, tag.tag_name);
             localStorage.setItem('fw_fiat_tag', tag.tag_name);
@@ -2339,6 +2355,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             setShowTagModal(true);
           });
         }
+        return res.token;
       } else {
         throw new Error('Verify response did not include session token.');
       }
@@ -2930,6 +2947,10 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       if (/session.*(invalid|expired)|unauthorized/i.test(msg)) {
         if (publicKey) localStorage.removeItem(`paj_sessionToken_${publicKey.toBase58()}`);
         localStorage.removeItem('paj_manual_sessionToken');
+        setSessionToken('');
+        setAuthStep('input_email');
+        const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
+        if (fallbackEmail) setEmailInput(fallbackEmail);
       }
       setOnrampError(msg);
     } finally {
@@ -5790,7 +5811,149 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             </div>
           )}
 
-          {onrampError && (
+          {/* Inline Email Verification Card for Buy Tab (Shown when session is invalid/expired or unauthenticated) */}
+          {(authStep !== 'logged_in' || (onrampError && /session.*(invalid|expired)|unauthorized/i.test(onrampError))) && (
+            <div style={{
+              background: 'rgba(34, 211, 238, 0.06)',
+              border: '1px solid rgba(34, 211, 238, 0.28)',
+              borderRadius: '14px',
+              padding: '14px 16px',
+              marginBottom: '14px',
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--cyan, #22d3ee)' }}>
+                  {authStep === 'input_otp' ? 'Enter 4-Digit OTP Code' : 'Verify Email to Activate Buy Gateway'}
+                </div>
+                {(userTagData?.email || sessionEmail) && (
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)' }}>
+                    {userTagData?.email || sessionEmail}
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'rgba(255, 255, 255, 0.65)', marginBottom: '10px', lineHeight: '1.4' }}>
+                {authStep === 'input_otp'
+                  ? `Enter the 4-digit code sent to ${emailInput.trim() || 'your email'} to activate your payment gateway:`
+                  : 'PajCash requires a quick email verification before generating your bank transfer details.'}
+              </div>
+
+              {authError && (
+                <div style={{ fontSize: '11px', color: '#f87171', marginBottom: '8px' }}>
+                  ✕ {authError}
+                </div>
+              )}
+
+              {authStep !== 'input_otp' ? (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={e => setEmailInput(e.target.value)}
+                    placeholder="name@example.com"
+                    disabled={authLoading}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: 'white',
+                      fontSize: '12.5px',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!emailInput.trim()) {
+                        const fallback = userTagData?.email || sessionEmail;
+                        if (fallback) setEmailInput(fallback);
+                      }
+                      handleInitiateSession();
+                    }}
+                    disabled={authLoading || (!emailInput?.trim() && !userTagData?.email && !sessionEmail)}
+                    style={{
+                      background: 'var(--lime)',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 14px',
+                      fontWeight: '700',
+                      fontSize: '11.5px',
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {authLoading ? 'Sending...' : 'Send OTP'}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={otpInput}
+                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="••••"
+                    disabled={authLoading}
+                    style={{
+                      flex: 1,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: 'white',
+                      fontSize: '14px',
+                      letterSpacing: '4px',
+                      textAlign: 'center',
+                      fontWeight: '700',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const token = await handleVerifySession();
+                      if (token) {
+                        setOnrampError(null);
+                        setTimeout(() => handleOnrampSubmit(), 200);
+                      }
+                    }}
+                    disabled={authLoading || otpInput.trim().length !== 4}
+                    style={{
+                      background: 'var(--lime)',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 14px',
+                      fontWeight: '700',
+                      fontSize: '11.5px',
+                      cursor: (authLoading || otpInput.trim().length !== 4) ? 'not-allowed' : 'pointer',
+                      opacity: (authLoading || otpInput.trim().length !== 4) ? 0.6 : 1,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {authLoading ? 'Verifying...' : 'Verify & Continue →'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthStep('input_email'); setOtpInput(''); }}
+                    style={{
+                      background: 'transparent',
+                      color: 'rgba(255,255,255,0.45)',
+                      border: 'none',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {onrampError && !/session.*(invalid|expired)|unauthorized/i.test(onrampError) && (
             <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#f87171' }}>
               ✕ {onrampError}
             </div>
