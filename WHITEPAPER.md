@@ -54,7 +54,7 @@ flowchart TD
 
 | Metric | Performance | Description / Benchmark |
 | :--- | :--- | :--- |
-| **Total Processed Volume (TPV)** | **$9,000+ (≈ ₦14,000,000+)** | Real-world settled volume across NGN domestic rails and Solana bridge transactions. |
+| **Total Processed Volume (TPV)** | **$9,000+ (≈ ₦12,258,000+)** | Real-world settled volume across NGN domestic rails and Solana bridge transactions. |
 | **Active Transacting Users** | **30+ Active Traders** | Verified unique wallet participants actively trading and executing on-chain transfers. |
 | **Average Settlement Speed** | **< 45 Seconds** | 98% of on-ramps and off-ramps settle end-to-end automatically. |
 | **System Reliability** | **99.9% Uptime** | Edge-deployed serverless micro-architecture with automated RPC failover. |
