@@ -492,7 +492,8 @@ export async function reconcilePendingP2PTransactions(walletAddress, authToken) 
     // Phase 3: Onramp reconciliation via /api/relay_onramp_fee
     const pendingOnramps = pendingOrders.filter(row =>
       (row.transaction_type === 'p2p_onramp' || row.transaction_type === 'onramp') &&
-      ['INIT', 'PENDING', 'ERROR', 'FORWARD_FAILED', 'FORWARDING'].includes((row.status || '').toUpperCase())
+      (['INIT', 'PENDING', 'ERROR', 'FORWARD_FAILED', 'FORWARDING'].includes((row.status || '').toUpperCase()) ||
+       ((row.status || '').toUpperCase() === 'COMPLETED' && row.deposit_address !== 'RELAYER_FORWARDED'))
     );
 
     for (const onramp of pendingOnramps) {

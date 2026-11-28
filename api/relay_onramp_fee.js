@@ -103,7 +103,22 @@ export default async function handler(req, res) {
 
     supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 2. Parse request body
+    // 2. Initialize reliable Solana RPC connection with Helius mainnet fallback
+    function extractHeliusKey() {
+      if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) return process.env.HELIUS_API_KEY.trim();
+      const urls = [process.env.HELIUS_RPC_URL, process.env.VITE_RPC_URL, process.env.RPC_URL];
+      for (const url of urls) {
+        if (!url || typeof url !== 'string') continue;
+        const match = url.match(/[?&]api-?key=([a-zA-Z0-9-]+)/i);
+        if (match && match[1]) return match[1].trim();
+      }
+      return '60eeee23-d073-4619-a5cd-14bff9d27873';
+    }
+    const heliusKey = extractHeliusKey();
+    const rpcUrl = process.env.HELIUS_RPC_URL || (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : (process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com'));
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    // 3. Parse request body
     let body = req.body;
     if (typeof body === 'string') {
       try { body = JSON.parse(body); } catch (e) { return res.status(400).json({ error: 'Malformed JSON payload string' }); }
@@ -163,10 +178,26 @@ export default async function handler(req, res) {
       dbTx?.deposit_address === 'RELAYER_FORWARDED'
     );
     if (isAlreadyForwardedByRelayer) {
-      const gross = Number(dbTx.crypto_amount || 0);
-      const rawFee = gross * 0.004;
-      const fee = Math.max(0.10, Math.round(rawFee * 100) / 100);
-      return res.status(200).json({ signature: dbTx.signature, netAmount: Math.max(0, gross - fee), alreadyForwarded: true });
+      let isVerifiedOnChain = false;
+      const sigToCheck = dbTx?.signature;
+      if (sigToCheck && sigToCheck.length >= 60 && !sigToCheck.startsWith('ERROR') && !sigToCheck.startsWith('pending') && !sigToCheck.startsWith('awaiting')) {
+        try {
+          const sigRes = await connection.getSignatureStatus(sigToCheck, { searchTransactionHistory: true });
+          const status = sigRes?.value?.confirmationStatus;
+          if (status === 'confirmed' || status === 'finalized') {
+            isVerifiedOnChain = true;
+          }
+        } catch (e) {
+          console.warn('[relay_onramp_fee] Could not check signature on-chain:', e.message);
+        }
+      }
+      if (isVerifiedOnChain) {
+        const gross = Number(dbTx.crypto_amount || 0);
+        const rawFee = gross * 0.004;
+        const fee = Math.max(0.10, Math.round(rawFee * 100) / 100);
+        return res.status(200).json({ signature: dbTx.signature, netAmount: Math.max(0, gross - fee), alreadyForwarded: true });
+      }
+      console.warn(`[relay_onramp_fee] Order ${orderId} was marked forwarded but signature ${sigToCheck} was not confirmed on Solana mainnet. Re-initiating forwarding.`);
     }
 
     // ── Caller Authentication & Binding Guard ─────────────────────────────────
@@ -386,20 +417,6 @@ export default async function handler(req, res) {
     }
 
     // 5. Build forwarding transaction
-    function extractHeliusKey() {
-      if (process.env.HELIUS_API_KEY && process.env.HELIUS_API_KEY.trim()) return process.env.HELIUS_API_KEY.trim();
-      const urls = [process.env.HELIUS_RPC_URL, process.env.VITE_RPC_URL, process.env.RPC_URL];
-      for (const url of urls) {
-        if (!url || typeof url !== 'string') continue;
-        const match = url.match(/[?&]api-?key=([a-zA-Z0-9-]+)/i);
-        if (match && match[1]) return match[1].trim();
-      }
-      return null;
-    }
-    const heliusKey = extractHeliusKey();
-    const rpcUrl = process.env.HELIUS_RPC_URL || (heliusKey ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(heliusKey)}` : (process.env.VITE_RPC_URL || process.env.RPC_URL || 'https://api.mainnet-beta.solana.com'));
-    const connection = new Connection(rpcUrl, 'confirmed');
-
     // Platform fee math: 0.4% USDC with a 0.10 USDC minimum floor
     const grossAmount = Number(pajTx.amount ?? pajTx.usdcAmount ?? 0);
     if (!grossAmount || grossAmount <= 0) {
@@ -519,7 +536,7 @@ export default async function handler(req, res) {
     );
 
     // Broadcast
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = relayerKp.publicKey;
 
@@ -541,12 +558,27 @@ export default async function handler(req, res) {
     transaction.sign(relayerKp);
 
     const sig = await connection.sendRawTransaction(transaction.serialize(), {
-      skipPreflight: true,
-      maxRetries: 3,
+      skipPreflight: false,
+      maxRetries: 5,
       preflightCommitment: 'confirmed'
     });
 
-    console.log(`[relay_onramp_fee] Forwarded ${netAmount} USDC to ${userAddressStr}. Tx: ${sig}`);
+    console.log(`[relay_onramp_fee] Broadcast forward tx for Order ${orderId}: ${sig}. Waiting for confirmation...`);
+
+    const confirmation = await connection.confirmTransaction(
+      {
+        signature: sig,
+        blockhash,
+        lastValidBlockHeight,
+      },
+      'confirmed'
+    );
+
+    if (confirmation?.value?.err) {
+      throw new Error(`On-chain transaction execution failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+
+    console.log(`[relay_onramp_fee] Forwarded & confirmed ${netAmount} USDC to ${userAddressStr}. Tx: ${sig}`);
 
     // Fire-and-forget payout success alert to Telegram
     sendTelegramAlert({

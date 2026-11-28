@@ -472,7 +472,8 @@ export async function submitUserKyc(sessionToken, idNumber, idType = 'BVN', coun
   }
 }
 
-const KYC_SESSION_ERR_RE = /unauthorized|session|expired|jwt|invalid token|not logged|email verification|verify.*email|user need to do email/i;
+const KYC_SESSION_ERR_RE = /unauthorized|session.*(invalid|expired)|jwt.*expired|invalid token|not logged/i;
+const KYC_EMAIL_REQ_RE = /email verification|verify.*email|user need to do email/i;
 const KYC_VALIDATION_ERR_RE = /already used|invalid|mismatch|not found|incorrect|failed verification|does not match/i;
 const KYC_ALREADY_DONE_RE = /already verified|already submitted|already completed|kyc already|user already|already exists|already registered/i;
 const KYC_UNAVAILABLE_RE = /network|failed to fetch|timeout|unavailable|not found|cannot post/i;
@@ -538,7 +539,8 @@ export async function syncUserKycWithPajCash(
         setKycItemSyncedLocal(idType, cleanCountry, idValue, walletAddress);
         return { ok: true, fromCache: false };
       }
-      const sessionExpired = status === 401 || KYC_SESSION_ERR_RE.test(msg);
+      const emailReq = KYC_EMAIL_REQ_RE.test(msg);
+      const sessionExpired = !emailReq && (status === 401 || KYC_SESSION_ERR_RE.test(msg));
       const serviceUnavailable = !sessionExpired && ((typeof status === 'number' && status >= 500) || status === 404 || KYC_UNAVAILABLE_RE.test(msg));
       const validationError = !sessionExpired && !serviceUnavailable && (status === 400 || status === 409 || KYC_VALIDATION_ERR_RE.test(msg));
       const statusPrefix = typeof status === 'number' ? `[${status}] ` : '';

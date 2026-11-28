@@ -134,9 +134,9 @@ export default async function handler(req, res) {
       // Also self-heal any recent pending/error onramps by triggering relayer forward
       const { data: pendingOnramps } = await supabase
         .from('p2p_transactions')
-        .select('id, order_id, user_address, status')
+        .select('id, order_id, user_address, status, deposit_address')
         .eq('transaction_type', 'p2p_onramp')
-        .in('status', ['PENDING', 'FORWARD_FAILED', 'ERROR'])
+        .or('status.in.(PENDING,FORWARD_FAILED,ERROR),and(status.eq.COMPLETED,deposit_address.neq.RELAYER_FORWARDED)')
         .gte('created_at', fourteenDaysAgo)
         .limit(5);
 

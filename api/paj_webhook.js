@@ -573,7 +573,7 @@ export default async function handler(req, res) {
 
       const host = 'https://www.fiatwallet.app';
       try {
-        fetch(`${host}/api/relay_onramp_fee`, {
+        await fetch(`${host}/api/relay_onramp_fee`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -584,7 +584,7 @@ export default async function handler(req, res) {
             destinationAddress,
             sessionToken
           })
-        }).catch(fErr => console.warn('[paj_webhook] Auto-forward trigger background error:', fErr.message));
+        });
       } catch (fErr) {
         console.warn('[paj_webhook] Auto-forward trigger exception:', fErr.message);
       }
