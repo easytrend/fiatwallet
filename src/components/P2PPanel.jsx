@@ -3561,7 +3561,18 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
 
     } catch (err) {
       console.error('[Manual Offramp] Error creating order:', err);
-      setP2pError(err?.message || 'Failed to create offramp order.');
+      const msg = err?.message || 'Failed to create offramp order.';
+      if (/session.*(invalid|expired)|unauthorized/i.test(msg)) {
+        localStorage.removeItem('paj_manual_sessionToken');
+        setSessionToken('');
+        setAuthStep('input_email');
+        const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem('paj_sessionEmail_' + publicKey.toBase58()) : '') || localStorage.getItem('paj_manual_sessionEmail');
+        if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
+        setShowAuthModal(true);
+        setP2pError('Session expired. Please verify your email OTP to complete your transfer.');
+        return;
+      }
+      setP2pError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -4078,7 +4089,17 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       console.error('Transaction failed:', err);
       const rawMsg = err?.message || 'Transaction failed';
       let friendlyMsg = rawMsg;
-      if (rawMsg.toLowerCase().includes('not connected') || rawMsg.toLowerCase().includes('walletnotconnected')) {
+      if (/session.*(invalid|expired)|unauthorized/i.test(rawMsg)) {
+        if (publicKey) localStorage.removeItem('paj_sessionToken_' + publicKey.toBase58());
+        localStorage.removeItem('paj_manual_sessionToken');
+        setSessionToken('');
+        setAuthStep('input_email');
+        const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem('paj_sessionEmail_' + publicKey.toBase58()) : '');
+        if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
+        setShowAuthModal(true);
+        setP2pError('Session expired. Please verify your email OTP to complete your transfer.');
+        return;
+      } else if (rawMsg.toLowerCase().includes('not connected') || rawMsg.toLowerCase().includes('walletnotconnected')) {
         friendlyMsg = 'Wallet connection lost. Please refresh your wallet and try again.';
       } else if (rawMsg.toLowerCase().includes('user rejected') || rawMsg.toLowerCase().includes('cancelled') || rawMsg.toLowerCase().includes('rejected')) {
         friendlyMsg = 'Transaction cancelled in wallet.';
@@ -4317,7 +4338,7 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               }}
             >
               {userTagData
-                ? ((userTagData.bvn && userTagData.phone_number && userTagData.nin) || checkIsBlacklisted()
+                ? ((userTagData.bvn && userTagData.phone_number && userTagData.nin)
                     ? '✓ My Tag'
                     : 'My Tag (KYC)')
                 : 'Create Tag'}
@@ -5846,7 +5867,13 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
               {/session.*(invalid|expired)|unauthorized|my tag/i.test(onrampError) && (
                 <button
                   type="button"
-                  onClick={() => setShowTagModal(true)}
+                  onClick={() => {
+                    setOnrampError(null);
+                    const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem(`paj_sessionEmail_${publicKey.toBase58()}`) : '');
+                    if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
+                    setPendingOnrampSubmit(true);
+                    setShowAuthModal(true);
+                  }}
                   style={{
                     background: 'var(--lime)',
                     color: '#000',
@@ -6066,8 +6093,8 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             <button
               className="send-btn"
               onClick={handleOnrampSubmit}
-              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
-              style={{ opacity: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || !effectiveAuthToken || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
+              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
+              style={{ opacity: (onrampLoading || !parsedOnrampAmt || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
               {onrampLoading ? (
                 <>
