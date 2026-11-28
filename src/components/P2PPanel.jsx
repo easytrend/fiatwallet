@@ -1081,54 +1081,35 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
       setAuthStep('checking');
     }
 
-    // 2. Validate session token upfront with Supabase and PajCash on connection
+    // 2. Validate against Supabase authoritative session in the background
     loadSession(key)
-      .then(async row => {
-        let tokenToVerify = row?.session_token;
-        let emailToUse = row?.email;
-
-        if (!tokenToVerify && cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
-          tokenToVerify = cachedToken;
-          emailToUse = cachedEmail;
-        }
-
-        if (tokenToVerify && !tokenToVerify.startsWith('EXPIRED_')) {
-          try {
-            await getTransactionHistory(tokenToVerify);
-            const expiryMs = row?.expires_at ? new Date(row.expires_at).getTime() : Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
-            setSessionToken(tokenToVerify);
-            setSessionEmail(emailToUse || '');
-            setEmailInput(emailToUse || '');
-            setAuthStep('logged_in');
-            localStorage.setItem('paj_sessionToken_' + key, tokenToVerify);
-            if (emailToUse) localStorage.setItem('paj_sessionEmail_' + key, emailToUse);
-            localStorage.setItem('paj_sessionExpiry_' + key, String(expiryMs));
-          } catch (valErr) {
-            if (/session.*(invalid|expired)|unauthorized/i.test(valErr?.message)) {
-              console.warn('[P2P] Upfront session check: token expired on PajCash:', valErr.message);
-              localStorage.removeItem('paj_sessionToken_' + key);
-              localStorage.removeItem('paj_sessionEmail_' + key);
-              localStorage.removeItem('paj_sessionExpiry_' + key);
-              deleteSession(key);
-              setSessionToken('');
-              setSessionEmail('');
-              setAuthStep('input_email');
-              const fallbackEmail = userTagData?.email || emailToUse || (publicKey ? localStorage.getItem('paj_sessionEmail_' + key) : '');
-              if (fallbackEmail) setEmailInput(fallbackEmail);
-              setShowAuthModal(true);
-            } else {
-              setSessionToken(tokenToVerify);
-              setSessionEmail(emailToUse || '');
-              setAuthStep('logged_in');
-            }
-          }
+      .then(row => {
+        if (row && row.session_token && !row.session_token.startsWith('EXPIRED_')) {
+          const expiryMs = row.expires_at ? new Date(row.expires_at).getTime() : Date.now() + 20 * 365 * 24 * 60 * 60 * 1000;
+          setSessionToken(row.session_token);
+          setSessionEmail(row.email);
+          setEmailInput(row.email);
+          setAuthStep('logged_in');
+          localStorage.setItem(`paj_sessionToken_${key}`, row.session_token);
+          localStorage.setItem(`paj_sessionEmail_${key}`, row.email);
+          localStorage.setItem(`paj_sessionExpiry_${key}`, String(expiryMs));
+        } else if (row && row.session_token && row.session_token.startsWith('EXPIRED_')) {
+          // Explicit server revocation only
+          localStorage.removeItem(`paj_sessionToken_${key}`);
+          localStorage.removeItem(`paj_sessionEmail_${key}`);
+          localStorage.removeItem(`paj_sessionExpiry_${key}`);
+          setSessionToken('');
+          setSessionEmail('');
+          setAuthStep('input_email');
+        } else if (cachedToken && (!cachedExpiry || Date.now() < Number(cachedExpiry))) {
+          // Server returned no row or lookup was skipped, keep valid local session
+          setSessionToken(cachedToken);
+          setSessionEmail(cachedEmail || '');
+          setAuthStep('logged_in');
         } else {
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
-          const fallbackEmail = userTagData?.email || emailToUse || '';
-          if (fallbackEmail) setEmailInput(fallbackEmail);
-          setShowAuthModal(true);
         }
       })
       .catch(() => {
@@ -1140,7 +1121,6 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           setSessionToken('');
           setSessionEmail('');
           setAuthStep('input_email');
-          setShowAuthModal(true);
         }
       });
   }, [publicKey]);
@@ -1929,61 +1909,9 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     userTagData.bvn.trim() !== userTagData.nin.trim()
   );
 
-  const isPajcashKycVerified = Boolean(
-    userTagData &&
-    (userTagData.bvn || userTagData.nin) &&
-    (kycSyncState.synced || isCachedKycSynced) &&
-    !kycSyncState.error
+  const effectiveKycSynced = Boolean(
+    userTagData && (userTagData.bvn || userTagData.nin) && ((kycSyncState.synced || isCachedKycSynced || isTagKycComplete) && !kycSyncState.error)
   );
-
-  const hasSubmittedKycDocs = Boolean(
-    userTagData &&
-    userTagData.bvn &&
-    userTagData.nin &&
-    userTagData.phone_number &&
-    userTagData.bvn.trim() !== userTagData.nin.trim()
-  );
-
-  const effectiveKycSynced = isPajcashKycVerified;
-
-  const handleSyncKycClick = useCallback(async () => {
-    if (!userTagData || (!userTagData.bvn && !userTagData.nin)) {
-      setShowTagModal(true);
-      return;
-    }
-    const currentToken = sessionToken || (publicKey ? localStorage.getItem(paj_sessionToken_) : '');
-    if (!currentToken) {
-      const fallbackEmail = userTagData?.email || sessionEmail || (publicKey ? localStorage.getItem('paj_sessionEmail_' + key) : '');
-      if (fallbackEmail && !emailInput) setEmailInput(fallbackEmail);
-      setShowAuthModal(true);
-      return;
-    }
-    setKycSyncState(prev => ({ ...prev, syncing: true, error: '' }));
-    try {
-      const res = await syncStoredKycWithPajCash(currentToken, userTagData, true);
-      if (res?.synced) {
-        setKycSyncState({ syncing: false, synced: true, error: '' });
-        const walletKey = publicKey ? publicKey.toBase58() : (userTagData.wallet_address || manualWalletAddress || '');
-        if (walletKey) {
-          try { localStorage.setItem(paj_kyc_synced_, 'true'); } catch (_) {}
-          updateFiatTagKycSync(walletKey, { synced: true, error: null });
-        }
-        if (parsedOnrampAmt > 0 && !onrampBelowMinimum && !onrampExceedsMaximum) {
-          setTimeout(() => handleOnrampSubmit(currentToken), 400);
-        }
-      } else if (res?.error) {
-        setKycSyncState({ syncing: false, synced: false, error: res.error });
-        const walletKey = publicKey ? publicKey.toBase58() : (userTagData.wallet_address || manualWalletAddress || '');
-        if (walletKey) {
-          updateFiatTagKycSync(walletKey, { synced: false, error: res.error });
-        }
-      } else {
-        setKycSyncState(prev => ({ ...prev, syncing: false }));
-      }
-    } catch (err) {
-      setKycSyncState({ syncing: false, synced: false, error: err?.message || 'KYC sync failed.' });
-    }
-  }, [userTagData, sessionToken, sessionEmail, emailInput, publicKey, manualWalletAddress, parsedOnrampAmt, onrampBelowMinimum, onrampExceedsMaximum, syncStoredKycWithPajCash]);
 
   const clearExpiredKycSession = useCallback((walletAddr) => {
     // Only clears LOCAL state and localStorage on explicit user logout.
@@ -2886,16 +2814,17 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
     const isBlacklistedEntity = checkIsBlacklisted(userWalletAddress, effectiveEmail);
 
     if (!isBlacklistedEntity) {
-      if (!isPajcashKycVerified) {
-        if (!hasSubmittedKycDocs) {
-          setOnrampError('KYC Required: Please submit your BVN and NIN in My Tag.');
-          setShowTagModal(true);
-        } else if (kycSyncState.error) {
-          setOnrampError(`Identity Mismatch: PajCash reported an issue (${kycSyncState.error}). Please update details in My Tag.`);
-          setShowTagModal(true);
-        } else {
-          handleSyncKycClick();
-        }
+      // Enforce Fiat Tag and KYC (BVN, Phone Number, NIN) on Onramp
+      const hasCompleteKyc = Boolean(
+        userTagData &&
+        userTagData.tag_name &&
+        userTagData.bvn &&
+        userTagData.phone_number &&
+        userTagData.nin
+      );
+      if (!hasCompleteKyc) {
+        setOnrampError('KYC Required: Please complete your Fiat Tag profile (BVN, Phone Number, and NIN) before buying crypto.');
+        setShowTagModal(true);
         return;
       }
     }
@@ -5913,173 +5842,12 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
             </div>
           )}
 
-          {/* ── Tiny KYC Banner on Onramp (Buy) ── */}
-          {(() => {
-            if (isPajcashKycVerified) {
-              return (
-                <div style={{
-                  background: 'rgba(163, 230, 53, 0.06)',
-                  border: '1px solid rgba(163, 230, 53, 0.22)',
-                  borderRadius: '9px',
-                  padding: '7px 12px',
-                  fontSize: '11px',
-                  color: 'var(--lime)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  marginBottom: '10px'
-                }}>
-                  <span style={{ fontSize: '13px' }}>✓</span>
-                  <span style={{ fontWeight: '600' }}>Identity Verified with PajCash</span>
-                </div>
-              );
-            }
-
-            if (kycSyncState.error) {
-              return (
-                <div style={{
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                  borderRadius: '9px',
-                  padding: '9px 12px',
-                  fontSize: '11.5px',
-                  color: '#f87171',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '10px',
-                  marginBottom: '10px',
-                  textAlign: 'left',
-                  lineHeight: '1.4'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', flexShrink: 0 }}>⚠️</span>
-                    <span>
-                      <strong style={{ color: '#fff' }}>Identity Mismatch:</strong> PajCash discovered an issue ({kycSyncState.error}). Please update your details in My Tag.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowTagModal(true)}
-                    style={{
-                      background: '#ef4444',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '5px 10px',
-                      fontSize: '11px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    Update My Tag →
-                  </button>
-                </div>
-              );
-            }
-
-            if (hasSubmittedKycDocs) {
-              return (
-                <div style={{
-                  background: 'rgba(34, 211, 238, 0.07)',
-                  border: '1px solid rgba(34, 211, 238, 0.25)',
-                  borderRadius: '9px',
-                  padding: '9px 12px',
-                  fontSize: '11.5px',
-                  color: 'var(--cyan, #22d3ee)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '10px',
-                  marginBottom: '10px',
-                  textAlign: 'left',
-                  lineHeight: '1.4'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', flexShrink: 0 }}>ℹ️</span>
-                    <span>
-                      <strong style={{ color: '#fff' }}>KYC Verification:</strong> Your BVN & NIN are filled. Click Sync to verify with PajCash and activate buying.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSyncKycClick}
-                    disabled={kycSyncState.syncing}
-                    style={{
-                      background: 'var(--cyan, #22d3ee)',
-                      color: '#000',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '5px 12px',
-                      fontSize: '11px',
-                      fontWeight: '700',
-                      cursor: kycSyncState.syncing ? 'wait' : 'pointer',
-                      flexShrink: 0,
-                      whiteSpace: 'nowrap',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    {kycSyncState.syncing ? (
-                      <>
-                        <span className="p2p-mini-spinner" style={{ width: '10px', height: '10px' }} />
-                        Syncing...
-                      </>
-                    ) : (
-                      'Sync with PajCash ⚡'
-                    )}
-                  </button>
-                </div>
-              );
-            }
-
-            // User has not submitted BVN and NIN yet
-            return (
-              <div style={{
-                background: 'rgba(234, 179, 8, 0.08)',
-                border: '1px solid rgba(234, 179, 8, 0.25)',
-                borderRadius: '9px',
-                padding: '9px 12px',
-                fontSize: '11.5px',
-                color: '#fbbf24',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '10px',
-                marginBottom: '10px',
-                textAlign: 'left',
-                lineHeight: '1.4'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '14px', flexShrink: 0 }}>⚠️</span>
-                  <span>
-                    <strong style={{ color: '#fff' }}>KYC Required:</strong> Please visit My Tag to submit your BVN & NIN to unlock buying crypto.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowTagModal(true)}
-                  style={{
-                    background: '#f59e0b',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '5px 10px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  Visit My Tag →
-                </button>
-              </div>
-            );
-          })()}
+          {/* Tag profile prompt if not yet created */}
+          {!userTagData && (
+            <div style={{ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '11px', color: 'var(--cyan, #22d3ee)', lineHeight: '1.5' }}>
+              • Link your bank details and create your Fiat Tag to start buying crypto.
+            </div>
+          )}
 
           {onrampError && (
             <div style={{
@@ -6324,49 +6092,15 @@ export default function P2PPanel({ connected, walletTokenList, onRefreshBalances
           {!onrampOrder && (
             <button
               className="send-btn"
-              onClick={() => {
-                if (!isPajcashKycVerified) {
-                  if (!hasSubmittedKycDocs) {
-                    setShowTagModal(true);
-                  } else if (kycSyncState.error) {
-                    setShowTagModal(true);
-                  } else {
-                    handleSyncKycClick();
-                  }
-                  return;
-                }
-                handleOnrampSubmit();
-              }}
-              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim()) || kycSyncState.syncing}
-              style={{ opacity: (onrampLoading || !parsedOnrampAmt || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim()) || kycSyncState.syncing) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim()) || kycSyncState.syncing) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
+              onClick={handleOnrampSubmit}
+              disabled={onrampLoading || !parsedOnrampAmt || parsedOnrampAmt <= 0 || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())}
+              style={{ opacity: (onrampLoading || !parsedOnrampAmt || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 0.6 : 1, cursor: (onrampLoading || !parsedOnrampAmt || onrampBelowMinimum || onrampExceedsMaximum || ((!publicKey || isManualOfframp) && !guestOnrampWallet.trim())) ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '13px 16px' }}
             >
               {onrampLoading ? (
                 <>
                   <span className="p2p-mini-spinner" style={{ marginBottom: '2px' }} />
                   <span style={{ fontSize: '13px' }}>Getting Bank Details...</span>
                 </>
-              ) : kycSyncState.syncing ? (
-                <>
-                  <span className="p2p-mini-spinner" style={{ marginBottom: '2px' }} />
-                  <span style={{ fontSize: '13px' }}>Syncing KYC with PajCash...</span>
-                </>
-              ) : !isPajcashKycVerified ? (
-                !hasSubmittedKycDocs ? (
-                  <>
-                    <span style={{ fontSize: '15px', fontWeight: '800' }}>Submit BVN & NIN in My Tag</span>
-                    <span style={{ fontSize: '11px', fontWeight: '500', opacity: 0.8 }}>KYC required to unlock buying crypto</span>
-                  </>
-                ) : kycSyncState.error ? (
-                  <>
-                    <span style={{ fontSize: '15px', fontWeight: '800' }}>Resolve KYC Mismatch</span>
-                    <span style={{ fontSize: '11px', fontWeight: '500', opacity: 0.8 }}>Update identity details in My Tag</span>
-                  </>
-                ) : (
-                  <>
-                    <span style={{ fontSize: '15px', fontWeight: '800' }}>Sync KYC with PajCash to Buy</span>
-                    <span style={{ fontSize: '11px', fontWeight: '500', opacity: 0.8 }}>Tap to verify identity and unlock order</span>
-                  </>
-                )
               ) : parsedOnrampAmt > 0 ? (
                 <>
                   <span style={{ fontSize: '16px', fontWeight: '800', letterSpacing: '-0.3px' }}>
